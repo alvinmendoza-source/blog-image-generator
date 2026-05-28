@@ -1,0 +1,27 @@
+# Secrets — never commit
+.env
+.streamlit/secrets.toml
+clients.json
+
+# Auto-downloaded overlay PNGs (re-downloaded from Figma on first use)
+template_assets/*.png
+
+# Generated output — not needed in repo
+generated_images/
+
+# Old/unused files
+app_backup.py
+generator.py
+test_scrape.py
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Test output
+test/
+
+# OS
+.DS_Store
+Thumbs.db
