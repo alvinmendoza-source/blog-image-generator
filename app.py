@@ -1953,83 +1953,171 @@ tab_manual, tab_auto = st.tabs(["📥  Manual Upload", "🚀  Auto Upload to Web
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 1 — Manual Upload
+# TAB 1 — Manual Upload (generate content images only — no compositing)
 # ════════════════════════════════════════════════════════════════════════════════
 with tab_manual:
-    st.subheader("Generate & Download")
-    st.caption("Generate images and download them, then upload to Webflow yourself.")
+    st.subheader("Generate Images")
+    st.caption("Paste a blog URL — the app scans the page, generates matching images, then you download and upload them yourself.")
 
     m_url = st.text_input("Blog URL", placeholder="https://www.example.com/blog/your-post",
                           key="m_url")
-    m_btn = st.button("Analyze & Generate Images", type="primary",
+    m_btn = st.button("Generate Images", type="primary",
                       use_container_width=True, key="m_btn")
 
+    # ── Handle per-image redo (triggered by redo buttons below) ───────────────
+    if st.session_state.get("m_redo_idx") is not None and "m_results" in st.session_state:
+        redo_i    = st.session_state.pop("m_redo_idx")
+        redo_seed = st.session_state.pop("m_redo_seed", random.randint(10000, 999999))
+        redo_prompt = st.session_state["m_prompts"][redo_i - 1]
+        redo_alt    = st.session_state["m_alt_texts"][redo_i - 1]
+        with st.spinner(f"Regenerating image {redo_i}..."):
+            try:
+                raw = _dispatch_image_gen(redo_prompt, redo_i, DEFAULT_WIDTH, DEFAULT_HEIGHT, seed=redo_seed)
+                opt_bytes, ext = optimize_image(raw, max_kb=200)
+                st.session_state["m_results"][redo_i - 1] = {
+                    "index": redo_i, "bytes": opt_bytes, "ext": ext,
+                    "size_kb": round(len(opt_bytes) / 1024, 1),
+                    "alt": redo_alt, "prompt": redo_prompt, "status": "ok", "defect_reason": "",
+                }
+            except Exception as e:
+                st.error(f"Redo failed: {e}")
+
+    # ── Full generation on button click ───────────────────────────────────────
     if m_btn:
         if not m_url.strip():
             st.error("Please enter a blog URL.")
             st.stop()
+        # Clear previous results when starting a new generation
+        for k in ["m_results", "m_prompts", "m_alt_texts", "m_title"]:
+            st.session_state.pop(k, None)
+
         url = ("https://" + m_url) if not m_url.startswith("http") else m_url
-        slug = url.rstrip("/").split("/")[-1]
-        output_dir = Path("generated_images") / slug
-        output_dir.mkdir(parents=True, exist_ok=True)
 
-        title, image_urls, results, alt_texts = run_workflow(url, output_dir)
+        # Step 1: Fetch blog
+        with st.status("Fetching blog page...", expanded=True) as s:
+            try:
+                title, content, image_urls = fetch_blog(url)
+                count = len(image_urls) or 4
+                st.write(f"**Title:** {title}")
+                st.write(f"**Images detected on page:** {len(image_urls)} → generating {count}")
+                s.update(label="Blog fetched ✓", state="complete")
+            except Exception as e:
+                s.update(label="Failed to fetch blog", state="error")
+                st.error(str(e))
+                st.stop()
 
-        display_image_grid(results, key_prefix="m_")
+        # Step 2: Generate descriptions
+        with st.status(f"Writing {count} image descriptions...", expanded=True) as s:
+            try:
+                prompts = generate_prompts_live(title, content, count)
+                st.write(f"Generated **{len(prompts)}** descriptions")
+                s.update(label="Descriptions ready ✓", state="complete")
+            except Exception as e:
+                s.update(label="Failed", state="error")
+                st.error(str(e))
+                st.stop()
 
-        # ── Main image + thumbnail composites ─────────────────────────────────
-        ok_r = [r for r in results if r["status"] == "ok"]
-        ensure_figma_assets()  # best-effort download; compositing still runs if assets missing
-        if ok_r:
-            st.divider()
-            st.subheader("Main Image & Thumbnail")
+        # Step 3: Alt texts
+        with st.status("Generating alt texts...", expanded=True) as s:
+            alt_texts = []
+            for i, prompt in enumerate(prompts, 1):
+                alt = generate_alt_text_for(prompt, title)
+                alt_texts.append(alt)
+                time.sleep(1)
+            s.update(label="Alt texts ready ✓", state="complete")
 
-            # Use session state so Redo can regenerate without re-running the whole workflow
-            if st.session_state.get("m_redo_req") or "m_main" not in st.session_state:
-                st.session_state.pop("m_redo_req", None)
-                if st.session_state.get("m_redo_seed"):
-                    seed = st.session_state.pop("m_redo_seed")
-                    with st.spinner("Generating new photo for main & thumbnail..."):
-                        new_prompt = generate_prompt_variation(ok_r[0]["prompt"], title)
-                        bg_bytes = _dispatch_image_gen(new_prompt, 1, DEFAULT_WIDTH, DEFAULT_HEIGHT, seed=seed)
-                else:
-                    with st.spinner("Generating cover photo for main & thumbnail..."):
-                        bg_bytes = _generate_cover_bg(title, [r["prompt"] for r in ok_r])
-                with st.spinner("Compositing..."):
-                    st.session_state["m_main"]  = composite_template(bg_bytes, title, MAIN_TPL)
-                    st.session_state["m_thumb"] = composite_template(bg_bytes, title, THUMB_TPL)
+        # Step 4: Generate images
+        st.subheader("Generated Images")
+        gen_prog = st.progress(0, text="Starting image generation...")
+        results  = []
+        img_seeds = [random.randint(10000, 999999) for _ in prompts]
 
-            m_main  = st.session_state.get("m_main")
-            m_thumb = st.session_state.get("m_thumb")
-            if m_main and m_thumb:
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.image(m_main, caption="Main Image (920×613)", use_container_width=True)
-                    dl_c, redo_c = st.columns([2, 1])
-                    with dl_c:
-                        st.download_button("⬇ Download Main", m_main, "main_image.png",
-                                           "image/png", key="m_dl_main", use_container_width=True)
-                    with redo_c:
-                        if st.button("🔄 Redo", key="m_redo_main", use_container_width=True):
-                            st.session_state["m_redo_req"] = True
-                            st.session_state["m_redo_seed"] = random.randint(10000, 999999)
-                            st.rerun()
-                with col2:
-                    st.image(m_thumb, caption="Thumbnail (736×560)", use_container_width=True)
-                    dl_c, redo_c = st.columns([2, 1])
-                    with dl_c:
-                        st.download_button("⬇ Download Thumbnail", m_thumb, "thumbnail.png",
-                                           "image/png", key="m_dl_thumb", use_container_width=True)
-                    with redo_c:
-                        if st.button("🔄 Redo", key="m_redo_thumb", use_container_width=True):
-                            st.session_state["m_redo_req"] = True
+        for i, (prompt, alt) in enumerate(zip(prompts, alt_texts), 1):
+            gen_prog.progress(i / len(prompts), text=f"Generating image {i} of {len(prompts)}...")
+            last_err = None
+            final_bytes, final_ext = None, "jpg"
+            base_seed = img_seeds[i - 1]
+
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                attempt_label = f"Image {i}" + (f" — attempt {attempt}/{MAX_ATTEMPTS}" if attempt > 1 else "")
+                try:
+                    raw = _dispatch_image_gen(prompt, i, DEFAULT_WIDTH, DEFAULT_HEIGHT,
+                                              seed=base_seed + attempt * 1000)
+                    is_ok, reason = check_anatomy(raw)
+                    if not is_ok and attempt < MAX_ATTEMPTS:
+                        st.warning(f"⚠️ {attempt_label} — defect detected ({reason}), regenerating...")
+                        continue
+                    opt_bytes, ext = optimize_image(raw, max_kb=200)
+                    final_bytes, final_ext = opt_bytes, ext
+                    if not is_ok:
+                        st.warning(f"⚠️ Image {i} — kept after {MAX_ATTEMPTS} attempts ({reason})")
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < MAX_ATTEMPTS:
+                        st.warning(f"⚠️ {attempt_label} failed ({e}), retrying...")
+                        time.sleep(2)
+
+            results.append({
+                "index": i,
+                "bytes": final_bytes,
+                "ext":   final_ext,
+                "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
+                "alt":   alt,
+                "prompt": prompt,
+                "status": "ok" if final_bytes else f"failed: {last_err}",
+                "defect_reason": "",
+            })
+
+        gen_prog.empty()
+
+        # Persist in session state so redo works without re-fetching
+        st.session_state["m_results"]   = results
+        st.session_state["m_prompts"]   = prompts
+        st.session_state["m_alt_texts"] = alt_texts
+        st.session_state["m_title"]     = title
+
+    # ── Display results (shown after generation or redo) ──────────────────────
+    if "m_results" in st.session_state:
+        results = st.session_state["m_results"]
+        for row in range(0, len(results), 2):
+            cols = st.columns(2)
+            for ci, result in enumerate(results[row:row + 2]):
+                with cols[ci]:
+                    i = result["index"]
+                    if result["bytes"]:
+                        fname = f"image_{i:02d}.{result['ext']}"
+                        st.image(result["bytes"],
+                                 caption=f"{fname} — {result['size_kb']} KB",
+                                 use_container_width=True)
+                        st.text_area(f"Alt text #{i}", value=result["alt"],
+                                     height=70, key=f"m_alt_{i}")
+                        dl_c, redo_c = st.columns([3, 1])
+                        with dl_c:
+                            st.download_button(
+                                label=f"⬇ Download {fname}",
+                                data=result["bytes"],
+                                file_name=fname,
+                                mime=MIME_MAP.get(result["ext"], "image/jpeg"),
+                                key=f"m_dl_{i}",
+                                use_container_width=True,
+                            )
+                        with redo_c:
+                            if st.button("🔄 Redo", key=f"m_redo_{i}",
+                                         use_container_width=True,
+                                         help="Regenerate this image"):
+                                st.session_state["m_redo_idx"]  = i
+                                st.session_state["m_redo_seed"] = random.randint(10000, 999999)
+                                st.rerun()
+                    else:
+                        st.error(f"Image {i} failed: {result['status']}")
+                        if st.button("🔄 Retry", key=f"m_retry_{i}", use_container_width=True):
+                            st.session_state["m_redo_idx"]  = i
                             st.session_state["m_redo_seed"] = random.randint(10000, 999999)
                             st.rerun()
 
         ok = sum(1 for r in results if r["status"] == "ok")
-        st.divider()
-        st.success(f"Done! {ok}/{len(results)} images saved to `generated_images/{slug}/`")
-        st.info("Upload to Webflow in order: image_01 → image_02 → ...")
+        st.success(f"Done! {ok}/{len(results)} images ready — download each one and upload to your blog.")
 
 
 # ════════════════════════════════════════════════════════════════════════════════
