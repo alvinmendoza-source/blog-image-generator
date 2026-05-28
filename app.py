@@ -1996,6 +1996,7 @@ with tab_manual:
             st.session_state.pop(k, None)
 
         url = ("https://" + m_url) if not m_url.startswith("http") else m_url
+        slug = url.rstrip("/").split("/")[-1]
 
         # Step 1: Fetch blog
         with st.status("Fetching blog page...", expanded=True) as s:
@@ -2005,9 +2006,24 @@ with tab_manual:
                 st.write(f"**Title:** {title}")
                 st.write(f"**Images detected on page:** {len(image_urls)} → generating {count}")
                 s.update(label="Blog fetched ✓", state="complete")
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404:
+                    s.update(label="Page not found (404)", state="error")
+                    st.error(
+                        "**Page not found (404).** This usually means the blog post is "
+                        "still a **draft / unpublished** in Webflow.\n\n"
+                        "**Options:**\n"
+                        "- Publish the post in Webflow first, then try again.\n"
+                        "- Or use the **Auto Upload tab** — it can access draft pages "
+                        "using your Webflow API key."
+                    )
+                else:
+                    s.update(label="Failed to fetch blog", state="error")
+                    st.error(f"HTTP error: {e}")
+                st.stop()
             except Exception as e:
                 s.update(label="Failed to fetch blog", state="error")
-                st.error(str(e))
+                st.error(f"Could not load the page: {e}")
                 st.stop()
 
         # Step 2: Generate descriptions
