@@ -1926,6 +1926,10 @@ html, body, [data-testid="stApp"] {{
 }}
 /* ── Dividers ── */
 hr {{ border-color: #2a2a2a; }}
+/* ── Hide password show/hide toggle on all inputs ── */
+[data-baseweb="base-input"] button {{
+    display: none !important;
+}}
 </style>
 {"<div class='msp-header'><img src='data:image/png;base64," + _logo_b64 + "' style='height:24px'><span class='app-label'>Blog Image Generator</span></div>" if _logo_b64 else ""}
 """, unsafe_allow_html=True)
