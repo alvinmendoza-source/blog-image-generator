@@ -24,8 +24,7 @@
     "thumb_tw": 227,
     "thumb_fsz": 19,
     "thumb_font_family": "Inter",
-    "thumb_font_style": "Medium",
-    "webflow_api_key": "dc9039f3f82f708cdc0c1b68dcb9716a845112df5cf029b43d6913e1f0df1128"
+    "thumb_font_style": "Medium"
   },
   "guru": {
     "name": "GURU",
@@ -150,7 +149,11 @@
     "main_fsz": 34,
     "main_font_family": "Mulish",
     "main_font_style": "Bold",
-    "main_font_color": [31, 31, 31],
+    "main_font_color": [
+      31,
+      31,
+      31
+    ],
     "thumb_w": 651,
     "thumb_h": 429,
     "overlay_thumb": "18:101",
@@ -162,7 +165,10 @@
     "thumb_fsz": 20,
     "thumb_font_family": "Mulish",
     "thumb_font_style": "Bold",
-    "thumb_font_color": [31, 31, 31],
-    "webflow_api_key": "dc9039f3f82f708cdc0c1b68dcb9716a845112df5cf029b43d6913e1f0df1128"
+    "thumb_font_color": [
+      31,
+      31,
+      31
+    ]
   }
 }
