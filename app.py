@@ -66,16 +66,11 @@ cinematic, dramatic, golden, moody, stunning, glowing, vibrant, misty, hazy, vin
 blurry, soft light, rim light, perfect, flawless, symmetrical, posed, stock photo,
 whiteboard with text, readable signs, hologram, neon, glowing code, padlock, sci-fi
 
-SCENE SELECTION — read the blog title and content first, then choose {count} DIFFERENT environments:
-Pick the environments where the blog topic's work would NATURALLY HAPPEN in real life.
-A network security blog → prioritize server rooms, dual-monitor desks, network closets.
-A cloud/SaaS blog → prioritize workstations, meeting tables, open plan floors.
-A help-desk/support blog → prioritize help desk counters, phone calls, side-by-side pairs.
-⚠️ NO REPEATS — every image must use a different environment.
-⚠️ DO NOT pick environments just because they look "techy" — pick based on actual topic relevance.
+REQUIRED ENVIRONMENTS — already pre-selected for variety (use in order, one per image):
+{required_envs}
 
-AVAILABLE ENVIRONMENTS (choose {count} of these, no repeats):
-{scene_pool}
+⚠️ Do NOT choose or swap environments — they are already assigned.
+Your ONLY job is to write what the people are DOING in each environment based on the blog topic.
 
 CONTENT RELEVANCE RULE (most important):
 - Each image must show people doing something DIRECTLY related to the blog topic.
@@ -83,6 +78,7 @@ CONTENT RELEVANCE RULE (most important):
 - If the blog is about cloud backup: show someone configuring cloud software, a tech managing storage, two people reviewing backup reports, etc.
 - Do NOT write generic "working at a computer" scenes — the activity must reflect the blog subject.
 - Each image must show a DIFFERENT activity — not just the same task in a different room.
+- Be creative connecting the topic to the assigned environment — even an "unusual" pairing (e.g. cloud backup blog + walking corridor) is fine: show someone discussing a backup plan mid-walk, reading an alert on a phone, etc.
 
 FORMAT — STRICT:
 - Output ONLY a bulleted list of exactly {count} descriptions. Nothing else. No headers, no environment labels.
@@ -118,8 +114,17 @@ SCENE_TYPES = [
 ]
 
 def _scene_pool_text() -> str:
-    """Return all scene types as a bulleted list for Gemini to choose from."""
-    return "\n".join(f"  • {name}: {desc}" for name, desc in SCENE_TYPES)
+    """Return all scene types as a bulleted list (shuffled) for Gemini to choose from."""
+    return "\n".join(f"  • {name}: {desc}" for name, desc in random.sample(SCENE_TYPES, len(SCENE_TYPES)))
+
+
+def _pick_required_scenes(count: int) -> list:
+    """Randomly pre-select `count` scenes so variety is guaranteed across generations."""
+    return random.sample(SCENE_TYPES, min(count, len(SCENE_TYPES)))
+
+
+def _format_required_envs(scenes: list) -> str:
+    return "\n".join(f"  {i+1}. {name}: {desc}" for i, (name, desc) in enumerate(scenes))
 
 
 # ── Pollinations (used in free mode) ──────────────────────────────────────────
@@ -195,7 +200,10 @@ NEGATIVE_PROMPT = (
     "branded polo shirt, embroidered logo, company name on clothing, uniform with logo, name tag, "
     # cable mess — banned in all scenes
     "messy cables, tangled cables, spaghetti wiring, chaotic wiring, cable chaos, "
-    "tangled wires, rats nest cables, disorganized cabling, cable clutter"
+    "tangled wires, rats nest cables, disorganized cabling, cable clutter, "
+    # food and drinks — unprofessional
+    "water bottle, coffee cup, coffee mug, tea cup, soda can, food, snacks, lunch, "
+    "takeout, fast food, meal, drink, beverage, bottle on desk, cup on desk"
 )
 
 # ── Kie paid mode (Google Imagen 4 Ultra → Flux 2 Pro fallback) ───────────────
@@ -207,7 +215,8 @@ KIE_QUALITY_SUFFIX = (
     "plain unbranded clothing with no logos or company names, "
     "white Caucasian American office workers, "
     "network cables neatly bundled and routed, tidy cable management, "
-    "organized server room cabling, cables secured with velcro ties"
+    "organized server room cabling, cables secured with velcro ties, "
+    "no food on desk, no drinks on desk, no water bottle, no coffee cup, no snacks, clean professional workspace"
 )
 KIE_NEGATIVE_PROMPT = NEGATIVE_PROMPT + (
     # text in scene
@@ -373,7 +382,7 @@ def check_anatomy(img_bytes: bytes) -> tuple[bool, str]:
         try:
             import google.generativeai as genai
             genai.configure(api_key=GOOGLE_API_KEY)
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             img_part = {"mime_type": "image/jpeg", "data": b64}
             resp = model.generate_content([_ANATOMY_CHECK_PROMPT, img_part])
             content = resp.text.strip()
@@ -454,9 +463,24 @@ def fetch_blog(url: str):
     r = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}, timeout=30)
     r.raise_for_status()
     soup = BeautifulSoup(r.content, "html.parser")
-    for tag in soup(["nav", "footer", "script", "style", "header"]):
+    for tag in soup(["nav", "footer", "script", "style"]):
         tag.decompose()
-    title = (soup.find("h1") or soup.new_tag("x")).get_text(strip=True)
+    # Note: <header> intentionally excluded — Webflow wraps blog content inside <header> elements
+    # Try h1 first, then og:title meta tag, then h2, then page <title> (strip site name after " | " or " - ")
+    _h1 = soup.find("h1")
+    _og = soup.find("meta", property="og:title")
+    _h2 = soup.find("h2")
+    _pt = soup.find("title")
+    if _h1 and _h1.get_text(strip=True):
+        title = _h1.get_text(strip=True)
+    elif _og and _og.get("content", "").strip():
+        title = _og["content"].strip()
+    elif _h2 and _h2.get_text(strip=True):
+        title = _h2.get_text(strip=True)
+    elif _pt:
+        title = re.split(r"\s*[|\-–]\s*", _pt.get_text(strip=True))[0].strip()
+    else:
+        title = ""
     content_el = next((soup.select_one(s) for s in CONTENT_SELECTORS if soup.select_one(s)), None)
     content = content_el.get_text("\n", strip=True) if content_el else \
         "\n".join(p.get_text(strip=True) for p in soup.find_all("p") if p.get_text(strip=True))
@@ -521,7 +545,8 @@ def parse_bullet_list(raw: str, count: int) -> list:
 
 
 def generate_prompts_free(title: str, content: str, count: int) -> list:
-    system = SYSTEM_PROMPT_TEMPLATE.format(count=count, scene_pool=_scene_pool_text())
+    required_envs = _format_required_envs(_pick_required_scenes(count))
+    system = SYSTEM_PROMPT_TEMPLATE.format(count=count, required_envs=required_envs)
     trimmed = content[:4000] + ("..." if len(content) > 4000 else "")
     payload = {"model": "openai", "messages": [
         {"role": "system", "content": system},
@@ -552,12 +577,14 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
         from google import genai
         from google.genai import types as gt
         client = genai.Client(api_key=GOOGLE_API_KEY)
+        required_envs = _format_required_envs(_pick_required_scenes(count))
         resp = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=f"Blog Title:\n{title}\n\nWhole Blog:\n{content}",
             config=gt.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT_TEMPLATE.format(count=count, scene_pool=_scene_pool_text()),
-                max_output_tokens=3000
+                system_instruction=SYSTEM_PROMPT_TEMPLATE.format(count=count, required_envs=required_envs),
+                max_output_tokens=3000,
+                temperature=1.5,
             )
         )
         prompts = parse_bullet_list(resp.text.strip(), count)
@@ -573,6 +600,176 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
             st.warning("⚠️ Gemini quota exhausted — falling back to Pollinations for descriptions.")
             return generate_prompts_free(title, content, count)
         raise
+
+
+# ── Image slot planner (photos + infographics in one Gemini call) ──────────────
+
+_SLOT_PLAN_SYSTEM = """\
+You plan image slots for a blog post. Each slot gets either a documentary office PHOTO or a Python-rendered INFOGRAPHIC.
+
+OUTPUT RULE: Return ONLY a valid JSON object. No markdown, no extra text.
+
+FORMAT:
+{
+  "slots": [
+    {"slot": 1, "type": "photo", "description": "..."},
+    {"slot": 2, "type": "infographic", "infographic_type": "steps", "title": "...", ...}
+  ]
+}
+
+════════════════════════════
+INFOGRAPHIC DECISION (critical)
+════════════════════════════
+Use infographic ONLY when the blog has CLEAR, EXTRACTABLE structured content:
+  • Named phases/steps in a process (3–7 steps with titles and brief descriptions)
+  • Specific statistics with numbers or percentages (e.g. "94% of companies...", "40% cost reduction")
+  • A clear list of action items, tips, or best practices (4–8 items)
+  • Measurable comparison values (before/after, option A vs B with numbers)
+
+SKIP infographic (use photo instead) when content is:
+  • General narrative advice without clear discrete structure
+  • Vague statements without extractable data points
+  • Content that doesn't cleanly map to one of the 4 types below
+
+MAX 2 infographic slots per batch. Place at the slot where the content naturally fits.
+If no qualifying structured content exists → use 0 infographic slots (all photos).
+
+════════════════
+INFOGRAPHIC TYPES
+════════════════
+"steps" — Numbered phases or process steps.
+  Required: "items": [{"number":1,"title":"Phase Name","points":["detail 1","detail 2"]}, ...] (3–7 items, max 4 bullet points each)
+  Optional: "subtitle": "...", "footer": "One closing insight or tip (max 100 chars)"
+  Best for: migration roadmaps, implementation phases, how-to guides, onboarding processes
+
+"stats" — Key impact statistics.
+  Required: "stats": [{"value":"94%","label":"of businesses saw improved security after migration"}, ...] (2–4 stats only)
+  Optional: "subtitle": "..."
+  Best for: blogs citing specific percentages, dollar amounts, time savings, ROI data
+
+"checklist" — Action items or best practices.
+  Required: "items": ["First action item", "Second action item", ...] (4–8 items, max 60 chars each)
+  Optional: "subtitle": "..."
+  Best for: "what to do before/after", "common mistakes to avoid", "must-have features" lists
+
+"bar_chart" — Comparison with measurable values.
+  Required: "bars": [{"label":"Before Cloud","value":72,"unit":"%"}, ...] (3–6 bars, values must be numbers)
+  Optional: "subtitle": "..."
+  Best for: before/after comparisons, adoption rates, feature comparison percentages
+
+Infographic titles: 4–8 words, specific to the blog topic. Keep data concise — quality over quantity.
+
+══════════════════════════════
+PHOTO DESCRIPTION RULES (type="photo")
+══════════════════════════════
+• People: white American/British Caucasian only, age 30–50, average everyday build
+• Eyes on screen/desk/colleague — NEVER at camera
+• Clothing: plain business casual (navy polo, grey fleece, chinos) — NO logos, no brand names on clothing
+• Lived-in detail: jacket on chair, loose cable, sticky notes, notebook, pen — NO food, NO drinks, NO water bottles, NO coffee cups
+• REQUIRED ENVIRONMENTS for photo slots (assign in order — next env to each photo slot):
+{required_envs}
+  Do NOT swap or replace — pre-selected for variety. Infographic slots skip the list.
+• Activity must directly relate to the blog topic
+• Each photo slot = VISUALLY DISTINCT — different number of people, different camera angle
+• Write 1–2 plain sentences: who + what specific task related to topic + where + one lived-in detail
+• Do NOT write photography terms ("documentary-style", "candid", "photojournalistic") — added automatically
+
+Total slots: {count}""".strip()
+
+
+def _plan_image_slots(title: str, content: str, count: int) -> list:
+    """Plan all image slots in one Gemini call — returns list of slot dicts.
+    Gracefully falls back to all-photo mode on any failure."""
+
+    if FREE_MODE:
+        descs = generate_prompts_free(title, content, count)
+        return [{"slot": i + 1, "type": "photo", "description": d}
+                for i, d in enumerate(descs)]
+
+    _debug_raw = ""
+    try:
+        from google import genai
+        from google.genai import types as gt
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        required_envs = _format_required_envs(_pick_required_scenes(count))
+        system_instr = (
+            _SLOT_PLAN_SYSTEM
+            .replace("{count}", str(count))
+            .replace("{required_envs}", required_envs)
+        )
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"Blog Title:\n{title}\n\nBlog Content:\n{content[:5000]}",
+            config=gt.GenerateContentConfig(
+                system_instruction=system_instr,
+                max_output_tokens=4000,
+                temperature=1.5,
+            )
+        )
+        _debug_raw = resp.text or ""
+        raw = _debug_raw.strip()
+
+        def _extract_json(text: str) -> dict:
+            """Try 3 strategies to parse JSON from model response."""
+            # Strategy 1: direct parse
+            try:
+                return json.loads(text)
+            except Exception:
+                pass
+            # Strategy 2: strip markdown fences then parse
+            cleaned = re.sub(r"^```[a-z]*\s*", "", text)
+            cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+            try:
+                return json.loads(cleaned)
+            except Exception:
+                pass
+            # Strategy 3: find outermost { ... } and parse that
+            s, e = cleaned.find('{'), cleaned.rfind('}')
+            if s != -1 and e > s:
+                return json.loads(cleaned[s:e + 1])
+            raise ValueError(f"No JSON found in response (first 120 chars): {text[:120]!r}")
+
+        data = _extract_json(raw)
+        slots = data.get("slots", [])
+        if len(slots) != count:
+            raise ValueError(f"Expected {count} slots, got {len(slots)}")
+        for s in slots:
+            if s.get("type") == "photo" and not (s.get("description") or "").strip():
+                raise ValueError(f"Slot {s.get('slot')} photo missing description")
+        n_ig = sum(1 for s in slots if s.get("type") == "infographic")
+        photo_count = count - n_ig
+        label = (f"🔍 Debug — Slot plan: {photo_count} photo{'s' if photo_count != 1 else ''}"
+                 + (f", {n_ig} infographic{'s' if n_ig != 1 else ''}" if n_ig else ""))
+        with st.expander(label, expanded=False):
+            for s in slots:
+                if s["type"] == "photo":
+                    st.markdown(f"**Slot {s['slot']} 📷 PHOTO:** {(s.get('description') or '')[:180]}")
+                else:
+                    st.markdown(
+                        f"**Slot {s['slot']} 📊 INFOGRAPHIC "
+                        f"[{s.get('infographic_type','').upper()}]:** {s.get('title','')}"
+                    )
+        return slots
+
+    except Exception as e:
+        with st.expander(f"⚠️ Slot planning failed — click to debug", expanded=True):
+            st.error(f"**Error:** `{e}`")
+            st.code(repr(_debug_raw[:400]) if _debug_raw else "No response captured (error before API call)")
+        descs = []
+        try:
+            descs = generate_prompts_live(title, content, count)
+        except Exception:
+            try:
+                descs = generate_prompts_free(title, content, count)
+            except Exception:
+                pass
+        # Always ensure exactly `count` descriptions — pad if AI returned fewer
+        fallback = f"IT professional working at a desk on tasks related to {title[:40]}."
+        while len(descs) < count:
+            descs.append(fallback)
+        descs = descs[:count]
+        return [{"slot": i + 1, "type": "photo", "description": d}
+                for i, d in enumerate(descs)]
 
 
 def generate_alt_text_for(prompt: str, title: str) -> str:
@@ -1213,6 +1410,7 @@ def _parse_tpl(node, prefix, entry):
     entry[f"{prefix}_h"] = int(fh)
     overlay_node = None
     title_node   = None
+    _image_candidate = None  # fallback: narrow RECTANGLE with "image" in name
     for c in node.get("children", []):
         ct = c.get("type", "")
         cn = c.get("name", "").lower()
@@ -1221,12 +1419,16 @@ def _parse_tpl(node, prefix, entry):
         elif ct == "GROUP" and overlay_node is None:
             overlay_node = c
         elif ct == "RECTANGLE" and cn == "template" and overlay_node is None:
-            # Full-frame design template overlay (e.g. Capstone's new style)
             overlay_node = c
-        elif ct == "RECTANGLE" and "image" in cn and overlay_node is None:
+        elif ct == "RECTANGLE" and cn == "image" and overlay_node is None:
+            overlay_node = c
+        elif ct == "RECTANGLE" and "image" in cn and _image_candidate is None:
             cbb = c.get("absoluteBoundingBox", {})
             if cbb.get("width", fw) < fw * 0.9:
-                overlay_node = c
+                _image_candidate = c
+    # Only use image-named candidate if no higher-priority overlay was found
+    if overlay_node is None and _image_candidate is not None:
+        overlay_node = _image_candidate
     if overlay_node:
         obb = overlay_node.get("absoluteBoundingBox", {})
         entry[f"overlay_{prefix}"]   = overlay_node["id"]
@@ -1661,8 +1863,9 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
                 cur = [word]
         if cur: lines.append(" ".join(cur))
         lh = tpl["fsz"] + 6
+        fc = tpl.get("font_color", (255, 255, 255))
         for i, line in enumerate(lines):
-            draw.text((tpl["tx"], tpl["ty"] + i * lh), line, fill=tpl.get("font_color", (255, 255, 255)), font=font)
+            draw.text((tpl["tx"], tpl["ty"] + i * lh), line, fill=fc, font=font)
         buf = io.BytesIO()
         canvas.save(buf, format="PNG")
         return buf.getvalue()
@@ -1670,11 +1873,626 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
         return None
 
 
+# ── Python-rendered infographics ───────────────────────────────────────────────
+
+_IG = {
+    "navy":   (20,  52,  85),
+    "navy2":  (30,  66, 105),
+    "blue":   (25, 128, 220),
+    "white":  (255, 255, 255),
+    "black":  (22,  28,  40),
+    "gray":   (100, 110, 128),
+    "ltgray": (158, 168, 182),
+    "bgray":  (245, 248, 252),
+    "border": (208, 218, 230),
+    "shadow": (192, 204, 218),
+    "step_colors": [
+        (21,  101, 192),
+        (0,   137, 123),
+        (56,  142,  60),
+        (245, 124,   0),
+        (194,  24,  91),
+        (81,   45, 168),
+        (2,   119, 189),
+    ],
+}
+
+
+def _ig_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    _ensure_inter_font()
+    try:
+        f = ImageFont.truetype(str(INTER_FONT_PATH), size)
+        try:
+            f.set_variation_by_name("Bold" if bold else "Regular")
+        except Exception:
+            pass
+        return f
+    except Exception:
+        return ImageFont.load_default()
+
+
+def _ig_wrap(text: str, font, max_w: int) -> list:
+    words = (text or "").split()
+    lines, cur = [], []
+    for word in words:
+        test = " ".join(cur + [word])
+        try:
+            w = font.getbbox(test)[2]
+        except Exception:
+            w = len(test) * 8
+        if w <= max_w:
+            cur.append(word)
+        else:
+            if cur:
+                lines.append(" ".join(cur))
+            cur = [word]
+    if cur:
+        lines.append(" ".join(cur))
+    return lines or [""]
+
+
+def _ig_bytes(img: PILImage.Image) -> bytes:
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=93)
+    return buf.getvalue()
+
+
+def _ig_card(draw, x0, y0, x1, y1, radius=10):
+    """Draw shadow + white card."""
+    SO = 4
+    draw.rounded_rectangle([x0 + SO, y0 + SO, x1 + SO, y1 + SO],
+                            radius=radius, fill=_IG["shadow"])
+    draw.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=_IG["white"])
+
+
+def _render_steps_infographic(spec: dict, w: int, h: int) -> bytes:
+    img = PILImage.new("RGB", (w, h), _IG["bgray"])
+    d = ImageDraw.Draw(img)
+    HDR, SUBHDR, FTR = 84, 42, 66
+
+    # Header
+    d.rectangle([0, 0, w, HDR], fill=_IG["navy"])
+    d.rectangle([0, HDR - 4, w, HDR], fill=_IG["blue"])
+    title = (spec.get("title") or "Process Overview")[:60]
+    tf = _ig_font(43, bold=True)
+    tw = tf.getbbox(title)[2]
+    d.text(((w - tw) // 2, (HDR - 43) // 2), title, font=tf, fill=_IG["white"])
+
+    # Subheader
+    d.rectangle([0, HDR, w, HDR + SUBHDR], fill=_IG["navy2"])
+    subtitle = (spec.get("subtitle") or "")[:100]
+    if subtitle:
+        sf = _ig_font(17)
+        sw = sf.getbbox(subtitle)[2]
+        d.text(((w - sw) // 2, HDR + (SUBHDR - 17) // 2),
+               subtitle, font=sf, fill=(182, 212, 248))
+
+    # Footer
+    FY = h - FTR
+    d.rectangle([0, FY, w, h], fill=_IG["navy"])
+    d.rectangle([0, FY, w, FY + 4], fill=_IG["blue"])
+    footer = (spec.get("footer") or "")[:120]
+    if footer:
+        ff = _ig_font(15)
+        flines = _ig_wrap(footer, ff, w - 100)
+        fy = FY + (FTR - len(flines) * 21) // 2 + 3
+        for line in flines:
+            lw = ff.getbbox(line)[2]
+            d.text(((w - lw) // 2, fy), line, font=ff, fill=(182, 212, 248))
+            fy += 21
+
+    # Steps
+    items = (spec.get("items") or [])[:7]
+    n = len(items)
+    if not n:
+        return _ig_bytes(img)
+
+    TOP = HDR + SUBHDR + 16
+    BOT = FY - 14
+    PAD, GAP = 34, 14
+    card_w = max(80, (w - 2 * PAD - (n - 1) * GAP) // n)
+    CIR_R = 23
+
+    for i, item in enumerate(items):
+        cx = PAD + i * (card_w + GAP)
+        color = _IG["step_colors"][i % len(_IG["step_colors"])]
+        ctr = cx + card_w // 2
+
+        # Card
+        _ig_card(d, cx, TOP, cx + card_w, BOT)
+        # Colored top accent strip
+        d.rounded_rectangle([cx, TOP, cx + card_w, TOP + 6],
+                             radius=10, fill=color)
+
+        # Number circle — outer ring + fill
+        cy_cir = TOP + 22 + CIR_R
+        lighter = tuple(min(255, c + 75) for c in color)
+        d.ellipse([ctr - CIR_R - 4, cy_cir - CIR_R - 4,
+                   ctr + CIR_R + 4, cy_cir + CIR_R + 4], fill=lighter)
+        d.ellipse([ctr - CIR_R, cy_cir - CIR_R,
+                   ctr + CIR_R, cy_cir + CIR_R], fill=color)
+        num = f"{item.get('number', i + 1):02d}"
+        nf = _ig_font(17, bold=True)
+        nw = nf.getbbox(num)[2]
+        d.text((ctr - nw // 2, cy_cir - 10), num, font=nf, fill=_IG["white"])
+
+        # Arrow dots to next step
+        if i < n - 1:
+            ax = cx + card_w + GAP // 2
+            for dx in (-4, 0, 4):
+                d.ellipse([ax + dx - 3, cy_cir - 3,
+                           ax + dx + 3, cy_cir + 3], fill=_IG["ltgray"])
+            d.polygon([(ax + 9, cy_cir), (ax + 3, cy_cir - 6),
+                       (ax + 3, cy_cir + 6)], fill=_IG["ltgray"])
+
+        # Step title
+        st_text = (item.get("title") or f"Step {i+1}")[:36]
+        stf = _ig_font(13, bold=True)
+        st_y = cy_cir + CIR_R + 9
+        for line in _ig_wrap(st_text, stf, card_w - 14)[:2]:
+            lw = stf.getbbox(line)[2]
+            d.text((ctr - lw // 2, st_y), line, font=stf, fill=color)
+            st_y += 17
+
+        # Divider
+        sep_y = st_y + 4
+        d.line([cx + 12, sep_y, cx + card_w - 12, sep_y], fill=_IG["border"], width=1)
+
+        # Faded watermark number fills lower white space tastefully
+        wm_str = f"{item.get('number', i + 1):02d}"
+        wm_size = min(170, card_w - 10)
+        wm_f = _ig_font(wm_size, bold=True)
+        wm_w = wm_f.getbbox(wm_str)[2]
+        wm_h = wm_f.getbbox(wm_str)[3]
+        bg_r, bg_g, bg_b = _IG["bgray"]
+        c_r, c_g, c_b = color
+        faint = (int(bg_r * 0.91 + c_r * 0.09),
+                 int(bg_g * 0.91 + c_g * 0.09),
+                 int(bg_b * 0.91 + c_b * 0.09))
+        wm_y = BOT - wm_h - 10
+        if wm_y > sep_y + 20:
+            d.text((ctr - wm_w // 2, wm_y), wm_str, font=wm_f, fill=faint)
+
+        # Bullet points (drawn after watermark so they appear on top)
+        bf = _ig_font(11)
+        by = sep_y + 7
+        for pt in (item.get("points") or [])[:4]:
+            for pl in _ig_wrap(f"• {(pt or '')[:55]}", bf, card_w - 16)[:2]:
+                if by + 13 > BOT - 12:
+                    break
+                d.text((cx + 9, by), pl, font=bf, fill=_IG["black"])
+                by += 13
+            if by + 13 > BOT - 12:
+                break
+
+    return _ig_bytes(img)
+
+
+def _render_stats_infographic(spec: dict, w: int, h: int) -> bytes:
+    img = PILImage.new("RGB", (w, h), _IG["bgray"])
+    d = ImageDraw.Draw(img)
+    HDR = 98
+
+    d.rectangle([0, 0, w, HDR], fill=_IG["navy"])
+    d.rectangle([0, HDR - 4, w, HDR], fill=_IG["blue"])
+    title = (spec.get("title") or "Key Statistics")[:60]
+    tf = _ig_font(43, bold=True)
+    tw = tf.getbbox(title)[2]
+    d.text(((w - tw) // 2, 13), title, font=tf, fill=_IG["white"])
+    subtitle = (spec.get("subtitle") or "")[:100]
+    if subtitle:
+        sf = _ig_font(17)
+        sw = sf.getbbox(subtitle)[2]
+        d.text(((w - sw) // 2, 60), subtitle, font=sf, fill=(182, 212, 248))
+
+    stats = (spec.get("stats") or [])[:4]
+    n = len(stats)
+    if not n:
+        return _ig_bytes(img)
+
+    cols = 2 if n == 4 else min(n, 3)
+    rows = (n + cols - 1) // cols
+    pad, gap = 42, 22
+    cell_w = (w - 2 * pad - (cols - 1) * gap) // cols
+    cell_h = (h - HDR - 2 * pad - (rows - 1) * gap) // rows
+
+    for idx, stat in enumerate(stats):
+        row, col = divmod(idx, cols)
+        cx = pad + col * (cell_w + gap)
+        cy = HDR + pad + row * (cell_h + gap)
+        color = _IG["step_colors"][idx % len(_IG["step_colors"])]
+
+        _ig_card(d, cx, cy, cx + cell_w, cy + cell_h, radius=12)
+        d.rounded_rectangle([cx, cy, cx + cell_w, cy + 8],
+                             radius=12, fill=color)
+
+        val = str(stat.get("value") or "—")[:10]
+        fs = min(64, max(38, 64 - max(0, len(val) - 4) * 7))
+        vf = _ig_font(fs, bold=True)
+        vw = vf.getbbox(val)[2]
+        vh = vf.getbbox(val)[3]
+
+        label = (stat.get("label") or "")[:80]
+        lf = _ig_font(14)
+        llines = _ig_wrap(label, lf, cell_w - 28)[:3]
+        # Vertically center value + label block within card (below accent bar)
+        inner_h = vh + 12 + len(llines) * 20
+        val_y = cy + 8 + max(14, (cell_h - 8 - inner_h) // 2)
+        d.text((cx + (cell_w - vw) // 2, val_y), val, font=vf, fill=color)
+        ly = val_y + vh + 12
+        for ll in llines:
+            lw = lf.getbbox(ll)[2]
+            d.text((cx + (cell_w - lw) // 2, ly), ll, font=lf, fill=_IG["gray"])
+            ly += 20
+
+    return _ig_bytes(img)
+
+
+def _render_checklist_infographic(spec: dict, w: int, h: int) -> bytes:
+    img = PILImage.new("RGB", (w, h), _IG["bgray"])
+    d = ImageDraw.Draw(img)
+    HDR = 98
+
+    d.rectangle([0, 0, w, HDR], fill=_IG["navy"])
+    d.rectangle([0, HDR - 4, w, HDR], fill=_IG["blue"])
+    title = (spec.get("title") or "Checklist")[:60]
+    tf = _ig_font(43, bold=True)
+    tw = tf.getbbox(title)[2]
+    d.text(((w - tw) // 2, 13), title, font=tf, fill=_IG["white"])
+    subtitle = (spec.get("subtitle") or "")[:100]
+    if subtitle:
+        sf = _ig_font(17)
+        sw = sf.getbbox(subtitle)[2]
+        d.text(((w - sw) // 2, 60), subtitle, font=sf, fill=(182, 212, 248))
+
+    items = (spec.get("items") or [])[:8]
+    n = len(items)
+    if not n:
+        return _ig_bytes(img)
+
+    cols = 2 if n > 4 else 1
+    per_col = (n + cols - 1) // cols
+    pad_x, pad_y = 56, 24
+    col_w = (w - 2 * pad_x - (cols - 1) * 48) // cols
+    avail_h = h - HDR - 2 * pad_y
+    row_h = avail_h // per_col
+    item_f = _ig_font(16)
+    box = 26
+
+    for idx, item in enumerate(items):
+        col, row = divmod(idx, per_col)
+        cx = pad_x + col * (col_w + 48)
+        row_ctr = HDR + pad_y + row * row_h + row_h // 2
+        card_top = row_ctr - row_h // 2 + 5
+        card_bot = row_ctr + row_h // 2 - 5
+        color = _IG["step_colors"][idx % len(_IG["step_colors"])]
+
+        _ig_card(d, cx - 8, card_top, cx + col_w + 8, card_bot, radius=8)
+
+        # Checkbox
+        bx_y = row_ctr - box // 2
+        d.rounded_rectangle([cx, bx_y, cx + box, bx_y + box],
+                             radius=5, fill=color)
+        ck = [(cx + 5, bx_y + 13), (cx + 11, bx_y + 19), (cx + 22, bx_y + 8)]
+        d.line(ck, fill=_IG["white"], width=3)
+
+        # Text
+        item_text = (item or "")[:70]
+        txt_lines = _ig_wrap(item_text, item_f, col_w - box - 16)[:2]
+        ty = row_ctr - (len(txt_lines) * 20) // 2
+        for tl in txt_lines:
+            d.text((cx + box + 12, ty), tl, font=item_f, fill=_IG["black"])
+            ty += 22
+
+    return _ig_bytes(img)
+
+
+def _render_bar_chart_infographic(spec: dict, w: int, h: int) -> bytes:
+    img = PILImage.new("RGB", (w, h), _IG["bgray"])
+    d = ImageDraw.Draw(img)
+    HDR = 98
+
+    d.rectangle([0, 0, w, HDR], fill=_IG["navy"])
+    d.rectangle([0, HDR - 4, w, HDR], fill=_IG["blue"])
+    title = (spec.get("title") or "Comparison")[:60]
+    tf = _ig_font(43, bold=True)
+    tw = tf.getbbox(title)[2]
+    d.text(((w - tw) // 2, 13), title, font=tf, fill=_IG["white"])
+    subtitle = (spec.get("subtitle") or "")[:100]
+    if subtitle:
+        sf = _ig_font(17)
+        sw = sf.getbbox(subtitle)[2]
+        d.text(((w - sw) // 2, 60), subtitle, font=sf, fill=(182, 212, 248))
+
+    bars = (spec.get("bars") or [])[:7]
+    n = len(bars)
+    if not n:
+        return _ig_bytes(img)
+
+    max_v = max(float(b.get("value", 0)) for b in bars) or 1
+    lf = _ig_font(15, bold=True)
+    vf = _ig_font(15)
+    label_w = min(290, max((lf.getbbox(b.get("label", ""))[2] for b in bars), default=0) + 18)
+    pad_x, pad_y = 44, 20
+    bar_x = pad_x + label_w + 12
+    bar_max_w = w - bar_x - pad_x - 80
+    chart_top = HDR + pad_y
+    chart_h = h - chart_top - pad_y
+    bar_h = min(54, (chart_h - (n - 1) * 12) // n)
+    gap = max(8, (chart_h - n * bar_h) // (n + 1))
+
+    for i, bar in enumerate(bars):
+        by = chart_top + gap + i * (bar_h + gap)
+        val = float(bar.get("value", 0))
+        bw = max(0, int(bar_max_w * val / max_v))
+        color = _IG["step_colors"][i % len(_IG["step_colors"])]
+
+        # Label right-aligned
+        label = (bar.get("label") or "")[:40]
+        ll = _ig_wrap(label, lf, label_w - 10)[:2]
+        ly = by + (bar_h - len(ll) * 19) // 2
+        for ln in ll:
+            lnw = lf.getbbox(ln)[2]
+            d.text((pad_x + label_w - lnw - 8, ly), ln, font=lf, fill=_IG["black"])
+            ly += 20
+
+        # Bar track + fill
+        d.rounded_rectangle([bar_x, by, bar_x + bar_max_w, by + bar_h],
+                             radius=6, fill=_IG["border"])
+        if bw > 0:
+            d.rounded_rectangle([bar_x, by, bar_x + bw, by + bar_h],
+                                 radius=6, fill=color)
+            # Shine strip (top fifth)
+            shine_h = max(3, bar_h // 5)
+            shine = tuple(min(255, c + 45) for c in color)
+            d.rounded_rectangle([bar_x, by, bar_x + bw, by + shine_h],
+                                 radius=6, fill=shine)
+
+        unit = str(bar.get("unit", ""))
+        val_int = int(val) if val == int(val) else val
+        d.text((bar_x + bw + 10, by + (bar_h - 17) // 2),
+               f"{val_int}{unit}", font=vf, fill=_IG["gray"])
+
+    return _ig_bytes(img)
+
+
+# ── Infographic branding helpers ──────────────────────────────────────────────
+
+def _dominant_hex(img_bytes: bytes) -> str:
+    """Extract most common non-white/non-black color from image → hex string."""
+    try:
+        img = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
+        img = img.resize((60, 60))
+        from collections import Counter
+        filtered = [p for p in img.getdata()
+                    if not (all(c > 215 for c in p) or all(c < 40 for c in p))]
+        if not filtered:
+            return "#1A3A5C"
+        r, g, b = Counter(filtered).most_common(1)[0][0]
+        return f"#{r:02X}{g:02X}{b:02X}"
+    except Exception:
+        return "#1A3A5C"
+
+
+def _client_branding(slug: str) -> str:
+    """Return hex brand color for a client by extracting dominant color from its overlay PNG.
+    Only returns color — logo is always scraped from the blog URL via _scrape_page_branding."""
+    logo_path = ASSETS_DIR / f"logo_panel_main_{slug}.png"
+    if not logo_path.exists() or logo_path.stat().st_size < 1000:
+        return "#1A3A5C"
+    try:
+        return _dominant_hex(logo_path.read_bytes())
+    except Exception:
+        return "#1A3A5C"
+
+
+def _scrape_page_branding(url: str) -> tuple:
+    """Scrape brand color + logo from a blog page URL.
+    Returns (hex_color, logo_bytes). Falls back to defaults on any error."""
+    hex_color = "#1A3A5C"
+    logo_bytes = None
+    try:
+        from urllib.parse import urlparse
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        soup = BeautifulSoup(r.content, "html.parser")
+        parsed = urlparse(url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+
+        # 1. Brand color — theme-color meta tag
+        meta_color = soup.find("meta", attrs={"name": "theme-color"})
+        if meta_color and meta_color.get("content", "").startswith("#"):
+            hex_color = meta_color["content"].strip()
+
+        # 2. Logo — look for high-quality icon links
+        icon_url = ""
+        for rel in (["apple-touch-icon"], ["icon"], ["shortcut icon"]):
+            link = soup.find("link", rel=rel)
+            if link and link.get("href"):
+                icon_url = link["href"]
+                break
+        if not icon_url:
+            # Try og:image as fallback (often the brand logo)
+            og = soup.find("meta", property="og:image")
+            if og:
+                icon_url = og.get("content", "")
+
+        if icon_url:
+            if icon_url.startswith("//"):
+                icon_url = "https:" + icon_url
+            elif icon_url.startswith("/"):
+                icon_url = base + icon_url
+            ir = requests.get(icon_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            if ir.ok and len(ir.content) > 500:
+                logo_bytes = ir.content
+                # If we didn't get color from meta, extract from logo
+                if hex_color == "#1A3A5C":
+                    hex_color = _dominant_hex(logo_bytes)
+
+    except Exception:
+        pass
+    return hex_color, logo_bytes
+
+
+def _apply_corner_logo(img_bytes: bytes, logo_bytes: bytes | None,
+                       position: str = "bottom-right") -> bytes:
+    """Composite a small logo in the corner of an infographic image."""
+    if not logo_bytes:
+        return img_bytes
+    try:
+        img = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
+        W, H = img.size
+
+        logo_raw = PILImage.open(io.BytesIO(logo_bytes)).convert("RGBA")
+        # Target: logo height ~7% of image height
+        target_h = max(40, int(H * 0.07))
+        target_w = int(logo_raw.width * target_h / logo_raw.height)
+        # Cap width at 15% of image width
+        if target_w > W * 0.15:
+            target_w = int(W * 0.15)
+            target_h = int(logo_raw.height * target_w / logo_raw.width)
+        logo_small = logo_raw.resize((target_w, target_h), PILImage.LANCZOS)
+
+        margin = 16
+        if position == "bottom-right":
+            x = W - target_w - margin
+            y = H - target_h - margin
+        elif position == "bottom-left":
+            x, y = margin, H - target_h - margin
+        else:
+            x = W - target_w - margin
+            y = H - target_h - margin
+
+        # White semi-transparent pill background
+        pad = 8
+        bg = PILImage.new("RGBA", (target_w + pad * 2, target_h + pad * 2), (255, 255, 255, 200))
+        img_rgba = img.convert("RGBA")
+        img_rgba.paste(bg, (x - pad, y - pad), bg)
+        img_rgba.paste(logo_small, (x, y), logo_small)
+
+        buf = io.BytesIO()
+        img_rgba.convert("RGB").save(buf, format="JPEG", quality=93)
+        return buf.getvalue()
+    except Exception:
+        return img_bytes
+
+
+def _render_infographic(spec: dict, w: int, h: int) -> bytes:
+    """Dispatch to the correct renderer. Never raises — always returns valid image bytes."""
+    try:
+        t = spec.get("infographic_type", "steps")
+        if t == "steps":     return _render_steps_infographic(spec, w, h)
+        if t == "stats":     return _render_stats_infographic(spec, w, h)
+        if t == "checklist": return _render_checklist_infographic(spec, w, h)
+        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h)
+        return _render_steps_infographic(spec, w, h)
+    except Exception as e:
+        img = PILImage.new("RGB", (w, h), _IG["navy"])
+        draw = ImageDraw.Draw(img)
+        draw.text((40, 40), (spec.get("title") or "Infographic"),
+                  font=_ig_font(22, bold=True), fill=_IG["white"])
+        draw.text((40, 82), f"Render error: {str(e)[:100]}",
+                  font=_ig_font(15), fill=(175, 205, 238))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return buf.getvalue()
+
+
+_STEPS_STYLES = [
+    "Horizontal numbered steps in connected cards with arrows between them. Numbered circles on top of each card.",
+    "Vertical timeline layout with alternating left-right content blocks and a center line with numbered dots.",
+    "Icon-driven horizontal flow with large icons above each step title and description below.",
+]
+_STATS_STYLES = [
+    "Large bold number cards in a clean 2x2 grid, each with a colored accent bar on the left.",
+    "Horizontal row of stat bubbles — oversized number in brand color, label below in gray.",
+    "Split layout: icon on the left, large stat value and label on the right, separated by a thin divider.",
+]
+_CHECKLIST_STYLES = [
+    "Single-column checklist with colored filled checkboxes and bold item text, subtle row alternating background.",
+    "Two-column card grid, each item in its own rounded card with a checkmark icon and short description.",
+    "Left accent bar layout: colored vertical bar per item, item text to the right, clean and minimal.",
+]
+_BARCHART_STYLES = [
+    "Horizontal bar chart with value labels at the end of each bar and category labels on the left.",
+    "Vertical column chart with rounded bar tops, value labels above each column, clean axis lines.",
+    "Segmented progress-bar layout, each row showing label, filled bar, and percentage value.",
+]
+
+def _infographic_prompt(spec: dict, brand_color: str = "#1A3A5C") -> str:
+    """Convert a Gemini infographic spec into a GPT Image 2 prompt."""
+    ig_type = spec.get("infographic_type", "steps")
+    title    = spec.get("title", "Business Infographic")
+    subtitle = spec.get("subtitle", "")
+
+    import random as _random
+    _style_idx = _random.randint(0, 2)
+
+    base = (
+        f'Professional business infographic titled "{title}". '
+        + (f'Subtitle: "{subtitle}". ' if subtitle else "")
+        + f"Use {brand_color} as the dominant accent color for headers, icons, and design elements. "
+        "Clean flat design, white background, "
+        "no photography, no people, no faces, graphic design only, "
+        "corporate presentation style, clear readable bold text, "
+        "16:9 landscape format. "
+    )
+
+    if ig_type == "steps":
+        items = spec.get("items") or []
+        steps_text = " | ".join(
+            f"{it.get('number', i+1)}. {it.get('title','')}"
+            + (f": {', '.join((it.get('points') or [])[:2])}" if it.get('points') else "")
+            for i, it in enumerate(items[:7])
+        )
+        footer = spec.get("footer", "")
+        return (
+            base +
+            f"Steps: {steps_text}. "
+            + (f'Footer text: "{footer}". ' if footer else "")
+            + _STEPS_STYLES[_style_idx]
+        )
+
+    if ig_type == "stats":
+        stats = spec.get("stats") or []
+        stats_text = " | ".join(
+            f"{s.get('value','')}: {s.get('label','')}" for s in stats[:4]
+        )
+        return (
+            base +
+            f"Key statistics: {stats_text}. "
+            + _STATS_STYLES[_style_idx]
+        )
+
+    if ig_type == "checklist":
+        items = spec.get("items") or []
+        items_text = " | ".join(f"{it}" for it in items[:8])
+        return (
+            base +
+            f"Checklist items: {items_text}. "
+            + _CHECKLIST_STYLES[_style_idx]
+        )
+
+    if ig_type == "bar_chart":
+        bars = spec.get("bars") or []
+        bars_text = " | ".join(
+            f"{b.get('label','')}: {b.get('value','')}{b.get('unit','')}"
+            for b in bars[:6]
+        )
+        return (
+            base +
+            f"Chart data: {bars_text}. "
+            + _BARCHART_STYLES[_style_idx]
+        )
+
+    return base + "Modern professional infographic layout with clear sections and bold typography."
+
+
 # ── Shared workflow ────────────────────────────────────────────────────────────
 
 def run_workflow(url: str, output_dir: Path,
                  wf_fallback=None, collection_id_fallback: str = None,
-                 item_id_fallback: str = None) -> tuple:
+                 item_id_fallback: str = None,
+                 client_slug: str = "") -> tuple:
     """
     Runs steps 1–4: fetch → analyze → describe → generate images.
     Returns (title, image_urls, results, alt_texts).
@@ -1754,66 +2572,115 @@ def run_workflow(url: str, output_dir: Path,
     size_label = "1500×844px (16:9)"
     st.caption(f"New images will be generated at **{size_label}**")
 
-    count = len(image_urls) or 5  # default 5 if no existing images detected
+    count = len(image_urls) or 4  # use actual detected count, default 4 if none found
 
-    # Step 3a: Descriptions
-    with st.status(f"Generating {count} image descriptions...", expanded=True) as s:
+    # Step 3a: Plan image slots (photos + infographics)
+    with st.status(f"Planning {count} image slots...", expanded=True) as _st:
         try:
-            prompts = generate_prompts_live(title, content, count)
-            st.write(f"Generated **{len(prompts)}** descriptions")
-            s.update(label="Descriptions ready ✓", state="complete")
+            slots = _plan_image_slots(title, content, count)
+            n_ig = sum(1 for sl in slots if sl.get("type") == "infographic")
+            lbl = (f"Slots planned ✓ — {count - n_ig} photo{'s' if count - n_ig != 1 else ''}"
+                   + (f", {n_ig} infographic{'s' if n_ig != 1 else ''}" if n_ig else ""))
+            _st.update(label=lbl, state="complete")
         except Exception as e:
-            s.update(label="Failed", state="error")
+            _st.update(label="Slot planning failed", state="error")
             st.error(str(e))
             st.stop()
 
     # Step 3b: Alt texts
-    with st.status("Generating alt texts...", expanded=True) as s:
+    with st.status("Generating alt texts...", expanded=True) as _st:
         alt_texts = []
-        for i, prompt in enumerate(prompts, 1):
-            alt = generate_alt_text_for(prompt, title)
+        for i, sl in enumerate(slots, 1):
+            if sl.get("type") == "infographic":
+                alt = sl.get("title") or f"Infographic {i}"
+            else:
+                alt = generate_alt_text_for(sl.get("description", ""), title)
+                st.write(f"[{i}] {alt}")
+                time.sleep(1)
             alt_texts.append(alt)
-            st.write(f"[{i}] {alt}")
-            time.sleep(1)
-        s.update(label="Alt texts ready ✓", state="complete")
+        _st.update(label="Alt texts ready ✓", state="complete")
 
     (output_dir / "prompts_and_alt.txt").write_text(
-        "\n\n".join(f"Image {i}:\nPrompt: {p}\nAlt: {a}"
-                    for i, (p, a) in enumerate(zip(prompts, alt_texts), 1)),
+        "\n\n".join(
+            f"Image {i}:\nType: {sl.get('type','photo')}\n"
+            f"Prompt: {sl.get('description', sl.get('title',''))}\nAlt: {a}"
+            for i, (sl, a) in enumerate(zip(slots, alt_texts), 1)
+        ),
         encoding="utf-8"
     )
     (output_dir / "metadata.json").write_text(
-        json.dumps({"image_urls": image_urls, "alt_texts": alt_texts}),
+        json.dumps({
+            "image_urls": image_urls,
+            "alt_texts": alt_texts,
+            "slot_types": [sl.get("type", "photo") for sl in slots],
+        }),
         encoding="utf-8"
     )
 
-    # Step 4: Generate images (with anatomy recheck, max 3 attempts each)
+    # Step 4: Generate images
     st.subheader("Generated Images")
     gen_prog = st.progress(0, text="Starting image generation...")
     results = []
+    img_seeds = [random.randint(10000, 999999) for _ in slots]
 
-    # Each image gets its own fully random seed — prevents similar compositions across images
-    img_seeds = [random.randint(10000, 999999) for _ in prompts]
+    # Branding for infographics — color from client overlay PNG, logo from page URL
+    _has_infographics = any(sl.get("type") == "infographic" for sl in slots)
+    _brand_color, _brand_logo = "#1A3A5C", None
+    if _has_infographics:
+        with st.spinner("Detecting brand colors and logo from page..."):
+            scraped_color, _brand_logo = _scrape_page_branding(url)
+        # Always use scraped color from website — more accurate than overlay PNG extraction
+        if scraped_color and scraped_color != "#1A3A5C":
+            _brand_color = scraped_color
+        elif client_slug:
+            _brand_color = _client_branding(client_slug)  # fallback: overlay PNG
 
-    for i, (prompt, alt) in enumerate(zip(prompts, alt_texts), 1):
-        gen_prog.progress(i / len(prompts), text=f"Generating image {i} of {len(prompts)}...")
+    for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
+        gen_prog.progress(i / len(slots), text=f"Generating image {i} of {len(slots)}...")
+
+        if sl.get("type") == "infographic":
+            ig_label = sl.get("infographic_type", "").upper()
+            st.write(f"🎨 Generating infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_brand_color}`)")
+            ig_prompt = _infographic_prompt(sl, _brand_color)
+            last_err = None
+            final_bytes, final_ext = None, "jpg"
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                try:
+                    raw = generate_image_live(ig_prompt, i, target_w, target_h)
+                    raw = _apply_corner_logo(raw, _brand_logo)
+                    opt_bytes, ext = optimize_image(raw, max_kb=200)
+                    final_bytes, final_ext = opt_bytes, ext
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < MAX_ATTEMPTS:
+                        st.warning(f"⚠️ Infographic attempt {attempt} failed ({e}), retrying...")
+                        time.sleep(2)
+            if final_bytes:
+                path = output_dir / f"image_{i:02d}.{final_ext}"
+                path.write_bytes(final_bytes)
+            results.append({"index": i, "bytes": final_bytes, "ext": final_ext,
+                             "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
+                             "alt": alt, "prompt": ig_prompt, "type": "infographic",
+                             "status": "ok" if final_bytes else f"failed: {last_err}",
+                             "defect_reason": ""})
+            continue
+
+        # Normal office photo via Kie API
+        prompt = sl.get("description", "")
         last_err = None
-        final_bytes, final_ext = None, "jpg"
+        final_bytes, final_ext, final_defect = None, "jpg", ""
         base_seed = img_seeds[i - 1]
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
-            attempt_label = f"Image {i}" + (f" — attempt {attempt}/{MAX_ATTEMPTS}" if attempt > 1 else "")
+            alabel = f"Image {i}" + (f" — attempt {attempt}/{MAX_ATTEMPTS}" if attempt > 1 else "")
             try:
                 raw = _dispatch_image_gen(prompt, i, target_w, target_h,
                                           seed=base_seed + attempt * 1000)
-                pass  # no rate-limit sleep needed for Kie API
-
-                # Anatomy check
                 is_ok, reason = check_anatomy(raw)
                 if not is_ok and attempt < MAX_ATTEMPTS:
-                    st.warning(f"⚠️ {attempt_label} — defect detected ({reason}), regenerating...")
+                    st.warning(f"⚠️ {alabel} — defect detected ({reason}), regenerating...")
                     continue
-
                 opt_bytes, ext = optimize_image(raw, max_kb=200)
                 final_bytes, final_ext = opt_bytes, ext
                 final_defect = "" if is_ok else reason
@@ -1823,7 +2690,7 @@ def run_workflow(url: str, output_dir: Path,
             except Exception as e:
                 last_err = e
                 if attempt < MAX_ATTEMPTS:
-                    st.warning(f"⚠️ {attempt_label} failed ({e}), retrying...")
+                    st.warning(f"⚠️ {alabel} failed ({e}), retrying...")
                     time.sleep(2)
 
         if final_bytes:
@@ -1972,16 +2839,25 @@ with tab_manual:
     if st.session_state.get("m_redo_idx") is not None and "m_results" in st.session_state:
         redo_i    = st.session_state.pop("m_redo_idx")
         redo_seed = st.session_state.pop("m_redo_seed", random.randint(10000, 999999))
-        redo_prompt = st.session_state["m_prompts"][redo_i - 1]
-        redo_alt    = st.session_state["m_alt_texts"][redo_i - 1]
+        redo_slots = st.session_state.get("m_slots", [])
+        redo_slot  = redo_slots[redo_i - 1] if redo_i <= len(redo_slots) else {"type": "photo", "description": ""}
+        redo_alt   = st.session_state["m_alt_texts"][redo_i - 1]
         with st.spinner(f"Regenerating image {redo_i}..."):
             try:
-                raw = _dispatch_image_gen(redo_prompt, redo_i, DEFAULT_WIDTH, DEFAULT_HEIGHT, seed=redo_seed)
+                if redo_slot.get("type") == "infographic":
+                    raw = _render_infographic(redo_slot, DEFAULT_WIDTH, DEFAULT_HEIGHT)
+                else:
+                    raw = _dispatch_image_gen(
+                        redo_slot.get("description", ""), redo_i,
+                        DEFAULT_WIDTH, DEFAULT_HEIGHT, seed=redo_seed
+                    )
                 opt_bytes, ext = optimize_image(raw, max_kb=200)
                 st.session_state["m_results"][redo_i - 1] = {
                     "index": redo_i, "bytes": opt_bytes, "ext": ext,
                     "size_kb": round(len(opt_bytes) / 1024, 1),
-                    "alt": redo_alt, "prompt": redo_prompt, "status": "ok", "defect_reason": "",
+                    "alt": redo_alt,
+                    "prompt": redo_slot.get("description", redo_slot.get("title", "")),
+                    "status": "ok", "defect_reason": "",
                 }
             except Exception as e:
                 st.error(f"Redo failed: {e}")
@@ -1992,7 +2868,7 @@ with tab_manual:
             st.error("Please enter a blog URL.")
             st.stop()
         # Clear previous results when starting a new generation
-        for k in ["m_results", "m_prompts", "m_alt_texts", "m_title"]:
+        for k in ["m_results", "m_slots", "m_alt_texts", "m_title"]:
             st.session_state.pop(k, None)
 
         url = ("https://" + m_url) if not m_url.startswith("http") else m_url
@@ -2002,9 +2878,10 @@ with tab_manual:
         with st.status("Fetching blog page...", expanded=True) as s:
             try:
                 title, content, image_urls = fetch_blog(url)
-                count = len(image_urls) or 4
+                count = len(image_urls) or 4  # use actual detected count, default 4 if none found
                 st.write(f"**Title:** {title}")
-                st.write(f"**Images detected on page:** {len(image_urls)} → generating {count}")
+                detected_note = " (lazy-loaded images may not be detected)" if len(image_urls) < count else ""
+                st.write(f"**Images detected on page:** {len(image_urls)} → generating **{count}**{detected_note}")
                 s.update(label="Blog fetched ✓", state="complete")
             except requests.HTTPError as e:
                 if e.response is not None and e.response.status_code == 404:
@@ -2026,46 +2903,88 @@ with tab_manual:
                 st.error(f"Could not load the page: {e}")
                 st.stop()
 
-        # Step 2: Generate descriptions
-        with st.status(f"Writing {count} image descriptions...", expanded=True) as s:
+        # Step 2: Plan image slots (photos + infographics)
+        with st.status(f"Planning {count} image slots...", expanded=True) as _ms:
             try:
-                prompts = generate_prompts_live(title, content, count)
-                st.write(f"Generated **{len(prompts)}** descriptions")
-                s.update(label="Descriptions ready ✓", state="complete")
+                slots = _plan_image_slots(title, content, count)
+                n_ig = sum(1 for sl in slots if sl.get("type") == "infographic")
+                lbl = (f"Slots planned ✓ — {count - n_ig} photo{'s' if count - n_ig != 1 else ''}"
+                       + (f", {n_ig} infographic{'s' if n_ig != 1 else ''}" if n_ig else ""))
+                _ms.update(label=lbl, state="complete")
             except Exception as e:
-                s.update(label="Failed", state="error")
+                _ms.update(label="Slot planning failed", state="error")
                 st.error(str(e))
                 st.stop()
 
         # Step 3: Alt texts
-        with st.status("Generating alt texts...", expanded=True) as s:
+        with st.status("Generating alt texts...", expanded=True) as _ms:
             alt_texts = []
-            for i, prompt in enumerate(prompts, 1):
-                alt = generate_alt_text_for(prompt, title)
+            for i, sl in enumerate(slots, 1):
+                if sl.get("type") == "infographic":
+                    alt = sl.get("title") or f"Infographic {i}"
+                else:
+                    alt = generate_alt_text_for(sl.get("description", ""), title)
+                    time.sleep(1)
                 alt_texts.append(alt)
-                time.sleep(1)
-            s.update(label="Alt texts ready ✓", state="complete")
+            _ms.update(label="Alt texts ready ✓", state="complete")
 
         # Step 4: Generate images
         st.subheader("Generated Images")
         gen_prog = st.progress(0, text="Starting image generation...")
         results  = []
-        img_seeds = [random.randint(10000, 999999) for _ in prompts]
+        img_seeds = [random.randint(10000, 999999) for _ in slots]
 
-        for i, (prompt, alt) in enumerate(zip(prompts, alt_texts), 1):
-            gen_prog.progress(i / len(prompts), text=f"Generating image {i} of {len(prompts)}...")
+        # Branding for Manual tab — scrape from URL
+        _m_has_ig = any(sl.get("type") == "infographic" for sl in slots)
+        _m_brand_color, _m_brand_logo = "#1A3A5C", None
+        if _m_has_ig:
+            with st.spinner("Detecting brand colors from page..."):
+                _m_brand_color, _m_brand_logo = _scrape_page_branding(url)
+
+        for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
+            gen_prog.progress(i / len(slots), text=f"Generating image {i} of {len(slots)}...")
+
+            if sl.get("type") == "infographic":
+                ig_label = sl.get("infographic_type", "").upper()
+                st.write(f"🎨 Generating infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_m_brand_color}`)")
+                ig_prompt = _infographic_prompt(sl, _m_brand_color)
+                last_err = None
+                final_bytes, final_ext = None, "jpg"
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    try:
+                        raw = generate_image_live(ig_prompt, i, DEFAULT_WIDTH, DEFAULT_HEIGHT)
+                        raw = _apply_corner_logo(raw, _m_brand_logo)
+                        opt_bytes, ext = optimize_image(raw, max_kb=200)
+                        final_bytes, final_ext = opt_bytes, ext
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt < MAX_ATTEMPTS:
+                            st.warning(f"⚠️ Infographic attempt {attempt} failed ({e}), retrying...")
+                            time.sleep(2)
+                results.append({
+                    "index": i, "bytes": final_bytes, "ext": final_ext,
+                    "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
+                    "alt": alt, "prompt": ig_prompt,
+                    "status": "ok" if final_bytes else f"failed: {last_err}",
+                    "defect_reason": "",
+                })
+                continue
+
+            # Normal office photo via Kie API
+            prompt = sl.get("description", "")
             last_err = None
             final_bytes, final_ext = None, "jpg"
             base_seed = img_seeds[i - 1]
 
             for attempt in range(1, MAX_ATTEMPTS + 1):
-                attempt_label = f"Image {i}" + (f" — attempt {attempt}/{MAX_ATTEMPTS}" if attempt > 1 else "")
+                alabel = f"Image {i}" + (f" — attempt {attempt}/{MAX_ATTEMPTS}" if attempt > 1 else "")
                 try:
                     raw = _dispatch_image_gen(prompt, i, DEFAULT_WIDTH, DEFAULT_HEIGHT,
                                               seed=base_seed + attempt * 1000)
                     is_ok, reason = check_anatomy(raw)
                     if not is_ok and attempt < MAX_ATTEMPTS:
-                        st.warning(f"⚠️ {attempt_label} — defect detected ({reason}), regenerating...")
+                        st.warning(f"⚠️ {alabel} — defect detected ({reason}), regenerating...")
                         continue
                     opt_bytes, ext = optimize_image(raw, max_kb=200)
                     final_bytes, final_ext = opt_bytes, ext
@@ -2075,7 +2994,7 @@ with tab_manual:
                 except Exception as e:
                     last_err = e
                     if attempt < MAX_ATTEMPTS:
-                        st.warning(f"⚠️ {attempt_label} failed ({e}), retrying...")
+                        st.warning(f"⚠️ {alabel} failed ({e}), retrying...")
                         time.sleep(2)
 
             results.append({
@@ -2093,7 +3012,7 @@ with tab_manual:
 
         # Persist in session state so redo works without re-fetching
         st.session_state["m_results"]   = results
-        st.session_state["m_prompts"]   = prompts
+        st.session_state["m_slots"]     = slots
         st.session_state["m_alt_texts"] = alt_texts
         st.session_state["m_title"]     = title
 
@@ -2425,7 +3344,8 @@ def _regen_main_thumb(blog_state: dict):
     """Generate a fresh background photo and re-composite main + thumbnail. Mutates blog_state."""
     title = blog_state.get("title", "")
     results = blog_state.get("results", [])
-    base_prompt = results[0]["prompt"] if results else title
+    photo_results = [r for r in results if r.get("type") != "infographic"]
+    base_prompt = photo_results[0]["prompt"] if photo_results else (results[0]["prompt"] if results else title)
 
     with st.status(f"Regenerating main & thumbnail — {blog_state['slug']}...", expanded=True) as s:
         st.write("Generating new image description...")
@@ -2725,6 +3645,7 @@ with tab_auto:
                 wf_fallback=wf,
                 collection_id_fallback=collection_id,
                 item_id_fallback=item_id,
+                client_slug=matched_client,
             )
 
             # ── Composite main image + thumbnail ──────────────────────────────
@@ -2732,12 +3653,17 @@ with tab_auto:
             ok_r = [r for r in results if r["status"] == "ok"]
             if ok_r:
                 with st.status("Generating cover photo & compositing...", expanded=True) as s:
-                    cover_bg = _generate_cover_bg(title, [r["prompt"] for r in ok_r])
-                    m_logo, t_logo = ensure_figma_assets_for_client(matched_client)
-                    m_tpl, t_tpl  = make_tpls(matched_client, m_logo, t_logo)
-                    main_b  = composite_template(cover_bg, title, m_tpl)
-                    thumb_b = composite_template(cover_bg, title, t_tpl)
-                    s.update(label="Main + thumbnail ready ✓", state="complete")
+                    try:
+                        photo_prompts = [r["prompt"] for r in ok_r if r.get("type") != "infographic"]
+                        cover_bg = _generate_cover_bg(title, photo_prompts if photo_prompts else [title])
+                        m_logo, t_logo = ensure_figma_assets_for_client(matched_client)
+                        m_tpl, t_tpl  = make_tpls(matched_client, m_logo, t_logo)
+                        main_b  = composite_template(cover_bg, title, m_tpl)
+                        thumb_b = composite_template(cover_bg, title, t_tpl)
+                        s.update(label="Main + thumbnail ready ✓", state="complete")
+                    except Exception as _ce:
+                        st.error(f"⛔ Compositing error: {_ce}")
+                        s.update(label="Compositing failed", state="error")
 
             batch.append({
                 "url": url, "slug": slug, "title": title,
