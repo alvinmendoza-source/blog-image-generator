@@ -2888,9 +2888,13 @@ with tab_manual:
             try:
                 if redo_slot.get("type") == "infographic":
                     raw = _render_infographic(redo_slot, DEFAULT_WIDTH, DEFAULT_HEIGHT)
+                    new_desc = redo_slot.get("title", "")
                 else:
+                    original_desc = redo_slot.get("description", "")
+                    redo_title = st.session_state.get("m_title", "")
+                    new_desc = generate_prompt_variation(original_desc, redo_title)
                     raw = _dispatch_image_gen(
-                        redo_slot.get("description", ""), redo_i,
+                        new_desc, redo_i,
                         DEFAULT_WIDTH, DEFAULT_HEIGHT, seed=redo_seed
                     )
                 opt_bytes, ext = optimize_image(raw, max_kb=200)
@@ -2898,7 +2902,7 @@ with tab_manual:
                     "index": redo_i, "bytes": opt_bytes, "ext": ext,
                     "size_kb": round(len(opt_bytes) / 1024, 1),
                     "alt": redo_alt,
-                    "prompt": redo_slot.get("description", redo_slot.get("title", "")),
+                    "prompt": new_desc,
                     "status": "ok", "defect_reason": "",
                 }
             except Exception as e:
