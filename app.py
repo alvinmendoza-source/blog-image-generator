@@ -192,6 +192,11 @@ NEGATIVE_PROMPT = (
     "sterile office, perfectly clean office, empty office, unrealistic minimalism, "
     "perfectly aligned objects, fake futuristic environment, "
     "sci-fi, hologram, glowing code, binary code, neon, holograms, floating text, padlock, hacker, "
+    # server / networking equipment — banned to prevent constant data-center look
+    "server rack, server racks, server room, data center, network rack, patch panel, "
+    "rack mount, rack unit, networking equipment, router rack, switch rack, "
+    "server farm, computer room, server closet, network closet background, "
+    "colorful cables on rack, bundled patch cables, ethernet patch panel, "
     # composition / staging
     "centered AI composition, perfectly symmetrical framing, forced cinematic angle, "
     "overly dramatic pose, stock photo pose, staged pose, "
