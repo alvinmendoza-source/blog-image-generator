@@ -871,10 +871,41 @@ def generate_prompt_variation(original_prompt: str, title: str) -> str:
         return original_prompt
 
 
+def _generate_cover_scene(title: str) -> str:
+    """Generate a cover scene description directly tied to the blog title."""
+    payload = {
+        "model": "openai",
+        "messages": [
+            {"role": "system", "content": (
+                "Write a plain scene description for a documentary office photo. "
+                "The scene must visually represent the EXACT topic from the blog title — not a generic office scene.\n"
+                "Your output fills this slot: 'Documentary-style candid workplace photography of [YOUR OUTPUT HERE]'\n"
+                "⚠️ Do NOT start with 'Documentary-style', 'candid', or any photography term.\n\n"
+                "MANDATORY RULES:\n"
+                "- Scene must DIRECTLY show the core activity described in the blog title\n"
+                "- ALL people are white American or British Caucasian, age 30-50, average build\n"
+                "- Candid: eyes on screen/desk/colleague, NEVER at camera\n"
+                "- Plain business casual only: NO logos, no brand names on clothing\n"
+                "- Soft ambient office daylight — NOT dramatic\n\n"
+                "FORMAT: 1-2 plain sentences. [white Caucasian person/people] + [activity matching blog title] + inside [location]. "
+                "Output ONLY the scene description."
+            )},
+            {"role": "user", "content": f"Blog title: {title}\n\nWrite the cover image scene:"}
+        ],
+        "private": True
+    }
+    try:
+        r = requests.post("https://text.pollinations.ai/openai", json=payload, timeout=60)
+        r.raise_for_status()
+        prompt = _pollinations_text(r.json()).strip().lstrip("•-* ")
+        return prompt if len(prompt) > 30 else title
+    except Exception:
+        return title
+
+
 def _generate_cover_bg(title: str, content_prompts: list) -> bytes:
-    """Generate a dedicated background photo for main/thumbnail — always different from content images."""
-    base = content_prompts[-1] if content_prompts else title
-    cover_prompt = generate_prompt_variation(base, title)
+    """Generate a dedicated background photo for main/thumbnail — tied directly to the blog title."""
+    cover_prompt = _generate_cover_scene(title)
     seed = abs(hash(title)) % 90000 + 50000
     return _dispatch_image_gen(cover_prompt, 99, DEFAULT_WIDTH, DEFAULT_HEIGHT, seed=seed)
 
