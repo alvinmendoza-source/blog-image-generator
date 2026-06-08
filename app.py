@@ -1864,7 +1864,9 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
         logo_path = tpl["logo"]
         if logo_path.exists() and logo_path.stat().st_size > 1000:
             logo = PILImage.open(logo_path).convert("RGBA")
-            canvas.paste(logo, (tpl.get("ox", 0), tpl.get("oy", 0)), logo)
+            logo_rgb   = logo.convert("RGB")
+            logo_alpha = logo.split()[3]
+            canvas.paste(logo_rgb, (tpl.get("ox", 0), tpl.get("oy", 0)), mask=logo_alpha)
         draw = ImageDraw.Draw(canvas)
         try:
             font_path        = tpl.get("font", INTER_FONT_PATH)
