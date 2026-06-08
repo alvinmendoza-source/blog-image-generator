@@ -101,8 +101,6 @@ SCENE_TYPES = [
      "wide shot of three or four people at separate desks across an open-plan office floor"),
     ("INFORMAL HUDDLE",
      "two people standing and talking near a kitchen counter or office hallway"),
-    ("NETWORK CLOSET",
-     "one person crouching or standing in a small network/cable closet — patch panel cables are routed with velcro ties and cable managers, mostly tidy with a few natural loops or slack"),
     ("WALKING CORRIDOR",
      "one or two people walking mid-stride through a bright office corridor"),
     ("DUAL MONITOR DESK",
