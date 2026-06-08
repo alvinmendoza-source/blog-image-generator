@@ -113,6 +113,20 @@ SCENE_TYPES = [
      "one person at a front reception desk in a modern office lobby"),
     ("COFFEE BREAK CHAT",
      "two people having a casual standing conversation near a coffee machine in a break room"),
+    ("WINDOW SEAT LAPTOP",
+     "one person working on a laptop at a desk beside a large office window with natural daylight coming in"),
+    ("PRESENTATION SCREEN",
+     "one person standing beside a large wall-mounted TV or presentation screen, pointing at content"),
+    ("SMALL CONFERENCE ROOM",
+     "three people seated around a small table inside a glass-walled conference room"),
+    ("FOCUSED READING",
+     "one person seated at a desk reading printed documents or a report, pen in hand"),
+    ("LOUNGE AREA LAPTOP",
+     "one person working on a laptop in a casual office lounge with soft seating"),
+    ("STICKY NOTE WALL",
+     "two people standing at a wall covered with colorful sticky notes, organizing ideas"),
+    ("OUTDOOR TERRACE",
+     "one or two people working at a table on a sunny outdoor office terrace or rooftop"),
 ]
 
 def _scene_pool_text() -> str:
