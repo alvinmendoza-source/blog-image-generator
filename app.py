@@ -163,8 +163,6 @@ _QUALITY_BLOCK = (
     "believable posture, candid body language, "
     # environment
     "authentic lived-in office, slightly messy desk, "
-    # cable management — applies to all scenes especially server/network rooms
-    "network cables neatly bundled and routed, tidy cable management, organized server cabling, "
     # ethnicity anchor
     "white American Caucasian office workers"
     # NOTE: NO "avoid X" here — those belong in NEGATIVE_PROMPT only.
