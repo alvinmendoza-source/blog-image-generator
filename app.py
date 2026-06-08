@@ -1852,7 +1852,12 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
                     pass
         except Exception:
             font = ImageFont.load_default()
-        words = title.split()
+        _CHAR_MAP = {"®": "(R)", "™": "(TM)", "©": "(C)", "’": "'", "‘": "'",
+                     "“": '"', "”": '"', "–": "-", "—": "-",
+                     "…": "...", "°": " deg", "é": "e", "à": "a"}
+        clean_title = "".join(_CHAR_MAP.get(c, c) for c in title
+                               if ord(c) < 256 or c in _CHAR_MAP)
+        words = clean_title.split()
         lines, cur = [], []
         for word in words:
             test = " ".join(cur + [word])
