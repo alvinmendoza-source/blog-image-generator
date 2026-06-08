@@ -3523,10 +3523,12 @@ with tab_auto:
     _client_saved_key = _load_node_cache().get(_selected_slug, {}).get("webflow_api_key", "")
     _default_key      = _client_saved_key or os.getenv("WEBFLOW_API_KEY", "")
 
-    # Auto-switch key when client changes
+    # Auto-switch key when client changes, or restore if field was cleared
     _prev_slug = st.session_state.get("_prev_client_slug", "")
     if _selected_slug != _prev_slug:
         st.session_state["_prev_client_slug"] = _selected_slug
+        st.session_state["a_key"] = _default_key
+    elif not st.session_state.get("a_key") and _default_key:
         st.session_state["a_key"] = _default_key
 
     key_col, save_col = st.columns([4, 1])
