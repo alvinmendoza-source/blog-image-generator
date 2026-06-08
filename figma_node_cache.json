@@ -91,8 +91,8 @@
     "overlay_main_x": 0,
     "overlay_main_y": 0,
     "main_tx": 68,
-    "main_ty": 989,
-    "main_tw": 806,
+    "main_ty": 973,
+    "main_tw": 852,
     "main_fsz": 44,
     "main_font_family": "Roboto",
     "main_font_style": "Bold",
@@ -102,11 +102,11 @@
     "overlay_thumb_x": 0,
     "overlay_thumb_y": 0,
     "thumb_tx": 45,
-    "thumb_ty": 988,
-    "thumb_tw": 430,
-    "thumb_fsz": 36,
+    "thumb_ty": 990,
+    "thumb_tw": 498,
+    "thumb_fsz": 32,
     "thumb_font_family": "Roboto",
-    "thumb_font_style": "Regular"
+    "thumb_font_style": "Bold"
   },
   "carmichael": {
     "name": "Carmichael",
