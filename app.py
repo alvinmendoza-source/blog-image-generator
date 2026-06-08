@@ -233,8 +233,6 @@ KIE_QUALITY_SUFFIX = (
     "Sony A7 IV, no color grading, no filter, no CGI, "
     "plain unbranded clothing with no logos or company names, "
     "white Caucasian American office workers, "
-    "network cables neatly bundled and routed, tidy cable management, "
-    "organized server room cabling, cables secured with velcro ties, "
     "no food on desk, no drinks on desk, no water bottle, no coffee cup, no snacks, clean professional workspace"
 )
 KIE_NEGATIVE_PROMPT = NEGATIVE_PROMPT + (
