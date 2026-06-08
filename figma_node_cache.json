@@ -360,6 +360,44 @@
       4,
       4
     ],
-    "webflow_api_key": "438ec6d51bcb2d614b9b85c5bd4f09a7b678d8a6b309178e51bdb4e6eec1632a"
+    "webflow_api_key": "c41dc14cf781c330e2af822fcb0f057522f7a2388ef6ca17f3f542de6aabbb7d"
+  },
+  "infotank": {
+    "name": "Infotank",
+    "main": "56:14",
+    "thumb": "56:15",
+    "main_w": 1279,
+    "main_h": 853,
+    "overlay_main": "56:3",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 57,
+    "main_ty": 402,
+    "main_tw": 464,
+    "main_fsz": 36,
+    "main_font_family": "Poppins",
+    "main_font_style": "SemiBold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 796,
+    "thumb_h": 512,
+    "overlay_thumb": "56:2",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 45,
+    "thumb_ty": 258,
+    "thumb_tw": 267,
+    "thumb_fsz": 22,
+    "thumb_font_family": "Poppins",
+    "thumb_font_style": "SemiBold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ],
+    "webflow_api_key": "c41dc14cf781c330e2af822fcb0f057522f7a2388ef6ca17f3f542de6aabbb7d"
   }
 }
