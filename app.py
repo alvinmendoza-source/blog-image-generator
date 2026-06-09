@@ -666,15 +666,23 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
         from google.genai import types as gt
         client = genai.Client(api_key=GOOGLE_API_KEY)
         required_envs = _format_required_envs(_pick_required_scenes(count))
-        resp = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f"Blog Title:\n{title}\n\nWhole Blog:\n{content}",
-            config=gt.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT_TEMPLATE.format(count=count, required_envs=required_envs),
-                max_output_tokens=3000,
-                temperature=1.5,
-            )
-        )
+        for _attempt in range(3):
+            try:
+                resp = client.models.generate_content(
+                    model="gemini-2.0-flash-lite",
+                    contents=f"Blog Title:\n{title}\n\nWhole Blog:\n{content}",
+                    config=gt.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT_TEMPLATE.format(count=count, required_envs=required_envs),
+                        max_output_tokens=3000,
+                        temperature=1.5,
+                    )
+                )
+                break
+            except Exception as _e:
+                if "429" in str(_e) and _attempt < 2:
+                    time.sleep(8)
+                else:
+                    raise
         prompts = parse_bullet_list(resp.text.strip(), count)
         # ── Debug: show what Gemini generated + the actual final prompt sent to image API ──
         with st.expander("🔍 Debug — Scene descriptions sent to image generator", expanded=False):
@@ -783,15 +791,23 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
             .replace("{count}", str(count))
             .replace("{required_envs}", required_envs)
         )
-        resp = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f"Blog Title:\n{title}\n\nBlog Content:\n{content[:5000]}",
-            config=gt.GenerateContentConfig(
-                system_instruction=system_instr,
-                max_output_tokens=4000,
-                temperature=0.9,
-            )
-        )
+        for _attempt in range(3):
+            try:
+                resp = client.models.generate_content(
+                    model="gemini-2.0-flash-lite",
+                    contents=f"Blog Title:\n{title}\n\nBlog Content:\n{content[:5000]}",
+                    config=gt.GenerateContentConfig(
+                        system_instruction=system_instr,
+                        max_output_tokens=4000,
+                        temperature=0.9,
+                    )
+                )
+                break
+            except Exception as _e:
+                if "429" in str(_e) and _attempt < 2:
+                    time.sleep(8)
+                else:
+                    raise
         _debug_raw = resp.text or ""
         raw = _debug_raw.strip()
 
