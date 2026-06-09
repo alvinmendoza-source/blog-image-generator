@@ -470,7 +470,7 @@ def check_anatomy(img_bytes: bytes) -> tuple[bool, str]:
         try:
             import google.generativeai as genai
             genai.configure(api_key=GOOGLE_API_KEY)
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = genai.GenerativeModel("gemini-2.0-flash")
             img_part = {"mime_type": "image/jpeg", "data": b64}
             resp = model.generate_content([_ANATOMY_CHECK_PROMPT, img_part])
             content = resp.text.strip()
@@ -667,7 +667,7 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
         client = genai.Client(api_key=GOOGLE_API_KEY)
         required_envs = _format_required_envs(_pick_required_scenes(count))
         resp = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=f"Blog Title:\n{title}\n\nWhole Blog:\n{content}",
             config=gt.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT_TEMPLATE.format(count=count, required_envs=required_envs),
@@ -684,7 +684,8 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
                 st.caption(f"Final prompt ({len(final)} chars): {final[:300]}{'…' if len(final)>300 else ''}")
         return prompts
     except Exception as e:
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+        err = str(e)
+        if any(k in err for k in ("429", "RESOURCE_EXHAUSTED", "quota", "rate limit", "exceeded")):
             st.warning("⚠️ Gemini quota exhausted — falling back to Pollinations for descriptions.")
             return generate_prompts_free(title, content, count)
         raise
@@ -786,7 +787,7 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
             .replace("{required_envs}", required_envs)
         )
         resp = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=f"Blog Title:\n{title}\n\nBlog Content:\n{content[:5000]}",
             config=gt.GenerateContentConfig(
                 system_instruction=system_instr,
