@@ -578,11 +578,28 @@ def fetch_blog(url: str):
     else:
         title = ""
     content_el = next((soup.select_one(s) for s in CONTENT_SELECTORS if soup.select_one(s)), None)
-    content = content_el.get_text("\n", strip=True) if content_el else \
-        "\n".join(p.get_text(strip=True) for p in soup.find_all("p") if p.get_text(strip=True))
+    if content_el:
+        content = _soup_to_structured_text(content_el)
+    else:
+        content = "\n".join(p.get_text(strip=True) for p in soup.find_all("p") if p.get_text(strip=True))
     area = content_el or soup
     image_urls = [get_img_src(img) for img in area.find_all("img") if is_content_image(img)]
     return title, content, image_urls
+
+
+def _soup_to_structured_text(soup) -> str:
+    """Convert BeautifulSoup element to text while preserving list structure markers."""
+    # Mark ordered list items with numbers before stripping
+    for ol in soup.find_all("ol"):
+        for idx, li in enumerate(ol.find_all("li", recursive=False), 1):
+            li.insert_before(f"{idx}. ")
+    # Mark unordered list items with bullets
+    for li in soup.find_all("li"):
+        li.insert_before("• ")
+    # Mark headings to preserve step-like text
+    for tag in soup.find_all(["h1", "h2", "h3", "h4"]):
+        tag.insert_before("\n")
+    return soup.get_text("\n", strip=True)
 
 
 def fetch_blog_from_cms(slug: str, wf, collection_id: str, item_id: str):
@@ -599,17 +616,22 @@ def fetch_blog_from_cms(slug: str, wf, collection_id: str, item_id: str):
     for val in field_data.values():
         if isinstance(val, str) and "<img" in val:
             soup = BeautifulSoup(val, "html.parser")
-            content = soup.get_text("\n", strip=True)
+            content = _soup_to_structured_text(soup)
             image_urls = [img.get("src") or img.get("data-src", "")
                           for img in soup.find_all("img") if is_content_image(img)]
             break
 
-    # Fallback: longest plain-text field
+    # Fallback: longest plain-text field (may be richtext without images)
     if not content:
         candidates = [(k, v) for k, v in field_data.items()
                       if isinstance(v, str) and k not in ("slug", "name", "title")]
         if candidates:
-            content = max(candidates, key=lambda x: len(x[1]))[1]
+            best_key, best_val = max(candidates, key=lambda x: len(x[1]))
+            if "<" in best_val and ">" in best_val:
+                soup = BeautifulSoup(best_val, "html.parser")
+                content = _soup_to_structured_text(soup)
+            else:
+                content = best_val
 
     return title, content, image_urls
 
