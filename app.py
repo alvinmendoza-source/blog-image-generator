@@ -766,16 +766,17 @@ FORMAT:
 ════════════════════════════
 INFOGRAPHIC DECISION (critical)
 ════════════════════════════
-MINIMUM 1, MAXIMUM 2 infographic slots — always include at least 1, never more than 2.
+MAXIMUM 2 infographic slots. Only add an infographic when the blog content clearly supports it.
 
-MSP/IT blogs always have content suitable for at least one infographic. Choose 2 only when the blog has two clearly distinct structured sections that each map well to a different type.
-
-How to pick the type:
+ADD an infographic slot when:
   • Blog has numbered phases, steps, or a process → "steps"
   • Blog mentions specific percentages, stats, or dollar figures → "stats"
   • Blog gives tips, action items, best practices, or a "how to" list → "checklist"
   • Blog compares options, before/after, or has measurable improvements → "bar_chart"
-  • If unsure → default to "checklist" (summarize 5–6 key takeaways from the blog topic)
+
+Add a SECOND infographic only when there are two clearly distinct structured sections that each map well to a different type.
+
+If the blog is thin, introductory, or does not contain clear structure/data/steps → use 0 infographics (all photos).
 
 Infographic slots skip the required-environments list.
 
@@ -904,25 +905,6 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
                         f"**Slot {s['slot']} 📊 INFOGRAPHIC "
                         f"[{s.get('infographic_type','').upper()}]:** {s.get('title','')}"
                     )
-        # Hard guarantee: Gemini must have included ≥1 infographic per instruction.
-        # If it didn't (ignored the MINIMUM 1 rule), force the last slot to checklist.
-        if not any(s.get("type") == "infographic" for s in slots):
-            st.warning("⚠️ Slot planner returned 0 infographics — adding 1 checklist automatically.")
-            slots[-1] = {
-                "slot": slots[-1]["slot"],
-                "type": "infographic",
-                "infographic_type": "checklist",
-                "title": f"Key Takeaways: {title[:55]}",
-                "subtitle": "Essential points from this guide",
-                "items": [
-                    "Understand the core concepts covered in this article",
-                    "Identify which strategies apply to your IT environment",
-                    "Work with your IT provider to implement changes",
-                    "Set measurable goals and timelines before starting",
-                    "Monitor results and adjust your approach as needed",
-                    "Schedule regular reviews to stay on track",
-                ],
-            }
         return slots
 
     except Exception as e:
@@ -950,25 +932,8 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
         while len(descs) < count:
             descs.append(fallback)
         descs = descs[:count]
-        # Fallback path also gets minimum 1 infographic
-        slots_fallback = [{"slot": i + 1, "type": "photo", "description": d}
-                          for i, d in enumerate(descs)]
-        slots_fallback[-1] = {
-            "slot": len(slots_fallback),
-            "type": "infographic",
-            "infographic_type": "checklist",
-            "title": f"Key Takeaways: {title[:55]}",
-            "subtitle": "Essential points from this guide",
-            "items": [
-                "Understand the core concepts covered in this article",
-                "Identify which strategies apply to your IT environment",
-                "Work with your IT provider to implement changes",
-                "Set measurable goals and timelines before starting",
-                "Monitor results and adjust your approach as needed",
-                "Schedule regular reviews to stay on track",
-            ],
-        }
-        return slots_fallback
+        return [{"slot": i + 1, "type": "photo", "description": d}
+                for i, d in enumerate(descs)]
 
 
 def generate_alt_text_for(prompt: str, title: str, index: int = 0) -> str:
