@@ -865,18 +865,26 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
         return slots
 
     except Exception as e:
-        with st.expander(f"⚠️ Slot planning failed — click to debug", expanded=True):
-            st.error(f"**Error:** `{e}`")
-            st.code(repr(_debug_raw[:400]) if _debug_raw else "No response captured (error before API call)")
+        err = str(e)
+        is_quota = any(k in err for k in ("429", "RESOURCE_EXHAUSTED", "quota", "rate limit", "exceeded"))
         descs = []
-        try:
-            descs = generate_prompts_live(title, content, count)
-        except Exception:
+        if is_quota:
+            st.info("ℹ️ Gemini quota reached — using backup generator. Images will still be generated.")
             try:
                 descs = generate_prompts_free(title, content, count)
             except Exception:
                 pass
-        # Always ensure exactly `count` descriptions — pad if AI returned fewer
+        else:
+            with st.expander("⚠️ Slot planning failed — click to debug", expanded=True):
+                st.error(f"**Error:** `{e}`")
+                st.code(repr(_debug_raw[:400]) if _debug_raw else "No response captured (error before API call)")
+            try:
+                descs = generate_prompts_live(title, content, count)
+            except Exception:
+                try:
+                    descs = generate_prompts_free(title, content, count)
+                except Exception:
+                    pass
         fallback = f"IT professional working at a desk on tasks related to {title[:40]}."
         while len(descs) < count:
             descs.append(fallback)
