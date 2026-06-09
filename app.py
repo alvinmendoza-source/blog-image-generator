@@ -847,7 +847,7 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
         for _attempt in range(3):
             try:
                 resp = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-2.5-flash",
                     contents=user_msg,
                     config=gt.GenerateContentConfig(
                         system_instruction=system_instr,
@@ -904,6 +904,25 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
                         f"**Slot {s['slot']} 📊 INFOGRAPHIC "
                         f"[{s.get('infographic_type','').upper()}]:** {s.get('title','')}"
                     )
+        # Hard guarantee: Gemini must have included ≥1 infographic per instruction.
+        # If it didn't (ignored the MINIMUM 1 rule), force the last slot to checklist.
+        if not any(s.get("type") == "infographic" for s in slots):
+            st.warning("⚠️ Slot planner returned 0 infographics — adding 1 checklist automatically.")
+            slots[-1] = {
+                "slot": slots[-1]["slot"],
+                "type": "infographic",
+                "infographic_type": "checklist",
+                "title": f"Key Takeaways: {title[:55]}",
+                "subtitle": "Essential points from this guide",
+                "items": [
+                    "Understand the core concepts covered in this article",
+                    "Identify which strategies apply to your IT environment",
+                    "Work with your IT provider to implement changes",
+                    "Set measurable goals and timelines before starting",
+                    "Monitor results and adjust your approach as needed",
+                    "Schedule regular reviews to stay on track",
+                ],
+            }
         return slots
 
     except Exception as e:
@@ -931,8 +950,25 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
         while len(descs) < count:
             descs.append(fallback)
         descs = descs[:count]
-        return [{"slot": i + 1, "type": "photo", "description": d}
-                for i, d in enumerate(descs)]
+        # Fallback path also gets minimum 1 infographic
+        slots_fallback = [{"slot": i + 1, "type": "photo", "description": d}
+                          for i, d in enumerate(descs)]
+        slots_fallback[-1] = {
+            "slot": len(slots_fallback),
+            "type": "infographic",
+            "infographic_type": "checklist",
+            "title": f"Key Takeaways: {title[:55]}",
+            "subtitle": "Essential points from this guide",
+            "items": [
+                "Understand the core concepts covered in this article",
+                "Identify which strategies apply to your IT environment",
+                "Work with your IT provider to implement changes",
+                "Set measurable goals and timelines before starting",
+                "Monitor results and adjust your approach as needed",
+                "Schedule regular reviews to stay on track",
+            ],
+        }
+        return slots_fallback
 
 
 def generate_alt_text_for(prompt: str, title: str, index: int = 0) -> str:
