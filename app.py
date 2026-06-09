@@ -717,7 +717,9 @@ FORMAT:
 ════════════════════════════
 INFOGRAPHIC DECISION (critical)
 ════════════════════════════
-ALWAYS include exactly 1 infographic slot per batch — no exceptions. MSP/IT blogs ALWAYS have structured content suitable for one of the 4 types below.
+MINIMUM 1, MAXIMUM 2 infographic slots per batch — always include at least 1, never more than 2.
+
+MSP/IT blogs always have content suitable for at least one infographic. Choose 2 only when the blog has clearly distinct structured content sections that each map well to a different type.
 
 How to pick the type:
   • Blog has numbered phases, steps, or a process → "steps"
@@ -726,7 +728,7 @@ How to pick the type:
   • Blog compares options, before/after, or has measurable improvements → "bar_chart"
   • If unsure → default to "checklist" (summarize 5–6 key takeaways from the blog)
 
-MAX 2 infographic slots per batch. Choose the 1–2 slots where structured content fits best. Infographic slots skip the required-environments list.
+Infographic slots skip the required-environments list.
 
 ════════════════
 INFOGRAPHIC TYPES
