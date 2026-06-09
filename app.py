@@ -589,15 +589,16 @@ def fetch_blog(url: str):
 
 def _soup_to_structured_text(soup) -> str:
     """Convert BeautifulSoup element to text while preserving list structure markers."""
-    # Mark ordered list items with numbers before stripping
+    # Mark ordered list items with numbers
     for ol in soup.find_all("ol"):
         for idx, li in enumerate(ol.find_all("li", recursive=False), 1):
             li.insert_before(f"{idx}. ")
-    # Mark unordered list items with bullets
+    # Mark unordered list items with bullets — skip li already inside ol
     for li in soup.find_all("li"):
-        li.insert_before("• ")
-    # Mark headings to preserve step-like text
-    for tag in soup.find_all(["h1", "h2", "h3", "h4"]):
+        if not li.find_parent("ol"):
+            li.insert_before("• ")
+    # Add line break before headings so they don't run into previous text
+    for tag in soup.find_all(["h2", "h3", "h4"]):
         tag.insert_before("\n")
     return soup.get_text("\n", strip=True)
 
@@ -829,19 +830,6 @@ PHOTO DESCRIPTION RULES (type="photo")
 
 Total slots: {count}""".strip()
 
-
-def _detect_infographic_signals(content: str) -> list:
-    """Scan blog content for signals that warrant an infographic (for debug display only)."""
-    signals = []
-    if re.search(r'<[uo]l\b', content, re.I) or re.search(r'^\s*[•*]\s+\S', content, re.M) or re.search(r'^\s*\d+\.\s+\S', content, re.M):
-        signals.append("bullet/numbered lists")
-    if re.search(r'\bstep\s+\d+\b|\bphase\s+\d+\b|\b(step|phase|stage)\s*[:#]', content, re.I):
-        signals.append("numbered steps/phases")
-    if re.search(r'\d+\s*%|\$\s*\d+|\d+x\s+(?:faster|more|better|less)|\bROI\b|\bsavings\b', content, re.I):
-        signals.append("statistics or percentages")
-    if re.search(r'\bbest practice|\brecommendation|\bkey takeaway|\bchecklist\b', content, re.I):
-        signals.append("tips/recommendations/checklist")
-    return signals
 
 
 def _plan_image_slots(title: str, content: str, count: int) -> list:
