@@ -952,11 +952,14 @@ def generate_alt_text_for(prompt: str, title: str, index: int = 0) -> str:
     )
     result = _gemini_text(system, user, max_tokens=50, temperature=0.9)
     if result:
-        result = result.strip('"')
+        result = result.strip('"\'')
+        # Strip special/non-ASCII characters — keep only letters, numbers, spaces, hyphens, commas
+        result = re.sub(r'[^a-zA-Z0-9 ,\-]', '', result)
+        result = re.sub(r' {2,}', ' ', result).strip()
         if len(result) > 80:
             result = result[:80].rsplit(' ', 1)[0]
         return result
-    return prompt[:75].rsplit(' ', 1)[0]
+    return re.sub(r'[^a-zA-Z0-9 ,\-]', '', prompt[:80]).strip()
 
 
 # ── Image generation ───────────────────────────────────────────────────────────
