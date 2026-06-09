@@ -384,6 +384,14 @@ def optimize_image(img_bytes: bytes, max_kb: int = 200) -> tuple[bytes, str]:
 
 
 def analyze_image_quality(img_bytes: bytes) -> dict:
+    _QUALITY_PROMPT = (
+        "Analyze this image for quality issues as a blog image for an IT/MSP company. "
+        "Check for: AI-generated artifacts, distorted faces, wrong finger count, unnatural lighting, "
+        "sci-fi/cliche elements, or anything fake/unprofessional.\n\n"
+        "Reply ONLY in this exact JSON format:\n"
+        '{"quality": "good|fair|poor", "is_ai_generated": true|false, "issues": ["issue1"]}\n'
+        "Keep issues as [] if image looks fine."
+    )
     try:
         img = PILImage.open(io.BytesIO(img_bytes))
         fmt = img.format or "JPEG"
@@ -394,26 +402,30 @@ def analyze_image_quality(img_bytes: bytes) -> dict:
     except Exception:
         pass
     b64 = base64.b64encode(img_bytes).decode()
-    payload = {
-        "model": "openai",
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": (
-                "Analyze this image for quality issues as a blog image for an IT/MSP company. "
-                "Check for: AI-generated artifacts, distorted faces, wrong finger count, unnatural lighting, "
-                "sci-fi/cliche elements, or anything fake/unprofessional.\n\n"
-                "Reply ONLY in this exact JSON format:\n"
-                '{"quality": "good|fair|poor", "is_ai_generated": true|false, "issues": ["issue1"]}\n'
-                "Keep issues as [] if image looks fine."
-            )},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
-        ]}],
-        "private": True
-    }
+
+    # Gemini vision — primary
+    if GOOGLE_API_KEY:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=GOOGLE_API_KEY)
+            model = genai.GenerativeModel("gemini-2.0-flash-lite")
+            img_part = {"mime_type": "image/jpeg", "data": b64}
+            resp = model.generate_content([_QUALITY_PROMPT, img_part])
+            match = re.search(r'\{.*\}', resp.text.strip(), re.DOTALL)
+            if match:
+                return json.loads(match.group())
+        except Exception:
+            pass
+
+    # Pollinations vision — FREE MODE fallback
     try:
+        payload = {"model": "openai", "messages": [{"role": "user", "content": [
+            {"type": "text", "text": _QUALITY_PROMPT},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+        ]}], "private": True}
         r = requests.post("https://text.pollinations.ai/openai", json=payload, timeout=60)
         r.raise_for_status()
-        content = _pollinations_text(r.json())
-        match = re.search(r'\{.*\}', content, re.DOTALL)
+        match = re.search(r'\{.*\}', _pollinations_text(r.json()), re.DOTALL)
         if match:
             return json.loads(match.group())
     except Exception:
