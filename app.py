@@ -709,19 +709,16 @@ FORMAT:
 ════════════════════════════
 INFOGRAPHIC DECISION (critical)
 ════════════════════════════
-Use infographic ONLY when the blog has CLEAR, EXTRACTABLE structured content:
-  • Named phases/steps in a process (3–7 steps with titles and brief descriptions)
-  • Specific statistics with numbers or percentages (e.g. "94% of companies...", "40% cost reduction")
-  • A clear list of action items, tips, or best practices (4–8 items)
-  • Measurable comparison values (before/after, option A vs B with numbers)
+ALWAYS include exactly 1 infographic slot per batch — no exceptions. MSP/IT blogs ALWAYS have structured content suitable for one of the 4 types below.
 
-SKIP infographic (use photo instead) when content is:
-  • General narrative advice without clear discrete structure
-  • Vague statements without extractable data points
-  • Content that doesn't cleanly map to one of the 4 types below
+How to pick the type:
+  • Blog has numbered phases, steps, or a process → "steps"
+  • Blog mentions specific percentages, stats, or dollar figures → "stats"
+  • Blog gives tips, action items, best practices, or a "how to" list → "checklist"
+  • Blog compares options, before/after, or has measurable improvements → "bar_chart"
+  • If unsure → default to "checklist" (summarize 5–6 key takeaways from the blog)
 
-MAX 2 infographic slots per batch. Place at the slot where the content naturally fits.
-If no qualifying structured content exists → use 0 infographic slots (all photos).
+MAX 2 infographic slots per batch. Choose the 1–2 slots where structured content fits best. Infographic slots skip the required-environments list.
 
 ════════════════
 INFOGRAPHIC TYPES
@@ -792,7 +789,7 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
             config=gt.GenerateContentConfig(
                 system_instruction=system_instr,
                 max_output_tokens=4000,
-                temperature=1.5,
+                temperature=0.9,
             )
         )
         _debug_raw = resp.text or ""
