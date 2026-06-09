@@ -26,8 +26,6 @@ except Exception:
 
 GOOGLE_API_KEY  = os.getenv("GOOGLE_API_KEY", "").strip()
 KIE_API_KEY     = os.getenv("KIE_API_KEY", "").strip()
-OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY", "").strip()
-IMAGEN_API_KEY  = os.getenv("IMAGEN_API_KEY", "").strip()
 KIE_BASE        = "https://api.kie.ai/api/v1"
 FREE_MODE       = not GOOGLE_API_KEY or not KIE_API_KEY
 
@@ -224,7 +222,6 @@ _QUALITY_BLOCK = (
     # NOTE: NO "avoid X" here — those belong in NEGATIVE_PROMPT only.
     # Flux reads "avoid plastic skin" as a POSITIVE token for plastic skin.
 )
-QUALITY_SUFFIX = _QUALITY_BLOCK
 NEGATIVE_PROMPT = (
     # quality / sharpness
     "blurry, out of focus, soft focus, unfocused, low resolution, low quality, pixelated, jpeg artifacts, "
@@ -281,8 +278,7 @@ NEGATIVE_PROMPT = (
     "takeout, fast food, meal, drink, beverage, bottle on desk, cup on desk"
 )
 
-# ── Kie paid mode (Google Imagen 4 Ultra → Flux 2 Pro fallback) ───────────────
-# Shorter, focused suffix works better for Imagen 4 Ultra — it doesn't need verbose guidance
+# ── Kie API prompt suffix (GPT Image 2 / Grok Imagine) ───────────────────────
 KIE_QUALITY_SUFFIX = (
     ", documentary workplace photography, candid unscripted office moment, "
     "photojournalistic editorial style, natural office lighting, "
@@ -951,7 +947,7 @@ def generate_alt_text_for(prompt: str, title: str, index: int = 0) -> str:
 def generate_image_free(prompt: str, index: int, width: int, height: int,
                         seed: int = None, model: str = "flux") -> bytes:
     """Generate via Pollinations.ai. model: 'flux' (default) or 'flux-realism' (photorealism LoRA)."""
-    enhanced = _build_image_prompt(prompt, QUALITY_SUFFIX)
+    enhanced = _build_image_prompt(prompt, _QUALITY_BLOCK)
     encoded = urllib.parse.quote(enhanced)
     negative_encoded = urllib.parse.quote(NEGATIVE_PROMPT)
     actual_seed = seed if seed is not None else index * 42
@@ -1167,176 +1163,6 @@ def generate_image_live(prompt: str, index: int = 1, width: int = 1500, height: 
         raise ValueError(f"{_payloads[_choice][0]} failed — check kie.ai/logs for details.")
     raise ValueError("GPT Image 2 and Grok Imagine both failed — check kie.ai/logs for details.")
 
-
-def generate_image_openai(prompt: str, index: int, width: int, height: int) -> bytes:
-    """Generate via OpenAI DALL-E 3 — photorealistic natural style."""
-    if not OPENAI_API_KEY:
-        st.warning("⚠️ OPENAI_API_KEY not set — falling back to Pollinations.")
-        return generate_image_free(prompt, index, width, height)
-
-    full_prompt = _build_image_prompt(prompt, _QUALITY_BLOCK)
-    st.write("🖼️ Generating via **OpenAI DALL-E 3** (natural style)...")
-    try:
-        r = requests.post(
-            "https://api.openai.com/v1/images/generations",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                     "Content-Type": "application/json"},
-            json={
-                "model": "dall-e-3",
-                "prompt": full_prompt,
-                "n": 1,
-                "size": "1792x1024",   # closest to 16:9 landscape
-                "quality": "hd",       # more detail
-                "style": "natural",    # photorealistic, NOT vivid/dramatic
-                "response_format": "url",
-            },
-            timeout=120,
-        )
-        if r.status_code in (400, 401, 403):
-            st.warning(f"⚠️ OpenAI error {r.status_code}: {r.json().get('error', {}).get('message', r.text[:200])}")
-            st.warning("Falling back to Pollinations.")
-            return generate_image_free(prompt, index, width, height)
-        r.raise_for_status()
-        resp = r.json()
-        # Show if DALL-E revised the prompt (useful for debugging)
-        revised = resp["data"][0].get("revised_prompt", "")
-        if revised:
-            st.caption(f"📝 DALL-E revised prompt: {revised[:200]}{'…' if len(revised) > 200 else ''}")
-        img_url = resp["data"][0]["url"]
-        raw = requests.get(img_url, timeout=60).content
-        img = PILImage.open(io.BytesIO(raw)).convert("RGB")
-        orig_w, orig_h = img.size
-        new_h = round(orig_h * 1500 / orig_w)
-        img = img.resize((1500, new_h), PILImage.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=95)
-        return buf.getvalue()
-    except Exception as e:
-        st.warning(f"⚠️ OpenAI generation failed ({e}) — falling back to Pollinations.")
-        return generate_image_free(prompt, index, width, height)
-
-
-def generate_image_gemini(prompt: str, index: int, width: int, height: int) -> bytes:
-    """Generate via Google Imagen 3 (falls back to Gemini 2.0 image gen if Imagen unavailable)."""
-    if not IMAGEN_API_KEY:
-        st.warning("⚠️ IMAGEN_API_KEY not set — falling back to Pollinations.")
-        return generate_image_free(prompt, index, width, height)
-
-    full_prompt = _build_image_prompt(prompt, _QUALITY_BLOCK)
-    st.write("🖼️ Generating via **Google Imagen 3**...")
-
-    try:
-        from google import genai as gai
-        from google.genai import types as gai_types
-
-        client = gai.Client(api_key=IMAGEN_API_KEY)
-
-        img_bytes = None
-
-        # Attempt 1 — Imagen 3 (best quality, needs billing enabled on key)
-        try:
-            resp = client.models.generate_images(
-                model="imagen-3.0-generate-001",
-                prompt=full_prompt,
-                config=gai_types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio="16:9",
-                    safety_filter_level="BLOCK_ONLY_HIGH",
-                    person_generation="ALLOW_ALL",
-                ),
-            )
-            img_bytes = resp.generated_images[0].image.image_bytes
-            st.write("✅ Imagen 3 success")
-        except Exception as e1:
-            st.write(f"⚠️ Imagen 3 failed: `{e1}`")
-
-        # Attempt 2 — gemini-2.0-flash-exp base model with IMAGE modality
-        # (image gen is a capability of the base model; dedicated -image-generation names need special access)
-        if not img_bytes:
-            try:
-                st.write("Trying `gemini-2.0-flash-exp` with IMAGE modality...")
-                resp2 = client.models.generate_content(
-                    model="gemini-2.0-flash-exp",
-                    contents=full_prompt,
-                    config=gai_types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"],
-                    ),
-                )
-                for part in resp2.candidates[0].content.parts:
-                    if hasattr(part, "inline_data") and part.inline_data:
-                        img_bytes = base64.b64decode(part.inline_data.data)
-                        break
-                if img_bytes:
-                    st.write("✅ Gemini 2.0 Flash exp (IMAGE modality) success")
-                else:
-                    raise ValueError("No image in response — model returned text only")
-            except Exception as e2:
-                st.write(f"⚠️ gemini-2.0-flash-exp IMAGE modality failed: `{e2}`")
-
-        # Attempt 3 — gemini-2.0-flash-preview-image-generation
-        if not img_bytes:
-            try:
-                st.write("Trying `gemini-2.0-flash-preview-image-generation`...")
-                resp3 = client.models.generate_content(
-                    model="gemini-2.0-flash-preview-image-generation",
-                    contents=full_prompt,
-                    config=gai_types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"],
-                    ),
-                )
-                for part in resp3.candidates[0].content.parts:
-                    if hasattr(part, "inline_data") and part.inline_data:
-                        img_bytes = base64.b64decode(part.inline_data.data)
-                        break
-                if img_bytes:
-                    st.write("✅ Gemini 2.0 Flash preview image generation success")
-                else:
-                    raise ValueError("No image in response")
-            except Exception as e3:
-                st.write(f"⚠️ gemini-2.0-flash-preview-image-generation failed: `{e3}`")
-
-        # Attempt 4 — gemini-2.0-flash-exp-image-generation (old dedicated name)
-        if not img_bytes:
-            try:
-                st.write("Trying `gemini-2.0-flash-exp-image-generation`...")
-                resp4 = client.models.generate_content(
-                    model="gemini-2.0-flash-exp-image-generation",
-                    contents=full_prompt,
-                    config=gai_types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"],
-                    ),
-                )
-                for part in resp4.candidates[0].content.parts:
-                    if hasattr(part, "inline_data") and part.inline_data:
-                        img_bytes = base64.b64decode(part.inline_data.data)
-                        break
-                if img_bytes:
-                    st.write("✅ Gemini 2.0 exp image generation success")
-                else:
-                    raise ValueError("No image in response")
-            except Exception as e4:
-                st.write(f"⚠️ gemini-2.0-flash-exp-image-generation failed: `{e4}`")
-
-        if not img_bytes:
-            raise ValueError(
-                "All 4 Google image generation attempts failed. "
-                "The API key likely needs: (1) Cloud billing enabled, "
-                "(2) 'Generative Language API' enabled in Google Cloud Console, "
-                "or (3) Imagen access via aistudio.google.com/prompts/new_chat → Image generation."
-            )
-
-        # Resize to target width proportionally
-        img = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
-        orig_w, orig_h = img.size
-        new_h = round(orig_h * width / orig_w)
-        img = img.resize((width, new_h), PILImage.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=95)
-        return buf.getvalue()
-
-    except Exception as e:
-        st.warning(f"⚠️ Google image generation failed: {e} — falling back to Pollinations.")
-        return generate_image_free(prompt, index, width, height)
 
 
 def _dispatch_image_gen(prompt: str, index: int, width: int, height: int,
