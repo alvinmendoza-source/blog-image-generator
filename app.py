@@ -893,23 +893,28 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
                 for i, d in enumerate(descs)]
 
 
-def generate_alt_text_for(prompt: str, title: str) -> str:
-    payload = {"model": "openai", "messages": [
+def generate_alt_text_for(prompt: str, title: str, index: int = 0) -> str:
+    seed = random.randint(10000, 999999)
+    payload = {"model": "openai", "seed": seed, "temperature": 0.8, "messages": [
         {"role": "system", "content": (
-            "You write short alt text for blog images. "
+            "You write unique, specific alt text for individual blog images. "
+            "Each alt text must describe what is visually happening in THAT specific image. "
             "Rules: 60-80 characters maximum, no quotes, no 'image of', no full sentences — "
-            "just a brief descriptive phrase using 1-2 keywords from the blog topic. "
-            "Example good output: 'IT technician reviewing network dashboard at desk' (51 chars). "
-            "Never exceed 80 characters."
+            "just a descriptive phrase based on the actual scene, using 1-2 topic keywords. "
+            "Example: 'IT technician reviewing network dashboard at standing desk' (59 chars). "
+            "Never exceed 80 characters. Never repeat the same phrase for different images."
         )},
-        {"role": "user", "content": f"Blog topic: {title}\nScene: {prompt[:150]}\n\nWrite the alt text:"}
+        {"role": "user", "content": (
+            f"Blog topic: {title}\n"
+            f"Image {index} specific scene: {prompt[:200]}\n\n"
+            f"Write alt text that describes THIS specific image (not a generic description):"
+        )}
     ], "private": True}
     for attempt in range(2):
         try:
             r = requests.post("https://text.pollinations.ai/openai", json=payload, timeout=30)
             r.raise_for_status()
             result = _pollinations_text(r.json()).strip().strip('"')
-            # Hard cap at 80 chars, trim at last word boundary
             if len(result) > 80:
                 result = result[:80].rsplit(' ', 1)[0]
             return result
@@ -2751,7 +2756,7 @@ def run_workflow(url: str, output_dir: Path,
             if sl.get("type") == "infographic":
                 alt = sl.get("title") or f"Infographic {i}"
             else:
-                alt = generate_alt_text_for(sl.get("description", ""), title)
+                alt = generate_alt_text_for(sl.get("description", ""), title, index=i)
                 st.write(f"[{i}] {alt}")
                 time.sleep(1)
             alt_texts.append(alt)
@@ -3084,7 +3089,7 @@ with tab_manual:
                 if sl.get("type") == "infographic":
                     alt = sl.get("title") or f"Infographic {i}"
                 else:
-                    alt = generate_alt_text_for(sl.get("description", ""), title)
+                    alt = generate_alt_text_for(sl.get("description", ""), title, index=i)
                     time.sleep(1)
                 alt_texts.append(alt)
             _ms.update(label="Alt texts ready ✓", state="complete")
@@ -3803,13 +3808,21 @@ with tab_auto:
                                   "uploaded": False, "error": str(e)})
                     continue
 
-            title, image_urls, results, _ = run_workflow(
-                url, output_dir,
-                wf_fallback=wf,
-                collection_id_fallback=collection_id,
-                item_id_fallback=item_id,
-                client_slug=matched_client,
-            )
+            try:
+                title, image_urls, results, _ = run_workflow(
+                    url, output_dir,
+                    wf_fallback=wf,
+                    collection_id_fallback=collection_id,
+                    item_id_fallback=item_id,
+                    client_slug=matched_client,
+                )
+            except Exception as _wf_err:
+                st.error(f"⛔ Generation failed for `{slug}`: {_wf_err}")
+                batch.append({"url": url, "slug": slug, "title": slug,
+                              "results": [], "image_urls": [], "wf_info": {},
+                              "uploaded": False, "error": str(_wf_err)})
+                st.session_state["batch"] = batch
+                continue
 
             # ── Composite main image + thumbnail ──────────────────────────────
             main_b, thumb_b = None, None
@@ -3838,6 +3851,7 @@ with tab_auto:
                             "site_name": site_name},
                 "uploaded": False,
             })
+            st.session_state["batch"] = batch
 
         st.session_state["batch"] = batch
 
