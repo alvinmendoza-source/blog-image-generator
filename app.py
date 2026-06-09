@@ -68,8 +68,12 @@ Bad examples:
 
 Each image must show a DIFFERENT activity — same topic, different angle of the work.
 
-━━ RULE 3 — PEOPLE ━━
-- White American or British Caucasian only — age 30–50, average everyday build
+━━ RULE 3 — PEOPLE VARIETY (required across all {count} images) ━━
+- Mix male and female workers across the {count} images — not all the same gender
+- Vary hair color each image: use blonde, brown, dark/black, greying — each image different
+- Vary apparent age: some look early 30s, some mid-40s
+- Be SPECIFIC in each description — write "a dark-haired woman in her early 40s" not just "a person"
+- White American or British Caucasian only
 - Eyes on screen/desk/colleague — NEVER at the camera
 - Natural posture: slight slouch, shifted weight — not perfectly upright
 - Plain business casual: navy polo, grey fleece, chinos, plain t-shirt — NO logos or company names
@@ -85,7 +89,7 @@ Each image must show a DIFFERENT activity — same topic, different angle of the
 - Optional second sentence: one specific on-screen or in-hand detail
 - NO photography words. NO dramatic adjectives (stunning, cinematic, dramatic, perfect, etc.)"""
 
-# ── Scene type pool — Gemini selects the most topic-relevant ones ─────────────
+# ── Scene type pool ───────────────────────────────────────────────────────────
 SCENE_TYPES = [
     ("SOLO WORKSTATION",
      "one person alone at a single desk with a laptop or monitor"),
@@ -94,7 +98,7 @@ SCENE_TYPES = [
     ("MEETING TABLE",
      "two to four people seated around a meeting room table in discussion"),
     ("STANDING DESK",
-     "one person standing at a height-adjustable desk looking at their screen"),
+     "one person standing at a height-adjustable standing desk looking at their screen"),
     ("HELP DESK COUNTER",
      "one person at a help desk counter with headset and two monitors"),
     ("OPEN PLAN WIDE",
@@ -110,7 +114,7 @@ SCENE_TYPES = [
     ("WHITEBOARD SESSION",
      "one or two people standing at a whiteboard with markers, no readable text on board"),
     ("RECEPTION AREA",
-     "one person at a front reception desk in a modern office lobby"),
+     "one person standing at a front reception desk in a modern office lobby"),
     ("COFFEE BREAK CHAT",
      "two people having a casual standing conversation near a coffee machine in a break room"),
     ("WINDOW SEAT LAPTOP",
@@ -129,18 +133,70 @@ SCENE_TYPES = [
      "one or two people working at a table on a sunny outdoor office terrace or rooftop"),
 ]
 
-def _scene_pool_text() -> str:
-    """Return all scene types as a bulleted list (shuffled) for Gemini to choose from."""
-    return "\n".join(f"  • {name}: {desc}" for name, desc in random.sample(SCENE_TYPES, len(SCENE_TYPES)))
+# Scenes grouped by visual category — used to enforce variety in each batch
+_SCENE_DESK = {   # person seated at individual computer/desk
+    "SOLO WORKSTATION", "DUAL MONITOR DESK", "WINDOW SEAT LAPTOP",
+    "LOUNGE AREA LAPTOP", "PHONE CALL AT DESK", "FOCUSED READING", "HELP DESK COUNTER",
+}
+_SCENE_GROUP = {  # group of people at table/meeting room
+    "MEETING TABLE", "SMALL CONFERENCE ROOM", "SIDE-BY-SIDE PAIR",
+}
+_SCENE_ACTIVE = { # standing or walking — clearly NOT seated at a desk
+    "WALKING CORRIDOR", "WHITEBOARD SESSION", "PRESENTATION SCREEN",
+    "OUTDOOR TERRACE", "STICKY NOTE WALL", "INFORMAL HUDDLE",
+    "COFFEE BREAK CHAT", "OPEN PLAN WIDE", "STANDING DESK", "RECEPTION AREA",
+}
+
+# Explicit cues added to env description so Gemini knows NOT to write a desk scene
+_ACTIVE_CUE = " ← PERSON IS STANDING OR WALKING — do NOT write a seated-at-desk scene"
+_GROUP_CUE  = " ← multiple people at a shared table, NOT individual desks"
 
 
 def _pick_required_scenes(count: int) -> list:
-    """Randomly pre-select `count` scenes so variety is guaranteed across generations."""
-    return random.sample(SCENE_TYPES, min(count, len(SCENE_TYPES)))
+    """Pick scenes with guaranteed visual diversity.
+    For count=4: 1 desk + 1 group/meeting + 2 active/standing/walking.
+    For count=3: 1 desk + 1 group + 1 active.
+    For count=2: 1 desk + 1 active.
+    Guarantees at least 50% of scenes are non-desk environments."""
+    desk   = [s for s in SCENE_TYPES if s[0] in _SCENE_DESK]
+    group  = [s for s in SCENE_TYPES if s[0] in _SCENE_GROUP]
+    active = [s for s in SCENE_TYPES if s[0] in _SCENE_ACTIVE]
+
+    picks = []
+    picks.append(random.choice(desk))    # always: 1 seated-desk scene
+    picks.append(random.choice(active))  # always: 1 standing/walking scene
+
+    if count >= 3:
+        picks.append(random.choice(group))   # 1 meeting/group scene
+
+    if count >= 4:
+        used = {s[0] for s in picks}
+        fresh_active = [s for s in active if s[0] not in used]
+        picks.append(random.choice(fresh_active if fresh_active else active))  # 2nd active
+
+    if count >= 5:
+        remaining = [s for s in SCENE_TYPES if s[0] not in {p[0] for p in picks}]
+        picks.extend(random.sample(remaining, min(count - 4, len(remaining))))
+
+    random.shuffle(picks)
+    return picks[:count]
 
 
 def _format_required_envs(scenes: list) -> str:
-    return "\n".join(f"  {i+1}. {name}: {desc}" for i, (name, desc) in enumerate(scenes))
+    lines = []
+    for i, (name, desc) in enumerate(scenes):
+        if name in _SCENE_ACTIVE:
+            cue = _ACTIVE_CUE
+        elif name in _SCENE_GROUP:
+            cue = _GROUP_CUE
+        else:
+            cue = ""
+        lines.append(f"  {i+1}. [{name}]: {desc}{cue}")
+    return "\n".join(lines)
+
+
+def _scene_pool_text() -> str:
+    return "\n".join(f"  • {name}: {desc}" for name, desc in random.sample(SCENE_TYPES, len(SCENE_TYPES)))
 
 
 # ── Pollinations (used in free mode) ──────────────────────────────────────────
@@ -244,6 +300,21 @@ KIE_NEGATIVE_PROMPT = NEGATIVE_PROMPT + (
     "messy cables, tangled cables, spaghetti wiring, chaotic wiring, cable chaos, "
     "tangled wires, rats nest cables, disorganized cabling, "
 )
+
+
+# ── Image prompt builder — puts [ENV LABEL] FIRST so image model sees it before style tags ──
+_ENV_LABEL_RE = re.compile(r'^\[([A-Z][A-Z\s]+)\]\s*')
+
+def _build_image_prompt(scene_desc: str, quality_suffix: str) -> str:
+    """Restructure the final prompt so [ENV LABEL] is the very first token.
+    Without this, image models default to 'person at desk' because 'Documentary workplace
+    photography' is an early strong signal. Putting [WALKING CORRIDOR] first overrides it."""
+    m = _ENV_LABEL_RE.match(scene_desc)
+    if m:
+        label = m.group(0).strip()          # e.g. "[WALKING CORRIDOR]"
+        rest  = scene_desc[m.end():].strip()
+        return f"{label} Documentary-style candid workplace photography: {rest}{quality_suffix}"
+    return f"Documentary-style candid workplace photography of {scene_desc}{quality_suffix}"
 
 
 SKIP_SRC_KEYWORDS = ["author", "profile", "avatar", "logo", "icon", "signature", "headshot"]
@@ -609,7 +680,7 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
         with st.expander("🔍 Debug — Scene descriptions sent to image generator", expanded=False):
             for idx, p in enumerate(prompts, 1):
                 st.markdown(f"**Scene {idx}:** {p}")
-                final = "Documentary-style candid workplace photography of " + p + KIE_QUALITY_SUFFIX
+                final = _build_image_prompt(p, KIE_QUALITY_SUFFIX)
                 st.caption(f"Final prompt ({len(final)} chars): {final[:300]}{'…' if len(final)>300 else ''}")
         return prompts
     except Exception as e:
@@ -819,7 +890,7 @@ def generate_alt_text_for(prompt: str, title: str) -> str:
 def generate_image_free(prompt: str, index: int, width: int, height: int,
                         seed: int = None, model: str = "flux") -> bytes:
     """Generate via Pollinations.ai. model: 'flux' (default) or 'flux-realism' (photorealism LoRA)."""
-    enhanced = "Documentary-style candid workplace photography of " + prompt + QUALITY_SUFFIX
+    enhanced = _build_image_prompt(prompt, QUALITY_SUFFIX)
     encoded = urllib.parse.quote(enhanced)
     negative_encoded = urllib.parse.quote(NEGATIVE_PROMPT)
     actual_seed = seed if seed is not None else index * 42
@@ -933,7 +1004,7 @@ def generate_image_live(prompt: str, index: int = 1, width: int = 1500, height: 
     Normal model failure — raises error (no Pollinations fallback)
     """
     headers     = {"Authorization": f"Bearer {KIE_API_KEY}", "Content-Type": "application/json"}
-    full_prompt = "Documentary-style candid workplace photography of " + prompt + KIE_QUALITY_SUFFIX
+    full_prompt = _build_image_prompt(prompt, KIE_QUALITY_SUFFIX)
 
     def _exhausted(msg: str) -> bool:
         return any(k in str(msg).lower() for k in ("credit", "balance", "quota", "insufficient", "limit"))
@@ -1063,7 +1134,7 @@ def generate_image_openai(prompt: str, index: int, width: int, height: int) -> b
         st.warning("⚠️ OPENAI_API_KEY not set — falling back to Pollinations.")
         return generate_image_free(prompt, index, width, height)
 
-    full_prompt = "Documentary-style candid workplace photography of " + prompt + _QUALITY_BLOCK
+    full_prompt = _build_image_prompt(prompt, _QUALITY_BLOCK)
     st.write("🖼️ Generating via **OpenAI DALL-E 3** (natural style)...")
     try:
         r = requests.post(
@@ -1111,7 +1182,7 @@ def generate_image_gemini(prompt: str, index: int, width: int, height: int) -> b
         st.warning("⚠️ IMAGEN_API_KEY not set — falling back to Pollinations.")
         return generate_image_free(prompt, index, width, height)
 
-    full_prompt = "Documentary-style candid workplace photography of " + prompt + _QUALITY_BLOCK
+    full_prompt = _build_image_prompt(prompt, _QUALITY_BLOCK)
     st.write("🖼️ Generating via **Google Imagen 3**...")
 
     try:
