@@ -848,7 +848,7 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
         for _attempt in range(3):
             try:
                 resp = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-2.0-flash",
                     contents=user_msg,
                     config=gt.GenerateContentConfig(
                         system_instruction=system_instr,
