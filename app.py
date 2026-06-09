@@ -632,32 +632,50 @@ def parse_bullet_list(raw: str, count: int) -> list:
     return prompts[:count]
 
 
+def _gemini_text(system: str, user: str, max_tokens: int = 200, temperature: float = 0.8) -> str | None:
+    """Thin Gemini wrapper. Returns stripped text or None on any error."""
+    if not GOOGLE_API_KEY:
+        return None
+    try:
+        from google import genai
+        from google.genai import types as gt
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash-lite",
+            contents=user,
+            config=gt.GenerateContentConfig(
+                system_instruction=system,
+                max_output_tokens=max_tokens,
+                temperature=temperature,
+            )
+        )
+        return (resp.text or "").strip()
+    except Exception:
+        return None
+
+
 def generate_prompts_free(title: str, content: str, count: int) -> list:
-    required_envs = _format_required_envs(_pick_required_scenes(count))
-    system = SYSTEM_PROMPT_TEMPLATE.format(count=count, required_envs=required_envs)
-    trimmed = content[:4000] + ("..." if len(content) > 4000 else "")
-    payload = {"model": "openai", "messages": [
-        {"role": "system", "content": system},
-        {"role": "user", "content": f"Blog Title:\n{title}\n\nWhole Blog:\n{trimmed}"}
-    ], "private": True}
-    for attempt in range(3):
-        try:
-            r = requests.post("https://text.pollinations.ai/openai", json=payload, timeout=120)
-            r.raise_for_status()
-            raw = _pollinations_text(r.json())
-            if not raw:
-                raise ValueError("Empty Pollinations response")
-            prompts = parse_bullet_list(raw.strip(), count)
-            # ── Debug: show what text AI generated so user can verify quality ──
-            with st.expander("🔍 Debug — Scene descriptions sent to image generator", expanded=False):
-                for idx, p in enumerate(prompts, 1):
-                    st.markdown(f"**Scene {idx}:** {p}")
-                    final = "Documentary-style candid workplace photography of " + p + _QUALITY_BLOCK
-                    st.caption(f"Final Pollinations prompt ({len(final)} chars): {final[:300]}{'…' if len(final)>300 else ''}")
-            return prompts
-        except Exception as e:
-            if attempt < 2: time.sleep(5)
-            else: raise
+    """Template-based fallback — no external API needed."""
+    scenes = _pick_required_scenes(count)
+    env_descs = {
+        "SOLO WORKSTATION": "alone at a desk reviewing a configuration dashboard",
+        "DUAL MONITOR DESK": "at a dual-monitor workstation analyzing reports",
+        "MEETING TABLE": "at a conference table discussing project requirements",
+        "WALKING CORRIDOR": "walking through an open office corridor with a tablet",
+        "WHITEBOARD SESSION": "at a whiteboard mapping out a solution diagram",
+        "PRESENTATION SCREEN": "presenting slides to colleagues on a large screen",
+        "SMALL CONFERENCE ROOM": "in a small meeting room reviewing documentation",
+        "STANDING DESK": "at a standing desk reviewing documents",
+        "OPEN PLAN WIDE": "in an open-plan office collaborating with teammates",
+        "INFORMAL HUDDLE": "in an informal standing huddle discussing next steps",
+    }
+    prompts = []
+    for scene in scenes:
+        activity = env_descs.get(scene, "working on tasks")
+        prompts.append(f"[{scene}] An IT professional {activity} related to {title[:50]}.")
+    while len(prompts) < count:
+        prompts.append(f"[SOLO WORKSTATION] An IT professional at a desk working on {title[:50]}.")
+    return prompts[:count]
 
 
 def generate_prompts_live(title: str, content: str, count: int) -> list:
@@ -694,7 +712,7 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
     except Exception as e:
         err = str(e)
         if any(k in err for k in ("429", "RESOURCE_EXHAUSTED", "quota", "rate limit", "exceeded")):
-            st.warning("⚠️ Gemini quota exhausted — falling back to Pollinations for descriptions.")
+            st.info("ℹ️ Gemini quota reached — using template descriptions.")
             return generate_prompts_free(title, content, count)
         raise
 
@@ -894,32 +912,25 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
 
 
 def generate_alt_text_for(prompt: str, title: str, index: int = 0) -> str:
-    seed = random.randint(10000, 999999)
-    payload = {"model": "openai", "seed": seed, "temperature": 0.8, "messages": [
-        {"role": "system", "content": (
-            "You write unique, specific alt text for individual blog images. "
-            "Each alt text must describe what is visually happening in THAT specific image. "
-            "Rules: 60-80 characters maximum, no quotes, no 'image of', no full sentences — "
-            "just a descriptive phrase based on the actual scene, using 1-2 topic keywords. "
-            "Example: 'IT technician reviewing network dashboard at standing desk' (59 chars). "
-            "Never exceed 80 characters. Never repeat the same phrase for different images."
-        )},
-        {"role": "user", "content": (
-            f"Blog topic: {title}\n"
-            f"Image {index} specific scene: {prompt[:200]}\n\n"
-            f"Write alt text that describes THIS specific image (not a generic description):"
-        )}
-    ], "private": True}
-    for attempt in range(2):
-        try:
-            r = requests.post("https://text.pollinations.ai/openai", json=payload, timeout=30)
-            r.raise_for_status()
-            result = _pollinations_text(r.json()).strip().strip('"')
-            if len(result) > 80:
-                result = result[:80].rsplit(' ', 1)[0]
-            return result
-        except Exception:
-            if attempt == 0: time.sleep(3)
+    system = (
+        "You write unique, specific alt text for individual blog images. "
+        "Each alt text must describe what is visually happening in THAT specific image. "
+        "Rules: 60-80 characters maximum, no quotes, no 'image of', no full sentences — "
+        "just a descriptive phrase based on the actual scene, using 1-2 topic keywords. "
+        "Example: 'IT technician reviewing network dashboard at standing desk' (59 chars). "
+        "Never exceed 80 characters. Never repeat the same phrase for different images."
+    )
+    user = (
+        f"Blog topic: {title}\n"
+        f"Image {index} specific scene: {prompt[:200]}\n\n"
+        "Write alt text that describes THIS specific image (not a generic description):"
+    )
+    result = _gemini_text(system, user, max_tokens=50, temperature=0.9)
+    if result:
+        result = result.strip('"')
+        if len(result) > 80:
+            result = result[:80].rsplit(' ', 1)[0]
+        return result
     return prompt[:75].rsplit(' ', 1)[0]
 
 
@@ -952,79 +963,58 @@ def generate_image_free(prompt: str, index: int, width: int, height: int,
 
 
 def generate_prompt_variation(original_prompt: str, title: str) -> str:
-    """Ask AI to write a completely different image scene for the same blog topic.
-    Picks a random environment from SCENE_TYPES to guarantee visual variety.
-    Output fills the [SUBJECT/ACTION inside ENVIRONMENT] slot — 'Documentary-style candid workplace photography of' is prepended automatically."""
+    """Ask Gemini to write a completely different image scene for the same blog topic."""
     env_name, env_desc = random.choice(SCENE_TYPES)
-    payload = {
-        "model": "openai",
-        "messages": [
-            {"role": "system", "content": (
-                "Write a plain scene description for a documentary office photo generator. "
-                "Your output fills this slot: 'Documentary-style candid workplace photography of [YOUR OUTPUT]'\n"
-                "⚠️ Do NOT write 'Documentary-style', 'candid', or any photography/camera term — added automatically.\n\n"
-                f"REQUIRED ENVIRONMENT: [{env_name}] — {env_desc}\n"
-                f"Your description MUST start with [{env_name}] exactly. "
-                "This label is how the image generator knows which physical space to render.\n\n"
-                "ACTIVITY RULE: Show a SPECIFIC task directly related to the blog topic. "
-                "Not 'working at a computer' — describe the exact thing the person is doing.\n\n"
-                "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
-                "Eyes on screen/desk/colleague — NEVER at the camera. "
-                "Plain business casual — NO logos or company names on clothing.\n\n"
-                "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
-                "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
-                "Write something COMPLETELY DIFFERENT from the original scene — different environment, different number of people, different activity.\n\n"
-                f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
-            )},
-            {"role": "user", "content": (
-                f"Blog topic: {title}\n"
-                f"Original scene (write something completely different): {original_prompt}\n\n"
-                "Write the new scene:"
-            )}
-        ],
-        "private": True
-    }
-    try:
-        r = requests.post("https://text.pollinations.ai/openai", json=payload, timeout=60)
-        r.raise_for_status()
-        new_prompt = _pollinations_text(r.json()).strip().lstrip("•-* ")
-        return new_prompt if len(new_prompt) > 30 else original_prompt
-    except Exception:
-        return original_prompt
+    system_var = (
+        "Write a plain scene description for a documentary office photo. "
+        "Your output fills: 'Documentary-style candid workplace photography of [YOUR OUTPUT]'\n"
+        "⚠️ Do NOT write 'Documentary-style', 'candid', or any photography term — added automatically.\n\n"
+        f"REQUIRED ENVIRONMENT: [{env_name}] — {env_desc}\n"
+        f"Your description MUST start with [{env_name}] exactly. "
+        "This label is how the image generator knows which physical space to render.\n\n"
+        "ACTIVITY RULE: Show a SPECIFIC task directly related to the blog topic. "
+        "Not 'working at a computer' — describe the exact thing the person is doing.\n\n"
+        "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
+        "Eyes on screen/desk/colleague — NEVER at the camera. "
+        "Plain business casual — NO logos or company names on clothing.\n\n"
+        "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
+        "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
+        "Write something COMPLETELY DIFFERENT from the original scene — different environment, different number of people, different activity.\n\n"
+        f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
+    )
+    user_var = (
+        f"Blog topic: {title}\n"
+        f"Original scene (write something completely different): {original_prompt}\n\n"
+        "Write the new scene:"
+    )
+    result = _gemini_text(system_var, user_var, max_tokens=150, temperature=1.2)
+    if result and len(result) > 30:
+        return result.lstrip("•-* ")
+    return original_prompt
 
 
 def _generate_cover_scene(title: str) -> str:
     """Generate a cover scene description directly tied to the blog title."""
     env_name, env_desc = random.choice(SCENE_TYPES)
-    payload = {
-        "model": "openai",
-        "messages": [
-            {"role": "system", "content": (
-                "Write a plain scene description for a documentary office photo. "
-                "Your output fills: 'Documentary-style candid workplace photography of [YOUR OUTPUT]'\n"
-                "⚠️ Do NOT write 'Documentary-style', 'candid', or any photography term — added automatically.\n\n"
-                f"REQUIRED ENVIRONMENT: [{env_name}] — {env_desc}\n"
-                f"Your description MUST start with [{env_name}].\n\n"
-                "ACTIVITY RULE: The scene must DIRECTLY show the core activity from the blog title. "
-                "Describe the exact task — not 'working at a computer.'\n\n"
-                "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
-                "Eyes on screen/desk/colleague — NEVER at the camera. "
-                "Plain business casual — NO logos or company names on clothing.\n\n"
-                "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
-                "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
-                f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
-            )},
-            {"role": "user", "content": f"Blog title: {title}\n\nWrite the cover image scene:"}
-        ],
-        "private": True
-    }
-    try:
-        r = requests.post("https://text.pollinations.ai/openai", json=payload, timeout=60)
-        r.raise_for_status()
-        prompt = _pollinations_text(r.json()).strip().lstrip("•-* ")
-        return prompt if len(prompt) > 30 else title
-    except Exception:
-        return title
+    system = (
+        "Write a plain scene description for a documentary office photo. "
+        "Your output fills: 'Documentary-style candid workplace photography of [YOUR OUTPUT]'\n"
+        "⚠️ Do NOT write 'Documentary-style', 'candid', or any photography term — added automatically.\n\n"
+        f"REQUIRED ENVIRONMENT: [{env_name}] — {env_desc}\n"
+        f"Your description MUST start with [{env_name}].\n\n"
+        "ACTIVITY RULE: The scene must DIRECTLY show the core activity from the blog title. "
+        "Describe the exact task — not 'working at a computer.'\n\n"
+        "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
+        "Eyes on screen/desk/colleague — NEVER at the camera. "
+        "Plain business casual — NO logos or company names on clothing.\n\n"
+        "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
+        "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
+        f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
+    )
+    result = _gemini_text(system, f"Blog title: {title}\n\nWrite the cover image scene:", max_tokens=150, temperature=1.0)
+    if result and len(result) > 30:
+        return result.lstrip("•-* ")
+    return title
 
 
 def _generate_cover_bg(title: str, content_prompts: list) -> bytes:
@@ -3418,8 +3408,16 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
                     if mkey:
                         jbytes, ext = _to_jpeg(main_bytes)
                         murl = wf.upload_asset(site_id, jbytes, f"main_image.{ext}")
-                        img_update[mkey] = {"url": murl, "alt": blog_title}
-                        st.write(f"✓ Main image uploaded → `{mkey}`")
+                        main_alt = _gemini_text(
+                            "Write alt text for a blog featured image. Max 80 characters. "
+                            "No quotes. Format: '<topic> blog featured image' or similar short phrase.",
+                            f"Blog title: {blog_title}",
+                            max_tokens=30, temperature=0.5,
+                        ) or f"{blog_title[:70]} — featured image"
+                        if len(main_alt) > 80:
+                            main_alt = main_alt[:80].rsplit(' ', 1)[0]
+                        img_update[mkey] = {"url": murl, "alt": main_alt}
+                        st.write(f"✓ Main image uploaded → `{mkey}` | alt: `{main_alt}`")
                     else:
                         st.warning(f"⚠️ No image field found for main image. Fields: {list(img_fields.keys())}")
 
@@ -3427,8 +3425,16 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
                     if tkey:
                         jbytes, ext = _to_jpeg(thumb_bytes)
                         turl = wf.upload_asset(site_id, jbytes, f"thumbnail.{ext}")
-                        img_update[tkey] = {"url": turl, "alt": blog_title}
-                        st.write(f"✓ Thumbnail uploaded → `{tkey}`")
+                        thumb_alt = _gemini_text(
+                            "Write alt text for a blog thumbnail image. Max 80 characters. "
+                            "No quotes. Format: '<topic> blog thumbnail' or similar short phrase.",
+                            f"Blog title: {blog_title}",
+                            max_tokens=30, temperature=0.5,
+                        ) or f"{blog_title[:70]} — thumbnail"
+                        if len(thumb_alt) > 80:
+                            thumb_alt = thumb_alt[:80].rsplit(' ', 1)[0]
+                        img_update[tkey] = {"url": turl, "alt": thumb_alt}
+                        st.write(f"✓ Thumbnail uploaded → `{tkey}` | alt: `{thumb_alt}`")
                     else:
                         st.warning(f"⚠️ No image field found for thumbnail. Fields: {list(img_fields.keys())}")
 
