@@ -717,16 +717,25 @@ FORMAT:
 ════════════════════════════
 INFOGRAPHIC DECISION (critical)
 ════════════════════════════
-MINIMUM 1, MAXIMUM 2 infographic slots per batch — always include at least 1, never more than 2.
+INFOGRAPHIC COUNT: 0, 1, or 2 — based on what the content actually supports. Never force one if the content doesn't have it.
 
-MSP/IT blogs always have content suitable for at least one infographic. Choose 2 only when the blog has clearly distinct structured content sections that each map well to a different type.
+Use 1 infographic when the blog has ANY of:
+  • A list of tips, action items, best practices, or recommendations (even 3–4 items qualifies)
+  • A process, how-to, or numbered steps (even loosely structured)
+  • Any statistics, percentages, or before/after comparisons
+  • A section that clearly summarizes key takeaways
+
+Use 2 infographics when the blog has two clearly distinct structured sections — each mapping to a DIFFERENT type (e.g. a steps section AND a stats section).
+
+Use 0 infographics ONLY when the blog is purely narrative — an opinion piece, a story, or a case study with no lists, no data, no steps, and no recommendations at all.
+
+Most MSP/IT blog posts qualify for at least 1. Default to 1 when in doubt.
 
 How to pick the type:
-  • Blog has numbered phases, steps, or a process → "steps"
-  • Blog mentions specific percentages, stats, or dollar figures → "stats"
-  • Blog gives tips, action items, best practices, or a "how to" list → "checklist"
-  • Blog compares options, before/after, or has measurable improvements → "bar_chart"
-  • If unsure → default to "checklist" (summarize 5–6 key takeaways from the blog)
+  • Tips, recommendations, best practices, or "what to do" lists → "checklist"
+  • Process, how-to, phases, or numbered steps → "steps"
+  • Stats, percentages, dollar amounts, or time savings → "stats"
+  • Before/after, option comparisons, or measurable improvements → "bar_chart"
 
 Infographic slots skip the required-environments list.
 
