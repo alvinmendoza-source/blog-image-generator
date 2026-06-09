@@ -39,51 +39,51 @@ INTER_FONT_PATH = ASSETS_DIR / "Inter.ttf"
 MAIN_TPL  = {"w": 920, "h": 613, "logo": ASSETS_DIR / "logo_panel_main.png",  "tx": 34, "ty": 307, "tw": 290, "fsz": 24}
 THUMB_TPL = {"w": 736, "h": 560, "logo": ASSETS_DIR / "logo_panel_thumb.png", "tx": 33, "ty": 280, "tw": 227, "fsz": 19}
 
-SYSTEM_PROMPT_TEMPLATE = """You write scene descriptions for a documentary workplace photo generator. The generator creates images indistinguishable from real DSLR office photography.
+SYSTEM_PROMPT_TEMPLATE = """You write scene descriptions for a documentary workplace photo generator.
 
-⚠️ CRITICAL FORMAT RULE: Do NOT start your descriptions with "Documentary-style", "candid workplace photography", or any camera/photography terminology. That prefix and all camera/lighting details are added automatically by the generator. Write ONLY the scene content: who + what they are doing + where exactly.
+⚠️ Do NOT write "Documentary-style", "candid workplace photography", or any camera/photography term. That prefix is added automatically. Write ONLY the scene content.
 
-HIGHEST PRIORITY — REALISTIC HUMANS (NON-NEGOTIABLE):
-- ALL people must be white American or British Caucasian. No South Asian, East Asian, Indian, Hispanic, or Middle Eastern features. Ever.
-- Age 30–50, average everyday build. Real faces — subtle asymmetry, visible pores, natural wrinkles, slight under-eye detail. NOT model-perfect.
-- Candid body language: eyes on monitor/desk/colleague — NEVER at the camera
-- Natural hands: resting on desk, around a mug, or out of frame — never posed or highlighted
-- Believable posture: slight slouch, shifted weight, imperfect — not perfectly upright
+━━ RULE 1 — ENVIRONMENT LABEL (start every description with this) ━━
+Each description MUST begin with the assigned environment label in brackets.
+This label is the primary visual instruction to the image generator — it MUST appear first.
 
-PHOTOGRAPHY STYLE:
-- Documentary, photojournalistic, editorial corporate — unscripted, naturally captured
-- NEVER staged, posed, stock-photo composed, or symmetrically framed
-- Feel: a real photographer quietly walked into the office and shot this
-
-ENVIRONMENT (lived-in, authentic):
-- Cables on desks, coffee cups, water bottles, a jacket on a chair back, a phone face-down
-- Monitors show dark dashboards or terminal screens — no readable text
-- Plain business casual clothing: navy polo, grey fleece, chinos, plain t-shirt — NO logos, brand names, or company names on any clothing
-- SERVER ROOMS / NETWORK CLOSETS: cables must be mostly organized — bundled with velcro ties, routed through cable managers, with only a few natural loose loops or slight slack. NOT a tangled chaotic mess, NOT a showroom-perfect installation. Think: a real IT team maintains this room regularly.
-
-BANNED WORDS — never write these:
-cinematic, dramatic, golden, moody, stunning, glowing, vibrant, misty, hazy, vintage, bokeh,
-blurry, soft light, rim light, perfect, flawless, symmetrical, posed, stock photo,
-whiteboard with text, readable signs, hologram, neon, glowing code, padlock, sci-fi
-
-REQUIRED ENVIRONMENTS — already pre-selected for variety (use in order, one per image):
+ASSIGNED ENVIRONMENTS — use in order, one per image:
 {required_envs}
 
-⚠️ Do NOT choose or swap environments — they are already assigned.
-Your ONLY job is to write what the people are DOING in each environment based on the blog topic.
+Each bullet must start exactly like: • [LABEL] who + activity + detail
+Example: • [MEETING TABLE] Two IT managers seated at a conference table reviewing a printed network diagram, one pointing to a section on the page.
 
-CONTENT RELEVANCE RULE (most important):
-- Each image must show people doing something DIRECTLY related to the blog topic.
-- If the blog is about cybersecurity: show someone reviewing security alerts, a tech checking firewall logs, a team discussing a security incident, etc.
-- If the blog is about cloud backup: show someone configuring cloud software, a tech managing storage, two people reviewing backup reports, etc.
-- Do NOT write generic "working at a computer" scenes — the activity must reflect the blog subject.
-- Each image must show a DIFFERENT activity — not just the same task in a different room.
-- Be creative connecting the topic to the assigned environment — even an "unusual" pairing (e.g. cloud backup blog + walking corridor) is fine: show someone discussing a backup plan mid-walk, reading an alert on a phone, etc.
+⚠️ Never skip or rename the label. The image generator will produce the WRONG location without it.
 
-FORMAT — STRICT:
-- Output ONLY a bulleted list of exactly {count} descriptions. Nothing else. No headers, no environment labels.
-- Each description = 1–2 plain sentences: who + what specific task (related to blog topic) + which environment + one lived-in detail.
-- Write like a photo caption. Plain and mundane. No adjectives like stunning, perfect, dramatic."""
+━━ RULE 2 — CONTENT-SPECIFIC ACTIVITY (most important) ━━
+Every scene must show a SPECIFIC activity that directly illustrates the blog topic.
+Do NOT write "working at a computer" or "looking at a screen" — describe the exact task.
+
+Good examples for a Cloud Backup blog:
+  ✓ [STANDING DESK] A sysadmin standing at a raised desk running a test restore job, the screen showing a backup progress bar at 74%.
+  ✓ [MEETING TABLE] Three IT techs around a conference table reviewing printed cloud storage usage reports, one circling numbers with a pen.
+Bad examples:
+  ✗ A man working on his laptop in an open office. (generic — no topic connection)
+  ✗ Two people at a desk looking at a screen. (no environment label, no specific activity)
+
+Each image must show a DIFFERENT activity — same topic, different angle of the work.
+
+━━ RULE 3 — PEOPLE ━━
+- White American or British Caucasian only — age 30–50, average everyday build
+- Eyes on screen/desk/colleague — NEVER at the camera
+- Natural posture: slight slouch, shifted weight — not perfectly upright
+- Plain business casual: navy polo, grey fleece, chinos, plain t-shirt — NO logos or company names
+
+━━ RULE 4 — ENVIRONMENT DETAILS ━━
+- Monitors show dark dashboards or terminal windows — no readable text
+- Desk surfaces: keyboard, mouse, papers, a phone face-down — plain and lived-in
+- NO food, NO drinks, NO coffee cups, NO water bottles on desks
+
+━━ OUTPUT FORMAT ━━
+- Exactly {count} bullet points (• or -). Nothing else.
+- Each bullet: [ENV LABEL] + who + specific blog-related activity + inside the exact location
+- Optional second sentence: one specific on-screen or in-hand detail
+- NO photography words. NO dramatic adjectives (stunning, cinematic, dramatic, perfect, etc.)"""
 
 # ── Scene type pool — Gemini selects the most topic-relevant ones ─────────────
 SCENE_TYPES = [
@@ -582,7 +582,7 @@ def generate_prompts_free(title: str, content: str, count: int) -> list:
                 for idx, p in enumerate(prompts, 1):
                     st.markdown(f"**Scene {idx}:** {p}")
                     final = "Documentary-style candid workplace photography of " + p + _QUALITY_BLOCK
-                    st.caption(f"Final Flux prompt ({len(final)} chars): {final[:300]}{'…' if len(final)>300 else ''}")
+                    st.caption(f"Final Pollinations prompt ({len(final)} chars): {final[:300]}{'…' if len(final)>300 else ''}")
             return prompts
         except Exception as e:
             if attempt < 2: time.sleep(5)
@@ -605,12 +605,12 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
             )
         )
         prompts = parse_bullet_list(resp.text.strip(), count)
-        # ── Debug: show what Gemini generated ──
+        # ── Debug: show what Gemini generated + the actual final prompt sent to image API ──
         with st.expander("🔍 Debug — Scene descriptions sent to image generator", expanded=False):
             for idx, p in enumerate(prompts, 1):
                 st.markdown(f"**Scene {idx}:** {p}")
-                final = "Documentary-style candid workplace photography of " + p + _QUALITY_BLOCK
-                st.caption(f"Final Flux prompt ({len(final)} chars): {final[:300]}{'…' if len(final)>300 else ''}")
+                final = "Documentary-style candid workplace photography of " + p + KIE_QUALITY_SUFFIX
+                st.caption(f"Final prompt ({len(final)} chars): {final[:300]}{'…' if len(final)>300 else ''}")
         return prompts
     except Exception as e:
         if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
@@ -844,37 +844,33 @@ def generate_image_free(prompt: str, index: int, width: int, height: int,
 
 def generate_prompt_variation(original_prompt: str, title: str) -> str:
     """Ask AI to write a completely different image scene for the same blog topic.
-    Output fills the [SUBJECT/ACTION inside ENVIRONMENT] slot of the master prompt template —
-    the generator prepends 'Documentary-style candid workplace photography of' automatically."""
+    Picks a random environment from SCENE_TYPES to guarantee visual variety.
+    Output fills the [SUBJECT/ACTION inside ENVIRONMENT] slot — 'Documentary-style candid workplace photography of' is prepended automatically."""
+    env_name, env_desc = random.choice(SCENE_TYPES)
     payload = {
         "model": "openai",
         "messages": [
             {"role": "system", "content": (
                 "Write a plain scene description for a documentary office photo generator. "
-                "Your output fills this slot: 'Documentary-style candid workplace photography of [YOUR OUTPUT HERE]'\n"
-                "⚠️ Do NOT start your output with 'Documentary-style', 'candid workplace photography', or any photography term. Write ONLY the scene content.\n\n"
-                "MANDATORY RULES — non-negotiable:\n"
-                "- ALL people are white American or British Caucasian, age 30-50, average build\n"
-                "- Real imperfect faces: subtle asymmetry, visible pores, natural wrinkles — NOT model-perfect\n"
-                "- Candid body language: eyes on screen/desk/colleague, NEVER at camera\n"
-                "- Natural hands: resting on desk, around a mug, or out of frame\n"
-                "- Believable posture: slight slouch, not perfectly upright\n"
-                "- Lived-in office: cables, coffee cups, water bottles, jacket on chair — authentic mess\n"
-                "- Soft ambient daylight from windows — NOT dramatic, NOT moody, NOT studio-lit\n"
-                "- Different scene and different number of people from the original\n"
-                "- Plain business casual clothing only: navy polo, grey fleece, chinos — NO logos or company names on clothing\n\n"
-                "BANNED WORDS — never use these:\n"
-                "cinematic, dramatic, golden, moody, stunning, glowing, vibrant, misty, hazy, "
-                "vintage, bokeh, blurry, soft light, rim light, perfect, flawless, symmetrical, "
-                "hologram, neon, glowing code, whiteboard with text, readable signs\n\n"
-                "FORMAT: Write 1–2 plain sentences. Sentence 1 = [white Caucasian person/people] + [action] + inside [exact location]. "
-                "Sentence 2 (optional) = one lived-in environment detail.\n"
-                "Output ONLY the scene description. No labels, no intro, no 'Documentary-style' prefix — that is added automatically."
+                "Your output fills this slot: 'Documentary-style candid workplace photography of [YOUR OUTPUT]'\n"
+                "⚠️ Do NOT write 'Documentary-style', 'candid', or any photography/camera term — added automatically.\n\n"
+                f"REQUIRED ENVIRONMENT: [{env_name}] — {env_desc}\n"
+                f"Your description MUST start with [{env_name}] exactly. "
+                "This label is how the image generator knows which physical space to render.\n\n"
+                "ACTIVITY RULE: Show a SPECIFIC task directly related to the blog topic. "
+                "Not 'working at a computer' — describe the exact thing the person is doing.\n\n"
+                "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
+                "Eyes on screen/desk/colleague — NEVER at the camera. "
+                "Plain business casual — NO logos or company names on clothing.\n\n"
+                "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
+                "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
+                "Write something COMPLETELY DIFFERENT from the original scene — different environment, different number of people, different activity.\n\n"
+                f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
             )},
             {"role": "user", "content": (
                 f"Blog topic: {title}\n"
-                f"Original scene (write something different): {original_prompt}\n\n"
-                "Write the scene description:"
+                f"Original scene (write something completely different): {original_prompt}\n\n"
+                "Write the new scene:"
             )}
         ],
         "private": True
@@ -890,22 +886,24 @@ def generate_prompt_variation(original_prompt: str, title: str) -> str:
 
 def _generate_cover_scene(title: str) -> str:
     """Generate a cover scene description directly tied to the blog title."""
+    env_name, env_desc = random.choice(SCENE_TYPES)
     payload = {
         "model": "openai",
         "messages": [
             {"role": "system", "content": (
                 "Write a plain scene description for a documentary office photo. "
-                "The scene must visually represent the EXACT topic from the blog title — not a generic office scene.\n"
-                "Your output fills this slot: 'Documentary-style candid workplace photography of [YOUR OUTPUT HERE]'\n"
-                "⚠️ Do NOT start with 'Documentary-style', 'candid', or any photography term.\n\n"
-                "MANDATORY RULES:\n"
-                "- Scene must DIRECTLY show the core activity described in the blog title\n"
-                "- ALL people are white American or British Caucasian, age 30-50, average build\n"
-                "- Candid: eyes on screen/desk/colleague, NEVER at camera\n"
-                "- Plain business casual only: NO logos, no brand names on clothing\n"
-                "- Soft ambient office daylight — NOT dramatic\n\n"
-                "FORMAT: 1-2 plain sentences. [white Caucasian person/people] + [activity matching blog title] + inside [location]. "
-                "Output ONLY the scene description."
+                "Your output fills: 'Documentary-style candid workplace photography of [YOUR OUTPUT]'\n"
+                "⚠️ Do NOT write 'Documentary-style', 'candid', or any photography term — added automatically.\n\n"
+                f"REQUIRED ENVIRONMENT: [{env_name}] — {env_desc}\n"
+                f"Your description MUST start with [{env_name}].\n\n"
+                "ACTIVITY RULE: The scene must DIRECTLY show the core activity from the blog title. "
+                "Describe the exact task — not 'working at a computer.'\n\n"
+                "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
+                "Eyes on screen/desk/colleague — NEVER at the camera. "
+                "Plain business casual — NO logos or company names on clothing.\n\n"
+                "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
+                "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
+                f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
             )},
             {"role": "user", "content": f"Blog title: {title}\n\nWrite the cover image scene:"}
         ],
