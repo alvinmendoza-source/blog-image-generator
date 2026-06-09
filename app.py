@@ -478,7 +478,7 @@ def check_anatomy(img_bytes: bytes) -> tuple[bool, str]:
         try:
             import google.generativeai as genai
             genai.configure(api_key=GOOGLE_API_KEY)
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.0-flash-lite")
             img_part = {"mime_type": "image/jpeg", "data": b64}
             resp = model.generate_content([_ANATOMY_CHECK_PROMPT, img_part])
             content = resp.text.strip()
@@ -808,6 +808,20 @@ PHOTO DESCRIPTION RULES (type="photo")
 Total slots: {count}""".strip()
 
 
+def _detect_infographic_signals(content: str) -> list:
+    """Scan blog content for signals that warrant an infographic."""
+    signals = []
+    if re.search(r'<[uo]l\b', content, re.I) or re.search(r'^\s*[-•*]\s+\S', content, re.M) or re.search(r'^\s*\d+\.\s+[A-Z]', content, re.M):
+        signals.append("bullet/numbered lists")
+    if re.search(r'\bstep\s+\d+\b|\bphase\s+\d+\b|\b(step|phase|stage)\s*[:#]', content, re.I):
+        signals.append("numbered steps/phases")
+    if re.search(r'\d+\s*%|\$\s*\d+|\d+x\s+(?:faster|more|better|less)|\bROI\b|\bsavings\b', content, re.I):
+        signals.append("statistics or percentages")
+    if re.search(r'\bbest practice|\btip\s+#?\d|\brecommendation|\bkey takeaway|\bhow to\b|\bchecklist\b', content, re.I):
+        signals.append("tips/recommendations/checklist")
+    return signals
+
+
 def _plan_image_slots(title: str, content: str, count: int) -> list:
     """Plan all image slots in one Gemini call — returns list of slot dicts.
     Gracefully falls back to all-photo mode on any failure."""
@@ -828,15 +842,24 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
             .replace("{count}", str(count))
             .replace("{required_envs}", required_envs)
         )
+        ig_signals = _detect_infographic_signals(content)
+        signal_note = ""
+        if ig_signals:
+            signal_note = (
+                f"\n\nCONTENT SIGNALS DETECTED: {', '.join(ig_signals)}. "
+                "Based on these signals, this blog QUALIFIES for at least 1 infographic. "
+                "You MUST include at least 1 infographic slot — do not output all-photo."
+            )
+        user_msg = f"Blog Title:\n{title}\n\nBlog Content:\n{content[:5000]}{signal_note}"
         for _attempt in range(3):
             try:
                 resp = client.models.generate_content(
                     model="gemini-2.0-flash-lite",
-                    contents=f"Blog Title:\n{title}\n\nBlog Content:\n{content[:5000]}",
+                    contents=user_msg,
                     config=gt.GenerateContentConfig(
                         system_instruction=system_instr,
                         max_output_tokens=4000,
-                        temperature=0.9,
+                        temperature=0.3,
                     )
                 )
                 break
@@ -877,9 +900,9 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
                 raise ValueError(f"Slot {s.get('slot')} photo missing description")
         n_ig = sum(1 for s in slots if s.get("type") == "infographic")
         photo_count = count - n_ig
-        label = (f"🔍 Debug — Slot plan: {photo_count} photo{'s' if photo_count != 1 else ''}"
-                 + (f", {n_ig} infographic{'s' if n_ig != 1 else ''}" if n_ig else ""))
-        with st.expander(label, expanded=False):
+        label = (f"🔍 Slot plan: {photo_count} photo{'s' if photo_count != 1 else ''}"
+                 + (f", {n_ig} infographic{'s' if n_ig != 1 else ''}" if n_ig else ", 0 infographics"))
+        with st.expander(label, expanded=True):
             for s in slots:
                 if s["type"] == "photo":
                     st.markdown(f"**Slot {s['slot']} 📷 PHOTO:** {(s.get('description') or '')[:180]}")
@@ -1249,17 +1272,30 @@ class WebflowClient:
         return collections[0] if collections else None
 
     def find_item_by_slug(self, collection_id: str, slug: str):
+        all_items = []
         offset = 0
         while True:
             data = self._get(f"/collections/{collection_id}/items",
                              params={"limit": 100, "offset": offset})
             items = data.get("items", [])
+            all_items.extend(items)
+            # Pass 1: exact match
             for item in items:
                 if item.get("fieldData", {}).get("slug") == slug:
                     return item
             if len(items) < 100:
                 break
             offset += 100
+        # Pass 2: case-insensitive exact match
+        slug_lower = slug.lower()
+        for item in all_items:
+            if (item.get("fieldData", {}).get("slug") or "").lower() == slug_lower:
+                return item
+        # Pass 3: fuzzy — slug is a prefix/suffix of CMS slug or vice versa
+        for item in all_items:
+            cms_slug = (item.get("fieldData", {}).get("slug") or "").lower()
+            if cms_slug.startswith(slug_lower) or slug_lower.startswith(cms_slug):
+                return item
         return None
 
     def is_published(self, item: dict) -> bool:
@@ -2510,15 +2546,15 @@ def run_workflow(url: str, output_dir: Path,
                 except Exception as e2:
                     s.update(label="Failed to fetch from CMS", state="error")
                     st.error(str(e2))
-                    st.stop()
+                    raise
             else:
                 s.update(label="Failed to fetch blog", state="error")
                 st.error(str(e))
-                st.stop()
+                raise
         except Exception as e:
             s.update(label="Failed to fetch blog", state="error")
             st.error(str(e))
-            st.stop()
+            raise
 
     # Step 2: Analyze existing images
     st.subheader("Existing Image Analysis")
@@ -2575,7 +2611,7 @@ def run_workflow(url: str, output_dir: Path,
         except Exception as e:
             _st.update(label="Slot planning failed", state="error")
             st.error(str(e))
-            st.stop()
+            raise
 
     # Step 3b: Alt texts
     with st.status("Generating alt texts...", expanded=True) as _st:
@@ -3616,8 +3652,9 @@ with tab_auto:
                     _canon = _soup.find("link", rel="canonical")
                     if _canon and _canon.get("href"):
                         _cu = _canon["href"].rstrip("/")
-                        if "/blog/" in _cu:
-                            return _cu, _cu.split("/")[-1]
+                        _cslug = _cu.split("/")[-1]
+                        if _cslug:
+                            return _cu, _cslug
                     # 2. Fall back to the final URL after redirects
                     _fu = _r.url.rstrip("/")
                     return _fu, _fu.split("/")[-1]
