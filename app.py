@@ -830,17 +830,32 @@ PHOTO DESCRIPTION RULES (type="photo")
 Total slots: {count}""".strip()
 
 
-def _detect_infographic_signals(content: str) -> list:
-    """Scan blog content for signals that warrant an infographic."""
+_STRUCTURED_IT_TOPICS = [
+    "patch", "backup", "disaster", "recovery", "monitoring", "security",
+    "compliance", "migration", "deployment", "firewall", "endpoint",
+    "network", "cloud", "cyber", "ransomware", "phishing", "mfa",
+    "zero trust", "vpn", "siem", "soc", "ndr", "edr", "xdr",
+    "best practice", "guide", "how to", "checklist", "tips", "steps",
+    "process", "setup", "configure", "implement", "manage", "protect",
+]
+
+
+def _detect_infographic_signals(content: str, title: str = "") -> list:
+    """Scan blog content AND title for signals that warrant an infographic."""
     signals = []
-    if re.search(r'<[uo]l\b', content, re.I) or re.search(r'^\s*[-•*]\s+\S', content, re.M) or re.search(r'^\s*\d+\.\s+[A-Z]', content, re.M):
-        signals.append("bullet/numbered lists")
+    # Content signals
+    if re.search(r'<[uo]l\b', content, re.I) or re.search(r'^\s*[•*]\s+\S', content, re.M) or re.search(r'^\s*\d+\.\s+\S', content, re.M):
+        signals.append("bullet/numbered lists in content")
     if re.search(r'\bstep\s+\d+\b|\bphase\s+\d+\b|\b(step|phase|stage)\s*[:#]', content, re.I):
         signals.append("numbered steps/phases")
     if re.search(r'\d+\s*%|\$\s*\d+|\d+x\s+(?:faster|more|better|less)|\bROI\b|\bsavings\b', content, re.I):
         signals.append("statistics or percentages")
-    if re.search(r'\bbest practice|\btip\s+#?\d|\brecommendation|\bkey takeaway|\bhow to\b|\bchecklist\b', content, re.I):
+    if re.search(r'\bbest practice|\brecommendation|\bkey takeaway|\bchecklist\b', content, re.I):
         signals.append("tips/recommendations/checklist")
+    # Title signals — MSP/IT topics that inherently have structure even if content is thin
+    title_lower = title.lower()
+    if any(t in title_lower for t in _STRUCTURED_IT_TOPICS):
+        signals.append(f"structured IT/MSP topic: '{title}'")
     return signals
 
 
@@ -864,13 +879,13 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
             .replace("{count}", str(count))
             .replace("{required_envs}", required_envs)
         )
-        ig_signals = _detect_infographic_signals(content)
+        ig_signals = _detect_infographic_signals(content, title)
         signal_note = ""
         if ig_signals:
             signal_note = (
                 f"\n\nCONTENT SIGNALS DETECTED: {', '.join(ig_signals)}. "
-                "Based on these signals, this blog QUALIFIES for at least 1 infographic. "
-                "You MUST include at least 1 infographic slot — do not output all-photo."
+                "This blog QUALIFIES for at least 1 infographic. "
+                "You MUST include at least 1 infographic slot — choosing all-photo is incorrect."
             )
         user_msg = f"Blog Title:\n{title}\n\nBlog Content:\n{content[:5000]}{signal_note}"
         for _attempt in range(3):
@@ -881,7 +896,7 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
                     config=gt.GenerateContentConfig(
                         system_instruction=system_instr,
                         max_output_tokens=4000,
-                        temperature=0.3,
+                        temperature=0.9,
                     )
                 )
                 break
