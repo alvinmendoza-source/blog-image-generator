@@ -24,7 +24,8 @@
     "thumb_tw": 227,
     "thumb_fsz": 19,
     "thumb_font_family": "Inter",
-    "thumb_font_style": "Medium"
+    "thumb_font_style": "Medium",
+    "webflow_api_key": "ed3dd00979b0b38309560a36c4270fb38e677d8d94d8761bb68481891f7873c5"
   },
   "guru": {
     "name": "GURU",
@@ -400,5 +401,42 @@
       255
     ],
     "webflow_api_key": "c41dc14cf781c330e2af822fcb0f057522f7a2388ef6ca17f3f542de6aabbb7d"
+  },
+  "net-i": {
+    "name": "Net-i",
+    "main": "77:5",
+    "thumb": "77:6",
+    "main_w": 949,
+    "main_h": 546,
+    "overlay_main": "77:3",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 32,
+    "main_ty": 383,
+    "main_tw": 464,
+    "main_fsz": 23,
+    "main_font_family": "Inter",
+    "main_font_style": "Semi Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 949,
+    "thumb_h": 345,
+    "overlay_thumb": "77:2",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 33,
+    "thumb_ty": 272,
+    "thumb_tw": 464,
+    "thumb_fsz": 23,
+    "thumb_font_family": "Inter",
+    "thumb_font_style": "Semi Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }
