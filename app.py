@@ -1984,6 +1984,10 @@ _IG = {
     "bgray":  (245, 248, 252),
     "border": (208, 218, 230),
     "shadow": (192, 204, 218),
+    "ink":     (26,  34,  48),
+    "muted":   (91, 107, 126),
+    "hdr_sub": (190, 205, 225),
+    "track":   (228, 236, 244),
     "step_colors": [
         (21,  101, 192),
         (0,   137, 123),
@@ -2043,145 +2047,142 @@ def _ig_card(draw, x0, y0, x1, y1, radius=10):
     draw.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=_IG["white"])
 
 
-def _render_steps_infographic(spec: dict, w: int, h: int) -> bytes:
+# ── Per-client brand color → infographic palette ──
+def _hex_to_rgb(hx: str) -> tuple:
+    hx = (hx or "").strip().lstrip("#")
+    if len(hx) == 3:
+        hx = "".join(c * 2 for c in hx)
+    try:
+        return tuple(int(hx[i:i + 2], 16) for i in (0, 2, 4))
+    except Exception:
+        return (26, 58, 92)
+
+
+def _lum(c: tuple) -> float:
+    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
+
+
+def _darken(c: tuple, f: float) -> tuple:
+    return tuple(max(0, min(255, int(v * f))) for v in c)
+
+
+def _ig_palette(brand_hex: str) -> tuple:
+    """Return (accent_rgb, header_bg_rgb) from a client brand color.
+    accent = the brand color (used for circles/bars/checks/top-strips);
+    header_bg = a darkened brand shade guaranteed dark enough for white text."""
+    accent = _hex_to_rgb(brand_hex)
+    if _lum(accent) > 190:                       # too light to read on white
+        accent = _darken(accent, 0.6)
+    header = _darken(accent, 0.40)
+    _g = 0
+    while _lum(header) > 72 and _g < 6:           # ensure white header text is legible
+        header = _darken(header, 0.8)
+        _g += 1
+    return accent, header
+
+
+def _ig_header(d, w: int, h: int, accent: tuple, header_bg: tuple,
+               title: str, subtitle: str, pad: int) -> int:
+    """Draw the branded header bar (left-aligned title + subtitle, accent underline).
+    Returns the y where the body content should start (header height)."""
+    title_size = int(h * 0.052)
+    sub_size   = int(h * 0.025)
+    tf = _ig_font(title_size, bold=True)
+    tlines = _ig_wrap(title or "Infographic", tf, w - 2 * pad)[:2]
+    sub = (subtitle or "")[:120]
+    line_h = int(title_size * 1.12)
+    hdr_h = int(h * 0.045) + len(tlines) * line_h + (int(sub_size * 1.7) if sub else 0) + int(h * 0.028)
+    hdr_h = max(hdr_h, int(h * 0.15))
+    d.rectangle([0, 0, w, hdr_h], fill=header_bg)
+    d.rectangle([0, hdr_h - 5, w, hdr_h], fill=accent)
+    ty = int(h * 0.045)
+    for ln in tlines:
+        d.text((pad, ty), ln, font=tf, fill=_IG["white"])
+        ty += line_h
+    if sub:
+        sf = _ig_font(sub_size)
+        d.text((pad, ty + 2), sub, font=sf, fill=_IG["hdr_sub"])
+    return hdr_h
+
+
+def _render_steps_infographic(spec: dict, w: int, h: int,
+                              accent: tuple, header_bg: tuple) -> bytes:
     img = PILImage.new("RGB", (w, h), _IG["bgray"])
     d = ImageDraw.Draw(img)
-    HDR, SUBHDR, FTR = 84, 42, 66
+    pad = int(w * 0.025)
+    body_top = _ig_header(d, w, h, accent, header_bg,
+                          spec.get("title") or "Process Overview",
+                          spec.get("subtitle") or "", pad)
 
-    # Header
-    d.rectangle([0, 0, w, HDR], fill=_IG["navy"])
-    d.rectangle([0, HDR - 4, w, HDR], fill=_IG["blue"])
-    title = (spec.get("title") or "Process Overview")[:60]
-    tf = _ig_font(43, bold=True)
-    tw = tf.getbbox(title)[2]
-    d.text(((w - tw) // 2, (HDR - 43) // 2), title, font=tf, fill=_IG["white"])
-
-    # Subheader
-    d.rectangle([0, HDR, w, HDR + SUBHDR], fill=_IG["navy2"])
-    subtitle = (spec.get("subtitle") or "")[:100]
-    if subtitle:
-        sf = _ig_font(17)
-        sw = sf.getbbox(subtitle)[2]
-        d.text(((w - sw) // 2, HDR + (SUBHDR - 17) // 2),
-               subtitle, font=sf, fill=(182, 212, 248))
-
-    # Footer
-    FY = h - FTR
-    d.rectangle([0, FY, w, h], fill=_IG["navy"])
-    d.rectangle([0, FY, w, FY + 4], fill=_IG["blue"])
-    footer = (spec.get("footer") or "")[:120]
-    if footer:
-        ff = _ig_font(15)
-        flines = _ig_wrap(footer, ff, w - 100)
-        fy = FY + (FTR - len(flines) * 21) // 2 + 3
-        for line in flines:
-            lw = ff.getbbox(line)[2]
-            d.text(((w - lw) // 2, fy), line, font=ff, fill=(182, 212, 248))
-            fy += 21
-
-    # Steps
-    items = (spec.get("items") or [])[:7]
+    items = (spec.get("items") or [])[:6]
     n = len(items)
     if not n:
         return _ig_bytes(img)
 
-    TOP = HDR + SUBHDR + 16
-    BOT = FY - 14
-    PAD, GAP = 34, 14
-    card_w = max(80, (w - 2 * PAD - (n - 1) * GAP) // n)
-    CIR_R = 23
+    footer = (spec.get("footer") or "")[:120]
+    ftr_h = int(h * 0.075) if footer else 0
+    top = body_top + int(h * 0.03)
+    bot = h - int(h * 0.03) - ftr_h
+    gap = int(w * 0.014)
+    card_w = max(60, (w - 2 * pad - (n - 1) * gap) // n)
+    cir = max(20, min(int(card_w * 0.15), 34))
 
     for i, item in enumerate(items):
-        cx = PAD + i * (card_w + GAP)
-        color = _IG["step_colors"][i % len(_IG["step_colors"])]
+        cx = pad + i * (card_w + gap)
         ctr = cx + card_w // 2
+        _ig_card(d, cx, top, cx + card_w, bot, radius=14)
+        d.rounded_rectangle([cx, top, cx + card_w, top + 7], radius=14, fill=accent)
 
-        # Card
-        _ig_card(d, cx, TOP, cx + card_w, BOT)
-        # Colored top accent strip
-        d.rounded_rectangle([cx, TOP, cx + card_w, TOP + 6],
-                             radius=10, fill=color)
+        # Number circle
+        cy = top + int(h * 0.055) + cir
+        d.ellipse([ctr - cir, cy - cir, ctr + cir, cy + cir], fill=accent)
+        num = str(item.get("number", i + 1))
+        d.text((ctr, cy), num, font=_ig_font(int(cir * 1.0), bold=True),
+               fill=_IG["white"], anchor="mm")
 
-        # Number circle — outer ring + fill
-        cy_cir = TOP + 22 + CIR_R
-        lighter = tuple(min(255, c + 75) for c in color)
-        d.ellipse([ctr - CIR_R - 4, cy_cir - CIR_R - 4,
-                   ctr + CIR_R + 4, cy_cir + CIR_R + 4], fill=lighter)
-        d.ellipse([ctr - CIR_R, cy_cir - CIR_R,
-                   ctr + CIR_R, cy_cir + CIR_R], fill=color)
-        num = f"{item.get('number', i + 1):02d}"
-        nf = _ig_font(17, bold=True)
-        nw = nf.getbbox(num)[2]
-        d.text((ctr - nw // 2, cy_cir - 10), num, font=nf, fill=_IG["white"])
+        # Title
+        tf = _ig_font(int(h * 0.027), bold=True)
+        ty = cy + cir + int(h * 0.03)
+        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}",
+                           tf, card_w - int(card_w * 0.14))[:2]:
+            d.text((ctr, ty), ln, font=tf, fill=_IG["ink"], anchor="ma")
+            ty += int(h * 0.033)
 
-        # Arrow dots to next step
-        if i < n - 1:
-            ax = cx + card_w + GAP // 2
-            for dx in (-4, 0, 4):
-                d.ellipse([ax + dx - 3, cy_cir - 3,
-                           ax + dx + 3, cy_cir + 3], fill=_IG["ltgray"])
-            d.polygon([(ax + 9, cy_cir), (ax + 3, cy_cir - 6),
-                       (ax + 3, cy_cir + 6)], fill=_IG["ltgray"])
-
-        # Step title
-        st_text = (item.get("title") or f"Step {i+1}")[:36]
-        stf = _ig_font(13, bold=True)
-        st_y = cy_cir + CIR_R + 9
-        for line in _ig_wrap(st_text, stf, card_w - 14)[:2]:
-            lw = stf.getbbox(line)[2]
-            d.text((ctr - lw // 2, st_y), line, font=stf, fill=color)
-            st_y += 17
-
-        # Divider
-        sep_y = st_y + 4
-        d.line([cx + 12, sep_y, cx + card_w - 12, sep_y], fill=_IG["border"], width=1)
-
-        # Faded watermark number fills lower white space tastefully
-        wm_str = f"{item.get('number', i + 1):02d}"
-        wm_size = min(170, card_w - 10)
-        wm_f = _ig_font(wm_size, bold=True)
-        wm_w = wm_f.getbbox(wm_str)[2]
-        wm_h = wm_f.getbbox(wm_str)[3]
-        bg_r, bg_g, bg_b = _IG["bgray"]
-        c_r, c_g, c_b = color
-        faint = (int(bg_r * 0.91 + c_r * 0.09),
-                 int(bg_g * 0.91 + c_g * 0.09),
-                 int(bg_b * 0.91 + c_b * 0.09))
-        wm_y = BOT - wm_h - 10
-        if wm_y > sep_y + 20:
-            d.text((ctr - wm_w // 2, wm_y), wm_str, font=wm_f, fill=faint)
-
-        # Bullet points (drawn after watermark so they appear on top)
-        bf = _ig_font(11)
-        by = sep_y + 7
+        # Bullets
+        bf = _ig_font(int(h * 0.0195))
+        by = ty + int(h * 0.012)
+        line_h = int(h * 0.027)
         for pt in (item.get("points") or [])[:4]:
-            for pl in _ig_wrap(f"• {(pt or '')[:55]}", bf, card_w - 16)[:2]:
-                if by + 13 > BOT - 12:
+            for pl in _ig_wrap("•  " + (pt or "")[:60], bf,
+                               card_w - int(card_w * 0.12))[:2]:
+                if by + line_h > bot - int(h * 0.02):
                     break
-                d.text((cx + 9, by), pl, font=bf, fill=_IG["black"])
-                by += 13
-            if by + 13 > BOT - 12:
-                break
+                d.text((cx + int(card_w * 0.08), by), pl, font=bf, fill=_IG["muted"])
+                by += line_h
+
+    if footer:
+        fy = h - ftr_h
+        d.rectangle([0, fy, w, h], fill=header_bg)
+        d.rectangle([0, fy, w, fy + 4], fill=accent)
+        ff = _ig_font(int(h * 0.021))
+        flines = _ig_wrap(footer, ff, w - 2 * pad)[:2]
+        lh = int(h * 0.028)
+        fyy = fy + (ftr_h - len(flines) * lh) // 2
+        for ln in flines:
+            d.text((w // 2, fyy), ln, font=ff, fill=_IG["hdr_sub"], anchor="ma")
+            fyy += lh
 
     return _ig_bytes(img)
 
 
-def _render_stats_infographic(spec: dict, w: int, h: int) -> bytes:
+def _render_stats_infographic(spec: dict, w: int, h: int,
+                              accent: tuple, header_bg: tuple) -> bytes:
     img = PILImage.new("RGB", (w, h), _IG["bgray"])
     d = ImageDraw.Draw(img)
-    HDR = 98
-
-    d.rectangle([0, 0, w, HDR], fill=_IG["navy"])
-    d.rectangle([0, HDR - 4, w, HDR], fill=_IG["blue"])
-    title = (spec.get("title") or "Key Statistics")[:60]
-    tf = _ig_font(43, bold=True)
-    tw = tf.getbbox(title)[2]
-    d.text(((w - tw) // 2, 13), title, font=tf, fill=_IG["white"])
-    subtitle = (spec.get("subtitle") or "")[:100]
-    if subtitle:
-        sf = _ig_font(17)
-        sw = sf.getbbox(subtitle)[2]
-        d.text(((w - sw) // 2, 60), subtitle, font=sf, fill=(182, 212, 248))
+    pad = int(w * 0.025)
+    body_top = _ig_header(d, w, h, accent, header_bg,
+                          spec.get("title") or "Key Statistics",
+                          spec.get("subtitle") or "", pad)
 
     stats = (spec.get("stats") or [])[:4]
     n = len(stats)
@@ -2190,58 +2191,50 @@ def _render_stats_infographic(spec: dict, w: int, h: int) -> bytes:
 
     cols = 2 if n == 4 else min(n, 3)
     rows = (n + cols - 1) // cols
-    pad, gap = 42, 22
+    gap = int(w * 0.018)
+    top = body_top + int(h * 0.04)
+    bot = h - int(h * 0.05)
     cell_w = (w - 2 * pad - (cols - 1) * gap) // cols
-    cell_h = (h - HDR - 2 * pad - (rows - 1) * gap) // rows
+    cell_h = (bot - top - (rows - 1) * gap) // rows
 
     for idx, stat in enumerate(stats):
         row, col = divmod(idx, cols)
         cx = pad + col * (cell_w + gap)
-        cy = HDR + pad + row * (cell_h + gap)
-        color = _IG["step_colors"][idx % len(_IG["step_colors"])]
+        cy = top + row * (cell_h + gap)
+        _ig_card(d, cx, cy, cx + cell_w, cy + cell_h, radius=16)
+        d.rounded_rectangle([cx, cy, cx + cell_w, cy + 8], radius=16, fill=accent)
 
-        _ig_card(d, cx, cy, cx + cell_w, cy + cell_h, radius=12)
-        d.rounded_rectangle([cx, cy, cx + cell_w, cy + 8],
-                             radius=12, fill=color)
+        val = str(stat.get("value") or "—")[:12]
+        vsize = int(cell_h * 0.42)
+        vf = _ig_font(vsize, bold=True)
+        while vf.getbbox(val)[2] > cell_w - int(cell_w * 0.12) and vsize > 22:
+            vsize -= 3
+            vf = _ig_font(vsize, bold=True)
 
-        val = str(stat.get("value") or "—")[:10]
-        fs = min(64, max(38, 64 - max(0, len(val) - 4) * 7))
-        vf = _ig_font(fs, bold=True)
-        vw = vf.getbbox(val)[2]
-        vh = vf.getbbox(val)[3]
-
-        label = (stat.get("label") or "")[:80]
-        lf = _ig_font(14)
-        llines = _ig_wrap(label, lf, cell_w - 28)[:3]
-        # Vertically center value + label block within card (below accent bar)
-        inner_h = vh + 12 + len(llines) * 20
-        val_y = cy + 8 + max(14, (cell_h - 8 - inner_h) // 2)
-        d.text((cx + (cell_w - vw) // 2, val_y), val, font=vf, fill=color)
-        ly = val_y + vh + 12
+        label = (stat.get("label") or "")[:90]
+        lf = _ig_font(int(h * 0.024))
+        lh = int(h * 0.030)
+        llines = _ig_wrap(label, lf, cell_w - int(cell_w * 0.14))[:3]
+        block_h = vsize + int(h * 0.02) + len(llines) * lh
+        vy = cy + 8 + max(int(h * 0.02), (cell_h - 8 - block_h) // 2)
+        d.text((cx + cell_w // 2, vy + vsize // 2), val, font=vf,
+               fill=header_bg, anchor="mm")
+        ly = vy + vsize + int(h * 0.02)
         for ll in llines:
-            lw = lf.getbbox(ll)[2]
-            d.text((cx + (cell_w - lw) // 2, ly), ll, font=lf, fill=_IG["gray"])
-            ly += 20
+            d.text((cx + cell_w // 2, ly), ll, font=lf, fill=_IG["muted"], anchor="ma")
+            ly += lh
 
     return _ig_bytes(img)
 
 
-def _render_checklist_infographic(spec: dict, w: int, h: int) -> bytes:
+def _render_checklist_infographic(spec: dict, w: int, h: int,
+                                  accent: tuple, header_bg: tuple) -> bytes:
     img = PILImage.new("RGB", (w, h), _IG["bgray"])
     d = ImageDraw.Draw(img)
-    HDR = 98
-
-    d.rectangle([0, 0, w, HDR], fill=_IG["navy"])
-    d.rectangle([0, HDR - 4, w, HDR], fill=_IG["blue"])
-    title = (spec.get("title") or "Checklist")[:60]
-    tf = _ig_font(43, bold=True)
-    tw = tf.getbbox(title)[2]
-    d.text(((w - tw) // 2, 13), title, font=tf, fill=_IG["white"])
-    subtitle = (spec.get("subtitle") or "")[:100]
-    if subtitle:
-        sf = _ig_font(17)
-        sw = sf.getbbox(subtitle)[2]
-        d.text(((w - sw) // 2, 60), subtitle, font=sf, fill=(182, 212, 248))
+    pad = int(w * 0.03)
+    body_top = _ig_header(d, w, h, accent, header_bg,
+                          spec.get("title") or "Checklist",
+                          spec.get("subtitle") or "", pad)
 
     items = (spec.get("items") or [])[:8]
     n = len(items)
@@ -2250,106 +2243,92 @@ def _render_checklist_infographic(spec: dict, w: int, h: int) -> bytes:
 
     cols = 2 if n > 4 else 1
     per_col = (n + cols - 1) // cols
-    pad_x, pad_y = 56, 24
-    col_w = (w - 2 * pad_x - (cols - 1) * 48) // cols
-    avail_h = h - HDR - 2 * pad_y
-    row_h = avail_h // per_col
-    item_f = _ig_font(16)
-    box = 26
+    col_gap = int(w * 0.025)
+    top = body_top + int(h * 0.045)
+    bot = h - int(h * 0.045)
+    col_w = (w - 2 * pad - (cols - 1) * col_gap) // cols
+    row_gap = int(h * 0.022)
+    row_h = (bot - top - (per_col - 1) * row_gap) // per_col
+    cf = _ig_font(int(h * 0.028))
+    ck = max(18, min(int(row_h * 0.42), 40))
 
     for idx, item in enumerate(items):
         col, row = divmod(idx, per_col)
-        cx = pad_x + col * (col_w + 48)
-        row_ctr = HDR + pad_y + row * row_h + row_h // 2
-        card_top = row_ctr - row_h // 2 + 5
-        card_bot = row_ctr + row_h // 2 - 5
-        color = _IG["step_colors"][idx % len(_IG["step_colors"])]
-
-        _ig_card(d, cx - 8, card_top, cx + col_w + 8, card_bot, radius=8)
-
-        # Checkbox
-        bx_y = row_ctr - box // 2
-        d.rounded_rectangle([cx, bx_y, cx + box, bx_y + box],
-                             radius=5, fill=color)
-        ck = [(cx + 5, bx_y + 13), (cx + 11, bx_y + 19), (cx + 22, bx_y + 8)]
-        d.line(ck, fill=_IG["white"], width=3)
-
-        # Text
-        item_text = (item or "")[:70]
-        txt_lines = _ig_wrap(item_text, item_f, col_w - box - 16)[:2]
-        ty = row_ctr - (len(txt_lines) * 20) // 2
-        for tl in txt_lines:
-            d.text((cx + box + 12, ty), tl, font=item_f, fill=_IG["black"])
-            ty += 22
+        cx = pad + col * (col_w + col_gap)
+        ry = top + row * (row_h + row_gap)
+        _ig_card(d, cx, ry, cx + col_w, ry + row_h, radius=12)
+        cyc = ry + row_h // 2
+        chx = cx + int(col_w * 0.04)
+        d.ellipse([chx, cyc - ck // 2, chx + ck, cyc + ck // 2], fill=accent)
+        d.line([(int(chx + ck * 0.27), int(cyc)),
+                (int(chx + ck * 0.43), int(cyc + ck * 0.22)),
+                (int(chx + ck * 0.75), int(cyc - ck * 0.25))],
+               fill=_IG["white"], width=max(2, ck // 8))
+        tx = chx + ck + int(col_w * 0.045)
+        lines = _ig_wrap((item or "")[:90], cf, cx + col_w - tx - int(col_w * 0.04))[:2]
+        ty = cyc - (len(lines) * int(h * 0.033)) // 2
+        for ln in lines:
+            d.text((tx, ty), ln, font=cf, fill=_IG["ink"])
+            ty += int(h * 0.033)
 
     return _ig_bytes(img)
 
 
-def _render_bar_chart_infographic(spec: dict, w: int, h: int) -> bytes:
+def _render_bar_chart_infographic(spec: dict, w: int, h: int,
+                                  accent: tuple, header_bg: tuple) -> bytes:
     img = PILImage.new("RGB", (w, h), _IG["bgray"])
     d = ImageDraw.Draw(img)
-    HDR = 98
+    pad = int(w * 0.03)
+    body_top = _ig_header(d, w, h, accent, header_bg,
+                          spec.get("title") or "Comparison",
+                          spec.get("subtitle") or "", pad)
 
-    d.rectangle([0, 0, w, HDR], fill=_IG["navy"])
-    d.rectangle([0, HDR - 4, w, HDR], fill=_IG["blue"])
-    title = (spec.get("title") or "Comparison")[:60]
-    tf = _ig_font(43, bold=True)
-    tw = tf.getbbox(title)[2]
-    d.text(((w - tw) // 2, 13), title, font=tf, fill=_IG["white"])
-    subtitle = (spec.get("subtitle") or "")[:100]
-    if subtitle:
-        sf = _ig_font(17)
-        sw = sf.getbbox(subtitle)[2]
-        d.text(((w - sw) // 2, 60), subtitle, font=sf, fill=(182, 212, 248))
-
-    bars = (spec.get("bars") or [])[:7]
+    bars = (spec.get("bars") or [])[:6]
     n = len(bars)
     if not n:
         return _ig_bytes(img)
 
-    max_v = max(float(b.get("value", 0)) for b in bars) or 1
-    lf = _ig_font(15, bold=True)
-    vf = _ig_font(15)
-    label_w = min(290, max((lf.getbbox(b.get("label", ""))[2] for b in bars), default=0) + 18)
-    pad_x, pad_y = 44, 20
-    bar_x = pad_x + label_w + 12
-    bar_max_w = w - bar_x - pad_x - 80
-    chart_top = HDR + pad_y
-    chart_h = h - chart_top - pad_y
-    bar_h = min(54, (chart_h - (n - 1) * 12) // n)
-    gap = max(8, (chart_h - n * bar_h) // (n + 1))
+    def _fval(b):
+        try:
+            return float(b.get("value", 0))
+        except Exception:
+            return 0.0
+    max_v = max((_fval(b) for b in bars), default=1) or 1
+
+    lf = _ig_font(int(h * 0.026), bold=True)
+    vf = _ig_font(int(h * 0.026), bold=True)
+    label_w = min(int(w * 0.26),
+                  max((lf.getbbox(str(b.get("label", "")))[2] for b in bars), default=0) + 18)
+    bar_x = pad + label_w + int(w * 0.014)
+    bar_max_w = w - bar_x - pad
+    top = body_top + int(h * 0.05)
+    bot = h - int(h * 0.05)
+    bar_h = min(int(h * 0.11), (bot - top - (n - 1) * int(h * 0.03)) // max(n, 1))
+    gap = (bot - top - n * bar_h) // (n + 1)
 
     for i, bar in enumerate(bars):
-        by = chart_top + gap + i * (bar_h + gap)
-        val = float(bar.get("value", 0))
+        by = top + gap + i * (bar_h + gap)
+        val = _fval(bar)
         bw = max(0, int(bar_max_w * val / max_v))
-        color = _IG["step_colors"][i % len(_IG["step_colors"])]
 
-        # Label right-aligned
-        label = (bar.get("label") or "")[:40]
-        ll = _ig_wrap(label, lf, label_w - 10)[:2]
-        ly = by + (bar_h - len(ll) * 19) // 2
-        for ln in ll:
-            lnw = lf.getbbox(ln)[2]
-            d.text((pad_x + label_w - lnw - 8, ly), ln, font=lf, fill=_IG["black"])
-            ly += 20
-
-        # Bar track + fill
+        d.text((pad + label_w, by + bar_h // 2), str(bar.get("label", ""))[:42],
+               font=lf, fill=_IG["ink"], anchor="rm")
         d.rounded_rectangle([bar_x, by, bar_x + bar_max_w, by + bar_h],
-                             radius=6, fill=_IG["border"])
-        if bw > 0:
-            d.rounded_rectangle([bar_x, by, bar_x + bw, by + bar_h],
-                                 radius=6, fill=color)
-            # Shine strip (top fifth)
-            shine_h = max(3, bar_h // 5)
-            shine = tuple(min(255, c + 45) for c in color)
-            d.rounded_rectangle([bar_x, by, bar_x + bw, by + shine_h],
-                                 radius=6, fill=shine)
+                             radius=8, fill=_IG["track"])
+        if bw > 6:
+            d.rounded_rectangle([bar_x, by, bar_x + bw, by + bar_h], radius=8, fill=accent)
+            shine = tuple(min(255, c + 40) for c in accent)
+            d.rounded_rectangle([bar_x, by, bar_x + bw, by + max(3, bar_h // 5)],
+                                 radius=8, fill=shine)
 
         unit = str(bar.get("unit", ""))
-        val_int = int(val) if val == int(val) else val
-        d.text((bar_x + bw + 10, by + (bar_h - 17) // 2),
-               f"{val_int}{unit}", font=vf, fill=_IG["gray"])
+        val_str = f"{int(val) if val == int(val) else val}{unit}"
+        if bw > w * 0.12:
+            d.text((bar_x + bw - 12, by + bar_h // 2), val_str, font=vf,
+                   fill=_IG["white"], anchor="rm")
+        else:
+            d.text((bar_x + bw + 12, by + bar_h // 2), val_str, font=vf,
+                   fill=_IG["muted"], anchor="lm")
 
     return _ig_bytes(img)
 
@@ -2474,22 +2453,23 @@ def _apply_corner_logo(img_bytes: bytes, logo_bytes: bytes | None,
         return img_bytes
 
 
-def _render_infographic(spec: dict, w: int, h: int) -> bytes:
-    """Dispatch to the correct renderer. Never raises — always returns valid image bytes."""
+def _render_infographic(spec: dict, w: int, h: int, brand_color: str = "#1A3A5C") -> bytes:
+    """Dispatch to the correct renderer using the client's brand color as the accent.
+    Never raises — always returns valid image bytes."""
+    accent, header_bg = _ig_palette(brand_color)
     try:
         t = spec.get("infographic_type", "steps")
-        if t == "steps":     return _render_steps_infographic(spec, w, h)
-        if t == "stats":     return _render_stats_infographic(spec, w, h)
-        if t == "checklist": return _render_checklist_infographic(spec, w, h)
-        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h)
-        return _render_steps_infographic(spec, w, h)
+        if t == "stats":     return _render_stats_infographic(spec, w, h, accent, header_bg)
+        if t == "checklist": return _render_checklist_infographic(spec, w, h, accent, header_bg)
+        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h, accent, header_bg)
+        return _render_steps_infographic(spec, w, h, accent, header_bg)
     except Exception as e:
-        img = PILImage.new("RGB", (w, h), _IG["navy"])
+        img = PILImage.new("RGB", (w, h), header_bg)
         draw = ImageDraw.Draw(img)
         draw.text((40, 40), (spec.get("title") or "Infographic"),
                   font=_ig_font(22, bold=True), fill=_IG["white"])
         draw.text((40, 82), f"Render error: {str(e)[:100]}",
-                  font=_ig_font(15), fill=(175, 205, 238))
+                  font=_ig_font(15), fill=_IG["hdr_sub"])
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         return buf.getvalue()
@@ -2738,29 +2718,22 @@ def run_workflow(url: str, output_dir: Path,
 
         if sl.get("type") == "infographic":
             ig_label = sl.get("infographic_type", "").upper()
-            st.write(f"🎨 Generating infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_brand_color}`)")
-            ig_prompt = _infographic_prompt(sl, _brand_color)
-            last_err = None
+            st.write(f"📊 Rendering infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_brand_color}`)")
             final_bytes, final_ext = None, "jpg"
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                try:
-                    raw = generate_image_live(ig_prompt, i, target_w, target_h)
-                    raw = _apply_corner_logo(raw, _brand_logo)
-                    opt_bytes, ext = optimize_image(raw, max_kb=200)
-                    final_bytes, final_ext = opt_bytes, ext
-                    break
-                except Exception as e:
-                    last_err = e
-                    if attempt < MAX_ATTEMPTS:
-                        st.warning(f"⚠️ Infographic attempt {attempt} failed ({e}), retrying...")
-                        time.sleep(2)
+            try:
+                raw = _render_infographic(sl, target_w, target_h, brand_color=_brand_color)
+                raw = _apply_corner_logo(raw, _brand_logo)
+                opt_bytes, ext = optimize_image(raw, max_kb=200)
+                final_bytes, final_ext = opt_bytes, ext
+            except Exception as e:
+                st.error(f"⛔ Infographic render failed: {e}")
             if final_bytes:
                 path = output_dir / f"image_{i:02d}.{final_ext}"
                 path.write_bytes(final_bytes)
             results.append({"index": i, "bytes": final_bytes, "ext": final_ext,
                              "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
-                             "alt": alt, "prompt": ig_prompt, "type": "infographic",
-                             "status": "ok" if final_bytes else f"failed: {last_err}",
+                             "alt": alt, "prompt": sl.get("title", ""), "type": "infographic",
+                             "status": "ok" if final_bytes else "failed: render error",
                              "defect_reason": ""})
             continue
 
@@ -3016,7 +2989,9 @@ with tab_manual:
         with st.spinner(f"Regenerating image {redo_i}..."):
             try:
                 if redo_slot.get("type") == "infographic":
-                    raw = _render_infographic(redo_slot, DEFAULT_WIDTH, DEFAULT_HEIGHT)
+                    raw = _render_infographic(
+                        redo_slot, DEFAULT_WIDTH, DEFAULT_HEIGHT,
+                        brand_color=st.session_state.get("m_brand_color", "#1A3A5C"))
                     new_desc = redo_slot.get("title", "")
                 else:
                     original_desc = redo_slot.get("description", "")
@@ -3115,33 +3090,27 @@ with tab_manual:
         if _m_has_ig:
             with st.spinner("Detecting brand colors from page..."):
                 _m_brand_color, _m_brand_logo = _scrape_page_branding(url)
+        st.session_state["m_brand_color"] = _m_brand_color
 
         for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
             gen_prog.progress(i / len(slots), text=f"Generating image {i} of {len(slots)}...")
 
             if sl.get("type") == "infographic":
                 ig_label = sl.get("infographic_type", "").upper()
-                st.write(f"🎨 Generating infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_m_brand_color}`)")
-                ig_prompt = _infographic_prompt(sl, _m_brand_color)
-                last_err = None
+                st.write(f"📊 Rendering infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_m_brand_color}`)")
                 final_bytes, final_ext = None, "jpg"
-                for attempt in range(1, MAX_ATTEMPTS + 1):
-                    try:
-                        raw = generate_image_live(ig_prompt, i, DEFAULT_WIDTH, DEFAULT_HEIGHT)
-                        raw = _apply_corner_logo(raw, _m_brand_logo)
-                        opt_bytes, ext = optimize_image(raw, max_kb=200)
-                        final_bytes, final_ext = opt_bytes, ext
-                        break
-                    except Exception as e:
-                        last_err = e
-                        if attempt < MAX_ATTEMPTS:
-                            st.warning(f"⚠️ Infographic attempt {attempt} failed ({e}), retrying...")
-                            time.sleep(2)
+                try:
+                    raw = _render_infographic(sl, DEFAULT_WIDTH, DEFAULT_HEIGHT, brand_color=_m_brand_color)
+                    raw = _apply_corner_logo(raw, _m_brand_logo)
+                    opt_bytes, ext = optimize_image(raw, max_kb=200)
+                    final_bytes, final_ext = opt_bytes, ext
+                except Exception as e:
+                    st.error(f"⛔ Infographic render failed: {e}")
                 results.append({
                     "index": i, "bytes": final_bytes, "ext": final_ext,
                     "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
-                    "alt": alt, "prompt": ig_prompt,
-                    "status": "ok" if final_bytes else f"failed: {last_err}",
+                    "alt": alt, "prompt": sl.get("title", ""), "type": "infographic",
+                    "status": "ok" if final_bytes else "failed: render error",
                     "defect_reason": "",
                 })
                 continue
