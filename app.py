@@ -2069,146 +2069,193 @@ def _darken(c: tuple, f: float) -> tuple:
     return tuple(max(0, min(255, int(v * f))) for v in c)
 
 
+def _light(c: tuple, f: float = 0.6) -> tuple:
+    """Lighten a color toward white (for text on a filled brand card)."""
+    return tuple(min(255, int(v + (255 - v) * f)) for v in c)
+
+
 def _ig_palette(brand_hex: str) -> tuple:
-    """Return (accent_rgb, header_bg_rgb) from a client brand color.
-    accent = the brand color (used for circles/bars/checks/top-strips);
-    header_bg = a darkened brand shade guaranteed dark enough for white text."""
-    accent = _hex_to_rgb(brand_hex)
-    if _lum(accent) > 190:                       # too light to read on white
-        accent = _darken(accent, 0.6)
-    header = _darken(accent, 0.40)
-    _g = 0
-    while _lum(header) > 72 and _g < 6:           # ensure white header text is legible
-        header = _darken(header, 0.8)
-        _g += 1
-    return accent, header
+    """Derive an editorial palette ENTIRELY from the client brand color.
+    Returns (primary, accent, bg):
+      primary = brand hue, deepened so white text reads on filled cards (title/cards/footer)
+      accent  = a contrasting hue derived from the brand via warm<->cool flip (pill/numbers/checks)
+      bg      = a very faint tint of the brand (page background — brand-derived, not a fixed cream)."""
+    import colorsys
+    base = _hex_to_rgb(brand_hex)
+    r, g, b = (c / 255 for c in base)
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    s = max(s, 0.30)
+    # PRIMARY — brand hue, deep enough for white text on a filled card
+    pr, pg, pb = colorsys.hls_to_rgb(h, min(l, 0.40), s)
+    primary = (int(pr * 255), int(pg * 255), int(pb * 255))
+    # ACCENT — contrasting hue derived from the brand (warm <-> cool)
+    deg = h * 360
+    if 40 <= deg < 200:      acc_h = 26 / 360      # green/teal/cyan brand -> warm orange
+    elif 200 <= deg < 290:   acc_h = 32 / 360      # blue/indigo brand     -> amber
+    else:                    acc_h = 187 / 360     # warm/red/purple brand -> teal
+    ar, ag, ab = colorsys.hls_to_rgb(acc_h, 0.52, 0.82)
+    accent = (int(ar * 255), int(ag * 255), int(ab * 255))
+    # BACKGROUND — faint tint of the brand color
+    bg = tuple(int(c * 0.08 + 255 * 0.92) for c in base)
+    return primary, accent, bg
 
 
-def _ig_header(d, w: int, h: int, accent: tuple, header_bg: tuple,
-               title: str, subtitle: str, pad: int) -> int:
-    """Draw the branded header bar (left-aligned title + subtitle, accent underline).
-    Returns the y where the body content should start (header height)."""
-    title_size = int(h * 0.052)
-    sub_size   = int(h * 0.025)
-    tf = _ig_font(title_size, bold=True)
-    tlines = _ig_wrap(title or "Infographic", tf, w - 2 * pad)[:2]
-    sub = (subtitle or "")[:120]
-    line_h = int(title_size * 1.12)
-    hdr_h = int(h * 0.045) + len(tlines) * line_h + (int(sub_size * 1.7) if sub else 0) + int(h * 0.028)
-    hdr_h = max(hdr_h, int(h * 0.15))
-    d.rectangle([0, 0, w, hdr_h], fill=header_bg)
-    d.rectangle([0, hdr_h - 5, w, hdr_h], fill=accent)
-    ty = int(h * 0.045)
-    for ln in tlines:
-        d.text((pad, ty), ln, font=tf, fill=_IG["white"])
-        ty += line_h
+def _brand_footer(client_slug: str, url: str) -> str:
+    """Footer label like 'Client Name · clientsite.com' from the client + blog URL."""
+    name = ""
+    try:
+        name = _client_display_name(client_slug) if client_slug else ""
+    except Exception:
+        name = ""
+    domain = ""
+    try:
+        from urllib.parse import urlparse
+        domain = urlparse(url or "").netloc.lower().removeprefix("www.")
+    except Exception:
+        domain = ""
+    if name and domain:
+        return f"{name} · {domain}"
+    return name or domain or ""
+
+
+def _ig_frame(d, w: int, h: int, bg: tuple):
+    """Fill the page with the brand-tinted background + a faint rounded frame border."""
+    d.rectangle([0, 0, w, h], fill=bg)
+    m = int(min(w, h) * 0.022)
+    d.rounded_rectangle([m, m, w - m, h - m], radius=int(h * 0.03),
+                        outline=_darken(bg, 0.90), width=2)
+
+
+def _ig_header(d, w: int, h: int, primary: tuple, accent: tuple,
+               spec: dict, default_kicker: str, pad: int) -> int:
+    """Editorial header: centered accent kicker pill + big brand-color title + subtitle.
+    Returns the y where body content should start."""
+    cx = w // 2
+    y = int(h * 0.06)
+    kick = (spec.get("kicker") or default_kicker or "").strip().upper()[:48]
+    if kick:
+        kf = _ig_font(int(h * 0.023), bold=True)
+        bb = kf.getbbox(kick)
+        pw = (bb[2] - bb[0]) + int(w * 0.035)
+        ph = int(h * 0.05)
+        d.rounded_rectangle([cx - pw // 2, y, cx + pw // 2, y + ph], radius=ph // 2, fill=accent)
+        d.text((cx, y + ph // 2), kick, font=kf, fill=(255, 255, 255), anchor="mm")
+        y += ph + int(h * 0.028)
+    tf = _ig_font(int(h * 0.064), bold=True)
+    for ln in _ig_wrap(spec.get("title") or "Infographic", tf, w - 2 * pad)[:2]:
+        d.text((cx, y), ln, font=tf, fill=primary, anchor="ma")
+        y += int(h * 0.075)
+    sub = (spec.get("subtitle") or "")[:120]
     if sub:
-        sf = _ig_font(sub_size)
-        d.text((pad, ty + 2), sub, font=sf, fill=_IG["hdr_sub"])
-    return hdr_h
+        sf = _ig_font(int(h * 0.026))
+        d.text((cx, y + 2), sub, font=sf, fill=_IG["muted"], anchor="ma")
+        y += int(h * 0.042)
+    return y + int(h * 0.025)
+
+
+def _ig_footer(d, w: int, h: int, primary: tuple, footer: str):
+    if not footer:
+        return
+    ff = _ig_font(int(h * 0.025), bold=True)
+    d.text((w // 2, h - int(h * 0.055)), footer[:64], font=ff, fill=primary, anchor="mm")
 
 
 def _render_steps_infographic(spec: dict, w: int, h: int,
-                              accent: tuple, header_bg: tuple) -> bytes:
-    img = PILImage.new("RGB", (w, h), _IG["bgray"])
+                              primary: tuple, accent: tuple, bg: tuple, footer: str) -> bytes:
+    img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
-    pad = int(w * 0.025)
-    body_top = _ig_header(d, w, h, accent, header_bg,
-                          spec.get("title") or "Process Overview",
-                          spec.get("subtitle") or "", pad)
+    _ig_frame(d, w, h, bg)
+    pad = int(w * 0.05)
+    body_top = _ig_header(d, w, h, primary, accent, spec, "Key Steps", pad)
 
-    items = (spec.get("items") or [])[:6]
+    items = (spec.get("items") or [])[:5]
     n = len(items)
+    foot_h = int(h * 0.085)
     if not n:
+        _ig_footer(d, w, h, primary, footer)
         return _ig_bytes(img)
 
-    footer = (spec.get("footer") or "")[:120]
-    ftr_h = int(h * 0.075) if footer else 0
-    top = body_top + int(h * 0.03)
-    bot = h - int(h * 0.03) - ftr_h
-    gap = int(w * 0.014)
-    card_w = max(60, (w - 2 * pad - (n - 1) * gap) // n)
-    cir = max(20, min(int(card_w * 0.15), 34))
+    gap = int(w * 0.022)
+    card_w = (w - 2 * pad - (n - 1) * gap) // n
+    avail = (h - foot_h) - body_top
+    card_h = min(avail, int(h * 0.50))
+    cy0 = body_top + (avail - card_h) // 2
+    white = (255, 255, 255)
+    shadow = _darken(bg, 0.90)
 
     for i, item in enumerate(items):
         cx = pad + i * (card_w + gap)
         ctr = cx + card_w // 2
-        _ig_card(d, cx, top, cx + card_w, bot, radius=14)
-        d.rounded_rectangle([cx, top, cx + card_w, top + 7], radius=14, fill=accent)
+        is_last = (i == n - 1)
+        fill = primary if is_last else white
+        d.rounded_rectangle([cx + 3, cy0 + 4, cx + card_w + 3, cy0 + card_h + 4],
+                            radius=14, fill=shadow)
+        d.rounded_rectangle([cx, cy0, cx + card_w, cy0 + card_h], radius=14, fill=fill)
 
-        # Number circle
-        cy = top + int(h * 0.055) + cir
-        d.ellipse([ctr - cir, cy - cir, ctr + cir, cy + cir], fill=accent)
+        ty = cy0 + int(card_h * 0.12)
         num = str(item.get("number", i + 1))
-        d.text((ctr, cy), num, font=_ig_font(int(cir * 1.0), bold=True),
-               fill=_IG["white"], anchor="mm")
+        d.text((ctr, ty), num, font=_ig_font(int(card_h * 0.17), bold=True),
+               fill=(_light(accent, 0.5) if is_last else accent), anchor="ma")
+        ty += int(card_h * 0.22)
 
-        # Title
-        tf = _ig_font(int(h * 0.027), bold=True)
-        ty = cy + cir + int(h * 0.03)
-        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}",
-                           tf, card_w - int(card_w * 0.14))[:2]:
-            d.text((ctr, ty), ln, font=tf, fill=_IG["ink"], anchor="ma")
-            ty += int(h * 0.033)
+        tf = _ig_font(int(h * 0.030), bold=True)
+        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}", tf, card_w - int(card_w * 0.16))[:2]:
+            d.text((ctr, ty), ln, font=tf, fill=(white if is_last else primary), anchor="ma")
+            ty += int(h * 0.036)
+        ty += int(h * 0.006)
 
-        # Bullets
-        bf = _ig_font(int(h * 0.0195))
-        by = ty + int(h * 0.012)
-        line_h = int(h * 0.027)
-        for pt in (item.get("points") or [])[:4]:
-            for pl in _ig_wrap("•  " + (pt or "")[:60], bf,
-                               card_w - int(card_w * 0.12))[:2]:
-                if by + line_h > bot - int(h * 0.02):
-                    break
-                d.text((cx + int(card_w * 0.08), by), pl, font=bf, fill=_IG["muted"])
-                by += line_h
+        pts = item.get("points")
+        desc = " ".join(pts) if isinstance(pts, list) else (pts or item.get("desc") or "")
+        pf = _ig_font(int(h * 0.020))
+        for ln in _ig_wrap(desc[:110], pf, card_w - int(card_w * 0.16))[:3]:
+            if ty > cy0 + card_h - int(card_h * 0.08):
+                break
+            d.text((ctr, ty), ln, font=pf,
+                   fill=(_light(primary, 0.7) if is_last else _IG["muted"]), anchor="ma")
+            ty += int(h * 0.026)
 
-    if footer:
-        fy = h - ftr_h
-        d.rectangle([0, fy, w, h], fill=header_bg)
-        d.rectangle([0, fy, w, fy + 4], fill=accent)
-        ff = _ig_font(int(h * 0.021))
-        flines = _ig_wrap(footer, ff, w - 2 * pad)[:2]
-        lh = int(h * 0.028)
-        fyy = fy + (ftr_h - len(flines) * lh) // 2
-        for ln in flines:
-            d.text((w // 2, fyy), ln, font=ff, fill=_IG["hdr_sub"], anchor="ma")
-            fyy += lh
+        if not is_last:
+            d.text((cx + card_w + gap // 2, cy0 + card_h // 2), "›",
+                   font=_ig_font(int(card_h * 0.24), bold=True), fill=accent, anchor="mm")
 
+    _ig_footer(d, w, h, primary, footer)
     return _ig_bytes(img)
 
 
 def _render_stats_infographic(spec: dict, w: int, h: int,
-                              accent: tuple, header_bg: tuple) -> bytes:
-    img = PILImage.new("RGB", (w, h), _IG["bgray"])
+                              primary: tuple, accent: tuple, bg: tuple, footer: str) -> bytes:
+    img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
-    pad = int(w * 0.025)
-    body_top = _ig_header(d, w, h, accent, header_bg,
-                          spec.get("title") or "Key Statistics",
-                          spec.get("subtitle") or "", pad)
+    _ig_frame(d, w, h, bg)
+    pad = int(w * 0.05)
+    body_top = _ig_header(d, w, h, primary, accent, spec, "By the Numbers", pad)
 
     stats = (spec.get("stats") or [])[:4]
     n = len(stats)
+    foot_h = int(h * 0.085)
     if not n:
+        _ig_footer(d, w, h, primary, footer)
         return _ig_bytes(img)
 
     cols = 2 if n == 4 else min(n, 3)
     rows = (n + cols - 1) // cols
-    gap = int(w * 0.018)
-    top = body_top + int(h * 0.04)
-    bot = h - int(h * 0.05)
+    gap = int(w * 0.022)
+    top = body_top
+    bot = h - foot_h
     cell_w = (w - 2 * pad - (cols - 1) * gap) // cols
     cell_h = (bot - top - (rows - 1) * gap) // rows
+    shadow = _darken(bg, 0.90)
 
     for idx, stat in enumerate(stats):
         row, col = divmod(idx, cols)
         cx = pad + col * (cell_w + gap)
         cy = top + row * (cell_h + gap)
-        _ig_card(d, cx, cy, cx + cell_w, cy + cell_h, radius=16)
-        d.rounded_rectangle([cx, cy, cx + cell_w, cy + 8], radius=16, fill=accent)
+        d.rounded_rectangle([cx + 3, cy + 4, cx + cell_w + 3, cy + cell_h + 4], radius=16, fill=shadow)
+        d.rounded_rectangle([cx, cy, cx + cell_w, cy + cell_h], radius=16, fill=(255, 255, 255))
+        d.rounded_rectangle([cx, cy, cx + cell_w, cy + 7], radius=16, fill=accent)
 
         val = str(stat.get("value") or "—")[:12]
-        vsize = int(cell_h * 0.42)
+        vsize = int(cell_h * 0.40)
         vf = _ig_font(vsize, bold=True)
         while vf.getbbox(val)[2] > cell_w - int(cell_w * 0.12) and vsize > 22:
             vsize -= 3
@@ -2220,75 +2267,80 @@ def _render_stats_infographic(spec: dict, w: int, h: int,
         llines = _ig_wrap(label, lf, cell_w - int(cell_w * 0.14))[:3]
         block_h = vsize + int(h * 0.02) + len(llines) * lh
         vy = cy + 8 + max(int(h * 0.02), (cell_h - 8 - block_h) // 2)
-        d.text((cx + cell_w // 2, vy + vsize // 2), val, font=vf,
-               fill=header_bg, anchor="mm")
+        d.text((cx + cell_w // 2, vy + vsize // 2), val, font=vf, fill=primary, anchor="mm")
         ly = vy + vsize + int(h * 0.02)
         for ll in llines:
             d.text((cx + cell_w // 2, ly), ll, font=lf, fill=_IG["muted"], anchor="ma")
             ly += lh
 
+    _ig_footer(d, w, h, primary, footer)
     return _ig_bytes(img)
 
 
 def _render_checklist_infographic(spec: dict, w: int, h: int,
-                                  accent: tuple, header_bg: tuple) -> bytes:
-    img = PILImage.new("RGB", (w, h), _IG["bgray"])
+                                  primary: tuple, accent: tuple, bg: tuple, footer: str) -> bytes:
+    img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
-    pad = int(w * 0.03)
-    body_top = _ig_header(d, w, h, accent, header_bg,
-                          spec.get("title") or "Checklist",
-                          spec.get("subtitle") or "", pad)
+    _ig_frame(d, w, h, bg)
+    pad = int(w * 0.055)
+    body_top = _ig_header(d, w, h, primary, accent, spec, "Checklist", pad)
 
     items = (spec.get("items") or [])[:8]
     n = len(items)
+    foot_h = int(h * 0.085)
     if not n:
+        _ig_footer(d, w, h, primary, footer)
         return _ig_bytes(img)
 
     cols = 2 if n > 4 else 1
     per_col = (n + cols - 1) // cols
-    col_gap = int(w * 0.025)
-    top = body_top + int(h * 0.045)
-    bot = h - int(h * 0.045)
+    col_gap = int(w * 0.03)
+    top = body_top
+    bot = h - foot_h
     col_w = (w - 2 * pad - (cols - 1) * col_gap) // cols
     row_gap = int(h * 0.022)
     row_h = (bot - top - (per_col - 1) * row_gap) // per_col
     cf = _ig_font(int(h * 0.028))
-    ck = max(18, min(int(row_h * 0.42), 40))
+    ck = max(18, min(int(row_h * 0.40), 38))
+    shadow = _darken(bg, 0.91)
 
     for idx, item in enumerate(items):
         col, row = divmod(idx, per_col)
         cx = pad + col * (col_w + col_gap)
         ry = top + row * (row_h + row_gap)
-        _ig_card(d, cx, ry, cx + col_w, ry + row_h, radius=12)
+        d.rounded_rectangle([cx + 2, ry + 3, cx + col_w + 2, ry + row_h + 3], radius=12, fill=shadow)
+        d.rounded_rectangle([cx, ry, cx + col_w, ry + row_h], radius=12, fill=(255, 255, 255))
         cyc = ry + row_h // 2
         chx = cx + int(col_w * 0.04)
         d.ellipse([chx, cyc - ck // 2, chx + ck, cyc + ck // 2], fill=accent)
         d.line([(int(chx + ck * 0.27), int(cyc)),
                 (int(chx + ck * 0.43), int(cyc + ck * 0.22)),
                 (int(chx + ck * 0.75), int(cyc - ck * 0.25))],
-               fill=_IG["white"], width=max(2, ck // 8))
+               fill=(255, 255, 255), width=max(2, ck // 8))
         tx = chx + ck + int(col_w * 0.045)
         lines = _ig_wrap((item or "")[:90], cf, cx + col_w - tx - int(col_w * 0.04))[:2]
         ty = cyc - (len(lines) * int(h * 0.033)) // 2
         for ln in lines:
-            d.text((tx, ty), ln, font=cf, fill=_IG["ink"])
+            d.text((tx, ty), ln, font=cf, fill=primary)
             ty += int(h * 0.033)
 
+    _ig_footer(d, w, h, primary, footer)
     return _ig_bytes(img)
 
 
 def _render_bar_chart_infographic(spec: dict, w: int, h: int,
-                                  accent: tuple, header_bg: tuple) -> bytes:
-    img = PILImage.new("RGB", (w, h), _IG["bgray"])
+                                  primary: tuple, accent: tuple, bg: tuple, footer: str) -> bytes:
+    img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
-    pad = int(w * 0.03)
-    body_top = _ig_header(d, w, h, accent, header_bg,
-                          spec.get("title") or "Comparison",
-                          spec.get("subtitle") or "", pad)
+    _ig_frame(d, w, h, bg)
+    pad = int(w * 0.055)
+    body_top = _ig_header(d, w, h, primary, accent, spec, "Comparison", pad)
 
     bars = (spec.get("bars") or [])[:6]
     n = len(bars)
+    foot_h = int(h * 0.085)
     if not n:
+        _ig_footer(d, w, h, primary, footer)
         return _ig_bytes(img)
 
     def _fval(b):
@@ -2300,39 +2352,38 @@ def _render_bar_chart_infographic(spec: dict, w: int, h: int,
 
     lf = _ig_font(int(h * 0.026), bold=True)
     vf = _ig_font(int(h * 0.026), bold=True)
-    label_w = min(int(w * 0.26),
+    label_w = min(int(w * 0.24),
                   max((lf.getbbox(str(b.get("label", "")))[2] for b in bars), default=0) + 18)
-    bar_x = pad + label_w + int(w * 0.014)
+    bar_x = pad + label_w + int(w * 0.015)
     bar_max_w = w - bar_x - pad
-    top = body_top + int(h * 0.05)
-    bot = h - int(h * 0.05)
-    bar_h = min(int(h * 0.11), (bot - top - (n - 1) * int(h * 0.03)) // max(n, 1))
+    top = body_top + int(h * 0.02)
+    bot = h - foot_h
+    bar_h = min(int(h * 0.10), (bot - top - (n - 1) * int(h * 0.03)) // max(n, 1))
     gap = (bot - top - n * bar_h) // (n + 1)
+    track = _darken(bg, 0.92)
 
     for i, bar in enumerate(bars):
         by = top + gap + i * (bar_h + gap)
         val = _fval(bar)
         bw = max(0, int(bar_max_w * val / max_v))
+        fill = accent if i == 0 else primary
 
         d.text((pad + label_w, by + bar_h // 2), str(bar.get("label", ""))[:42],
-               font=lf, fill=_IG["ink"], anchor="rm")
-        d.rounded_rectangle([bar_x, by, bar_x + bar_max_w, by + bar_h],
-                             radius=8, fill=_IG["track"])
+               font=lf, fill=primary, anchor="rm")
+        d.rounded_rectangle([bar_x, by, bar_x + bar_max_w, by + bar_h], radius=8, fill=track)
         if bw > 6:
-            d.rounded_rectangle([bar_x, by, bar_x + bw, by + bar_h], radius=8, fill=accent)
-            shine = tuple(min(255, c + 40) for c in accent)
-            d.rounded_rectangle([bar_x, by, bar_x + bw, by + max(3, bar_h // 5)],
-                                 radius=8, fill=shine)
+            d.rounded_rectangle([bar_x, by, bar_x + bw, by + bar_h], radius=8, fill=fill)
 
         unit = str(bar.get("unit", ""))
         val_str = f"{int(val) if val == int(val) else val}{unit}"
         if bw > w * 0.12:
             d.text((bar_x + bw - 12, by + bar_h // 2), val_str, font=vf,
-                   fill=_IG["white"], anchor="rm")
+                   fill=(255, 255, 255), anchor="rm")
         else:
             d.text((bar_x + bw + 12, by + bar_h // 2), val_str, font=vf,
                    fill=_IG["muted"], anchor="lm")
 
+    _ig_footer(d, w, h, primary, footer)
     return _ig_bytes(img)
 
 
@@ -2456,23 +2507,24 @@ def _apply_corner_logo(img_bytes: bytes, logo_bytes: bytes | None,
         return img_bytes
 
 
-def _render_infographic(spec: dict, w: int, h: int, brand_color: str = "#1A3A5C") -> bytes:
-    """Dispatch to the correct renderer using the client's brand color as the accent.
-    Never raises — always returns valid image bytes."""
-    accent, header_bg = _ig_palette(brand_color)
+def _render_infographic(spec: dict, w: int, h: int,
+                        brand_color: str = "#1A3A5C", footer: str = "") -> bytes:
+    """Dispatch to the correct renderer. The whole palette (primary/accent/bg) is
+    derived from the client brand color. Never raises — always returns valid bytes."""
+    primary, accent, bg = _ig_palette(brand_color)
     try:
         t = spec.get("infographic_type", "steps")
-        if t == "stats":     return _render_stats_infographic(spec, w, h, accent, header_bg)
-        if t == "checklist": return _render_checklist_infographic(spec, w, h, accent, header_bg)
-        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h, accent, header_bg)
-        return _render_steps_infographic(spec, w, h, accent, header_bg)
+        if t == "stats":     return _render_stats_infographic(spec, w, h, primary, accent, bg, footer)
+        if t == "checklist": return _render_checklist_infographic(spec, w, h, primary, accent, bg, footer)
+        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h, primary, accent, bg, footer)
+        return _render_steps_infographic(spec, w, h, primary, accent, bg, footer)
     except Exception as e:
-        img = PILImage.new("RGB", (w, h), header_bg)
+        img = PILImage.new("RGB", (w, h), bg)
         draw = ImageDraw.Draw(img)
         draw.text((40, 40), (spec.get("title") or "Infographic"),
-                  font=_ig_font(22, bold=True), fill=_IG["white"])
+                  font=_ig_font(22, bold=True), fill=primary)
         draw.text((40, 82), f"Render error: {str(e)[:100]}",
-                  font=_ig_font(15), fill=_IG["hdr_sub"])
+                  font=_ig_font(15), fill=_IG["muted"])
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         return buf.getvalue()
@@ -2715,6 +2767,7 @@ def run_workflow(url: str, output_dir: Path,
             _brand_color = scraped_color
         elif client_slug:
             _brand_color = _client_branding(client_slug)  # fallback: overlay PNG
+    _ig_foot = _brand_footer(client_slug, url)
 
     for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
         gen_prog.progress(i / len(slots), text=f"Generating image {i} of {len(slots)}...")
@@ -2724,7 +2777,8 @@ def run_workflow(url: str, output_dir: Path,
             st.write(f"📊 Rendering infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_brand_color}`)")
             final_bytes, final_ext = None, "jpg"
             try:
-                raw = _render_infographic(sl, target_w, target_h, brand_color=_brand_color)
+                raw = _render_infographic(sl, target_w, target_h,
+                                          brand_color=_brand_color, footer=_ig_foot)
                 raw = _apply_corner_logo(raw, _brand_logo)
                 opt_bytes, ext = optimize_image(raw, max_kb=200)
                 final_bytes, final_ext = opt_bytes, ext
@@ -2737,6 +2791,7 @@ def run_workflow(url: str, output_dir: Path,
                              "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
                              "alt": alt, "prompt": sl.get("title", ""), "type": "infographic",
                              "spec": sl, "brand_color": _brand_color, "brand_logo": _brand_logo,
+                             "footer": _ig_foot,
                              "status": "ok" if final_bytes else "failed: render error",
                              "defect_reason": ""})
             continue
@@ -2995,7 +3050,8 @@ with tab_manual:
                 if redo_slot.get("type") == "infographic":
                     raw = _render_infographic(
                         redo_slot, DEFAULT_WIDTH, DEFAULT_HEIGHT,
-                        brand_color=st.session_state.get("m_brand_color", "#1A3A5C"))
+                        brand_color=st.session_state.get("m_brand_color", "#1A3A5C"),
+                        footer=st.session_state.get("m_footer", ""))
                     new_desc = redo_slot.get("title", "")
                 else:
                     # Chain off the CURRENT prompt so each redo moves to a new scene
@@ -3097,6 +3153,8 @@ with tab_manual:
             with st.spinner("Detecting brand colors from page..."):
                 _m_brand_color, _m_brand_logo = _scrape_page_branding(url)
         st.session_state["m_brand_color"] = _m_brand_color
+        _m_foot = _brand_footer("", url)
+        st.session_state["m_footer"] = _m_foot
 
         for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
             gen_prog.progress(i / len(slots), text=f"Generating image {i} of {len(slots)}...")
@@ -3106,7 +3164,8 @@ with tab_manual:
                 st.write(f"📊 Rendering infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_m_brand_color}`)")
                 final_bytes, final_ext = None, "jpg"
                 try:
-                    raw = _render_infographic(sl, DEFAULT_WIDTH, DEFAULT_HEIGHT, brand_color=_m_brand_color)
+                    raw = _render_infographic(sl, DEFAULT_WIDTH, DEFAULT_HEIGHT,
+                                              brand_color=_m_brand_color, footer=_m_foot)
                     raw = _apply_corner_logo(raw, _m_brand_logo)
                     opt_bytes, ext = optimize_image(raw, max_kb=200)
                     final_bytes, final_ext = opt_bytes, ext
@@ -3117,6 +3176,7 @@ with tab_manual:
                     "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
                     "alt": alt, "prompt": sl.get("title", ""), "type": "infographic",
                     "spec": sl, "brand_color": _m_brand_color, "brand_logo": _m_brand_logo,
+                    "footer": _m_foot,
                     "status": "ok" if final_bytes else "failed: render error",
                     "defect_reason": "",
                 })
@@ -3487,7 +3547,8 @@ def _regen_image(blog_state: dict, img_idx: int):
                 return
             try:
                 raw = _render_infographic(spec, DEFAULT_WIDTH, DEFAULT_HEIGHT,
-                                          brand_color=result.get("brand_color", "#1A3A5C"))
+                                          brand_color=result.get("brand_color", "#1A3A5C"),
+                                          footer=result.get("footer", ""))
                 raw = _apply_corner_logo(raw, result.get("brand_logo"))
                 opt_bytes, ext = optimize_image(raw, max_kb=200)
                 (output_dir / f"image_{img_idx:02d}.{ext}").write_bytes(opt_bytes)
