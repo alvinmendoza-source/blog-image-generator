@@ -1066,8 +1066,15 @@ def generate_image_free(prompt: str, index: int, width: int, height: int,
 
 
 def generate_prompt_variation(original_prompt: str, title: str) -> str:
-    """Ask Gemini to write a completely different image scene for the same blog topic."""
-    env_name, env_desc = random.choice(SCENE_TYPES)
+    """Write a DIFFERENT image scene for the same blog topic.
+    Always changes the environment vs the original — even when Gemini is unavailable."""
+    # Detect the original scene's environment (from its [ENV] prefix, if any) and avoid it
+    _cur = None
+    _m = re.match(r"\s*\[([A-Z0-9 /\-]+)\]", original_prompt or "")
+    if _m:
+        _cur = _m.group(1).strip()
+    _choices = [s for s in SCENE_TYPES if s[0] != _cur] or SCENE_TYPES
+    env_name, env_desc = random.choice(_choices)
     system_var = (
         "Write a plain scene description for a documentary office photo. "
         "Your output fills: 'Documentary-style candid workplace photography of [YOUR OUTPUT]'\n"
@@ -1093,7 +1100,8 @@ def generate_prompt_variation(original_prompt: str, title: str) -> str:
     result = _gemini_text(system_var, user_var, max_tokens=150, temperature=1.2)
     if result and len(result) > 30:
         return result.lstrip("•-* ")
-    return original_prompt
+    # Quota-free fallback: still a DIFFERENT environment than the original (never a copy)
+    return f"[{env_name}] {env_desc}, focused on a task related to {(title or 'the topic')[:60]}"
 
 
 def _generate_cover_scene(title: str) -> str:
@@ -2994,7 +3002,9 @@ with tab_manual:
                         brand_color=st.session_state.get("m_brand_color", "#1A3A5C"))
                     new_desc = redo_slot.get("title", "")
                 else:
-                    original_desc = redo_slot.get("description", "")
+                    # Chain off the CURRENT prompt so each redo moves to a new scene
+                    cur_result = st.session_state["m_results"][redo_i - 1]
+                    original_desc = cur_result.get("prompt") or redo_slot.get("description", "")
                     redo_title = st.session_state.get("m_title", "")
                     new_desc = generate_prompt_variation(original_desc, redo_title)
                     raw = _dispatch_image_gen(
