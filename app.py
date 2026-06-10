@@ -823,6 +823,69 @@ PHOTO DESCRIPTION RULES (type="photo")
 Total slots: {count}""".strip()
 
 
+def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> list:
+    """Quota-free heuristic infographic detector — used when Gemini is unavailable.
+
+    Scans raw blog text for structure (numbered steps, percentages/dollar stats,
+    bullet lists) and returns 0..max_ig infographic spec dicts. Content-driven:
+    returns [] when the blog has no clear structure (matches Gemini behavior)."""
+    if max_ig <= 0:
+        return []
+    text = content or ""
+    ig_title = " ".join((title or "Key Insights").split()[:8]) or "Key Insights"
+    found = []
+
+    # ── steps: "Step 1", "Phase 1", or a numbered list (1. 2. 3.) ──
+    step_items = []
+    for m in re.finditer(r"(?im)\b(?:step|phase)\s+(\d+)\s*[:.\)\-]?\s*(.{3,70})", text):
+        label = re.split(r"[\n.|•]", m.group(2).strip())[0].strip()
+        if label:
+            step_items.append({"number": int(m.group(1)), "title": label[:60], "points": []})
+    if len(step_items) < 3:  # fall back to a plain numbered list
+        nums = []
+        for m in re.finditer(r"(?m)^\s*(\d+)[.\)]\s+(.{3,80})", text):
+            label = re.split(r"[\n.|•]", m.group(2).strip())[0].strip()
+            if label:
+                nums.append({"number": int(m.group(1)), "title": label[:60], "points": []})
+        if len(nums) >= 3:
+            step_items = nums
+    # dedup by number, keep order, cap at 7
+    if len(step_items) >= 3:
+        seen, uniq = set(), []
+        for it in step_items:
+            if it["number"] not in seen:
+                seen.add(it["number"]); uniq.append(it)
+        found.append({"infographic_type": "steps", "title": ig_title, "items": uniq[:7]})
+
+    # ── stats: percentages and dollar figures with a short label ──
+    stats = []
+    for m in re.finditer(r"([\$]?\d[\d,]*(?:\.\d+)?\s*(?:%|percent|million|billion|k\b|M\b|B\b)?)", text):
+        val = m.group(1).strip()
+        if not re.search(r"%|percent|\$|million|billion", val, re.I):
+            continue  # only keep meaningful figures, not bare numbers
+        start = max(0, m.start() - 0)
+        tail = text[m.end():m.end() + 70]
+        label = re.split(r"[.\n|•]", tail)[0].strip(" ,:-")
+        label = re.sub(r"\s+", " ", label)[:60]
+        if label and len(label) > 8:
+            disp = val.replace("percent", "%").replace(" ", "")
+            stats.append({"value": disp, "label": label})
+        if len(stats) >= 4:
+            break
+    if len(stats) >= 2:
+        found.append({"infographic_type": "stats", "title": ig_title, "stats": stats[:4]})
+
+    # ── checklist: bullet list or tips/best-practices keywords ──
+    bullets = []
+    for m in re.finditer(r"(?m)^\s*[-•*▪‣]\s+(.{3,70})", text):
+        item = re.split(r"[\n|]", m.group(1).strip())[0].strip()
+        if item:
+            bullets.append(item[:60])
+    if len(bullets) >= 4:
+        found.append({"infographic_type": "checklist", "title": ig_title, "items": bullets[:8]})
+
+    return found[:max_ig]
+
 
 def _plan_image_slots(title: str, content: str, count: int) -> list:
     """Plan all image slots in one Gemini call — returns list of slot dicts.
@@ -932,8 +995,20 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
         while len(descs) < count:
             descs.append(fallback)
         descs = descs[:count]
-        return [{"slot": i + 1, "type": "photo", "description": d}
-                for i, d in enumerate(descs)]
+        slots = [{"slot": i + 1, "type": "photo", "description": d}
+                 for i, d in enumerate(descs)]
+
+        # Quota-free infographic detection — keep ≥1 photo, max 2 infographics
+        igs = _detect_infographics_from_text(title, content, min(2, max(0, count - 1)))
+        if igs:
+            for off, spec in enumerate(igs):
+                slots[count - 1 - off] = {"type": "infographic", **spec}
+            for i, s in enumerate(slots):   # renumber after replacement
+                s["slot"] = i + 1
+            kinds = ", ".join(s.get("infographic_type", "") for s in slots
+                              if s.get("type") == "infographic")
+            st.info(f"📊 Quota-free mode: detected {len(igs)} infographic(s) from blog structure ({kinds}).")
+        return slots
 
 
 def generate_alt_text_for(prompt: str, title: str, index: int = 0) -> str:
@@ -3631,13 +3706,18 @@ with tab_auto:
             st.stop()
 
         batch = []
-        for raw_url in urls:
-            url = ("https://" + raw_url) if not raw_url.startswith("http") else raw_url
+        for _bi, raw_url in enumerate(urls):
+          url = ("https://" + raw_url) if not raw_url.startswith("http") else raw_url
+          try:
 
             # Resolve the real slug via GET (follows redirects) + canonical tag fallback.
             # HEAD is unreliable on many Webflow sites; GET + r.url is the ground truth.
             def _resolve_slug(start_url: str) -> tuple[str, str]:
-                """Return (final_url, slug) using GET redirect chain + <link rel=canonical>."""
+                """Return (final_url, slug) using GET redirect chain + <link rel=canonical>.
+                Strips query strings / fragments so the slug is a valid folder name."""
+                def _slug_of(u: str) -> str:
+                    u = re.sub(r"[?#].*$", "", u or "").rstrip("/")
+                    return u.split("/")[-1]
                 try:
                     _r = requests.get(
                         start_url, allow_redirects=True,
@@ -3648,22 +3728,24 @@ with tab_auto:
                     _soup = BeautifulSoup(_r.content, "html.parser")
                     _canon = _soup.find("link", rel="canonical")
                     if _canon and _canon.get("href"):
-                        _cu = _canon["href"].rstrip("/")
-                        _cslug = _cu.split("/")[-1]
+                        _cu = re.sub(r"[?#].*$", "", _canon["href"]).rstrip("/")
+                        _cslug = _slug_of(_cu)
                         if _cslug:
                             return _cu, _cslug
                     # 2. Fall back to the final URL after redirects
-                    _fu = _r.url.rstrip("/")
-                    return _fu, _fu.split("/")[-1]
+                    _fu = re.sub(r"[?#].*$", "", _r.url).rstrip("/")
+                    return _fu, _slug_of(_fu)
                 except Exception:
-                    _fb = start_url.rstrip("/")
-                    return _fb, _fb.split("/")[-1]
+                    _fb = re.sub(r"[?#].*$", "", start_url).rstrip("/")
+                    return _fb, _slug_of(_fb)
 
             final_url, slug = _resolve_slug(url)
-            output_dir = Path("generated_images") / slug
+            # Sanitize for Windows folder name — invalid chars (? : * | < > ") would crash mkdir
+            safe_slug = re.sub(r"[^A-Za-z0-9_\-]", "-", slug).strip("-") or "blog"
+            output_dir = Path("generated_images") / safe_slug
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            st.markdown(f"---\n### 📝 `{slug}`")
+            st.markdown(f"---\n### 📝 Blog {_bi + 1} of {len(urls)}: `{slug}`")
             orig_slug = url.rstrip("/").split("/")[-1]
             if slug != orig_slug:
                 st.info(f"↪️ Slug resolved: `{orig_slug}` → `{slug}`")
@@ -3730,6 +3812,14 @@ with tab_auto:
                 "uploaded": False,
             })
             st.session_state["batch"] = batch
+          except Exception as _loop_err:
+            # Catch-all: one bad URL must never halt the rest of the batch
+            st.error(f"⛔ Unexpected error on `{url}` — skipped, continuing batch: {_loop_err}")
+            batch.append({"url": url, "slug": url.rstrip('/').split('/')[-1],
+                          "title": url, "results": [], "image_urls": [],
+                          "wf_info": {}, "uploaded": False, "error": str(_loop_err)})
+            st.session_state["batch"] = batch
+            continue
 
         st.session_state["batch"] = batch
 
