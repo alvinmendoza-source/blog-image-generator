@@ -686,26 +686,21 @@ def _gemini_text(system: str, user: str, max_tokens: int = 200, temperature: flo
 
 
 def generate_prompts_free(title: str, content: str, count: int) -> list:
-    """Template-based fallback — no external API needed."""
+    """Template-based fallback — no external API needed.
+    Uses each scene's own environment description (20 distinct scenes) so the
+    set is varied even without Gemini. _pick_required_scenes returns (name, desc) tuples."""
     scenes = _pick_required_scenes(count)
-    env_descs = {
-        "SOLO WORKSTATION": "alone at a desk reviewing a configuration dashboard",
-        "DUAL MONITOR DESK": "at a dual-monitor workstation analyzing reports",
-        "MEETING TABLE": "at a conference table discussing project requirements",
-        "WALKING CORRIDOR": "walking through an open office corridor with a tablet",
-        "WHITEBOARD SESSION": "at a whiteboard mapping out a solution diagram",
-        "PRESENTATION SCREEN": "presenting slides to colleagues on a large screen",
-        "SMALL CONFERENCE ROOM": "in a small meeting room reviewing documentation",
-        "STANDING DESK": "at a standing desk reviewing documents",
-        "OPEN PLAN WIDE": "in an open-plan office collaborating with teammates",
-        "INFORMAL HUDDLE": "in an informal standing huddle discussing next steps",
-    }
+    topic = (title or "the topic")[:55]
     prompts = []
-    for scene in scenes:
-        activity = env_descs.get(scene, "working on tasks")
-        prompts.append(f"[{scene}] An IT professional {activity} related to {title[:50]}.")
+    for name, desc in scenes:
+        prompts.append(f"[{name}] An IT professional — {desc} — focused on a specific task related to {topic}.")
+    # Pad with fresh random scenes (not a fixed one) if we somehow came up short
+    used = {s[0] for s in scenes}
     while len(prompts) < count:
-        prompts.append(f"[SOLO WORKSTATION] An IT professional at a desk working on {title[:50]}.")
+        pool = [s for s in SCENE_TYPES if s[0] not in used] or SCENE_TYPES
+        name, desc = random.choice(pool)
+        used.add(name)
+        prompts.append(f"[{name}] An IT professional — {desc} — working on a task related to {topic}.")
     return prompts[:count]
 
 
