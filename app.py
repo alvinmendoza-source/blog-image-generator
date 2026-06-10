@@ -3714,26 +3714,35 @@ with tab_auto:
                 def _slug_of(u: str) -> str:
                     u = re.sub(r"[?#].*$", "", u or "").rstrip("/")
                     return u.split("/")[-1]
+                _orig = re.sub(r"[?#].*$", "", start_url).rstrip("/")
                 try:
                     _r = requests.get(
                         start_url, allow_redirects=True,
                         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
                         timeout=15,
                     )
+                    # If the public page 404s (draft/unpublished/deleted), Webflow's
+                    # 404 page sets canonical to ".../404" — do NOT trust it. Keep the
+                    # original slug so the draft/CMS fallback can still find the post.
+                    if not _r.ok:
+                        return _orig, _slug_of(_orig)
                     # 1. Check <link rel="canonical"> — most reliable on Webflow
                     _soup = BeautifulSoup(_r.content, "html.parser")
                     _canon = _soup.find("link", rel="canonical")
                     if _canon and _canon.get("href"):
                         _cu = re.sub(r"[?#].*$", "", _canon["href"]).rstrip("/")
                         _cslug = _slug_of(_cu)
-                        if _cslug:
+                        if _cslug and _cslug.lower() != "404":   # ignore canonical → /404
                             return _cu, _cslug
                     # 2. Fall back to the final URL after redirects
                     _fu = re.sub(r"[?#].*$", "", _r.url).rstrip("/")
-                    return _fu, _slug_of(_fu)
+                    _fslug = _slug_of(_fu)
+                    if _fslug and _fslug.lower() != "404":
+                        return _fu, _fslug
+                    # 3. Last resort: the original URL's own slug
+                    return _orig, _slug_of(_orig)
                 except Exception:
-                    _fb = re.sub(r"[?#].*$", "", start_url).rstrip("/")
-                    return _fb, _slug_of(_fb)
+                    return _orig, _slug_of(_orig)
 
             final_url, slug = _resolve_slug(url)
             # Sanitize for Windows folder name — invalid chars (? : * | < > ") would crash mkdir
