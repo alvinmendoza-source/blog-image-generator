@@ -2809,9 +2809,9 @@ def run_workflow(url: str, output_dir: Path,
 
 def display_image_grid(results: list, key_prefix: str = ""):
     """Render a 2-column grid of images with alt text + download buttons."""
-    for row in range(0, len(results), 2):
-        cols = st.columns(2)
-        for ci, result in enumerate(results[row:row + 2]):
+    for row in range(0, len(results), 4):
+        cols = st.columns(4)
+        for ci, result in enumerate(results[row:row + 4]):
             with cols[ci]:
                 i = result["index"]
                 if result["bytes"]:
@@ -2832,7 +2832,7 @@ def display_image_grid(results: list, key_prefix: str = ""):
 # ── UI ─────────────────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="MSP Launchpad — Blog Image Generator",
-                   page_icon="assets/logo.png", layout="centered")
+                   page_icon="assets/logo.png", layout="wide")
 
 # ── Branding: load logo as base64 ─────────────────────────────────────────────
 _logo_path = Path("assets/logo.png")
@@ -2843,80 +2843,153 @@ if _logo_path.exists():
 st.markdown(f"""
 <style>
 /* ── Global ── */
-html, body, [data-testid="stApp"] {{
-    background-color: #0D0D0D;
-}}
-/* ── Branded top header ── */
-.msp-header {{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 0 20px 0;
-    border-bottom: 1px solid #2a2a2a;
-    margin-bottom: 20px;
-}}
-.msp-header .app-label {{
-    font-size: 22px;
-    font-weight: 700;
-    color: #FFFFFF;
-    letter-spacing: -0.01em;
-}}
+html, body, [data-testid="stApp"] {{ background-color: #0D0D0D; }}
+[data-testid="stMainBlockContainer"] {{ padding-top: 2.2rem; max-width: 1400px; }}
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {{ background: #141414; border-right: 1px solid #2a2a2a; }}
+[data-testid="stSidebar"] .block-container {{ padding-top: 1.4rem; }}
+.msp-brand {{ display:flex; align-items:center; gap:10px; padding-bottom:16px;
+    border-bottom:1px solid #2a2a2a; margin-bottom:14px; }}
+.msp-brand img {{ height:26px; }}
+.msp-brand .mark {{ width:26px; height:26px; border-radius:7px;
+    background:linear-gradient(135deg,#35EDED,#0aa); }}
+.msp-brand b {{ font-size:15px; color:#fff; letter-spacing:-0.01em; }}
+[data-testid="stSidebar"] h5 {{ font-size:11px !important; text-transform:uppercase;
+    letter-spacing:.09em; color:#8a8a8a !important; margin:18px 0 4px !important; font-weight:700; }}
+
+/* ── Main header ── */
+.msp-head {{ display:flex; align-items:center; justify-content:space-between;
+    padding:2px 0 6px 0; }}
+.msp-head h1 {{ font-size:24px; font-weight:800; color:#fff; letter-spacing:-0.02em; margin:0; }}
+.msp-head .badges {{ display:flex; gap:8px; }}
+.msp-head .badge {{ font-size:11px; padding:4px 11px; border-radius:20px;
+    background:#1a1a1a; border:1px solid #2a2a2a; color:#8a8a8a; }}
+.msp-head .badge.live {{ color:#3df03d; border-color:rgba(60,240,60,.3); }}
+.msp-head .badge.cy {{ color:#35EDED; border-color:rgba(53,237,237,.3); }}
+.msp-sub {{ color:#8a8a8a; font-size:13px; margin:0 0 18px 0;
+    border-bottom:1px solid #2a2a2a; padding-bottom:16px; }}
+
 /* ── Primary buttons → cyan ── */
-.stButton > button[kind="primary"] {{
-    background: #35EDED !important;
-    color: #000 !important;
-    border: none !important;
-    font-weight: 600 !important;
-    border-radius: 6px !important;
-}}
-.stButton > button[kind="primary"]:hover {{
-    background: #20d0d0 !important;
-}}
-/* ── Secondary buttons ── */
-.stButton > button[kind="secondary"] {{
-    border-color: #35EDED !important;
-    color: #35EDED !important;
-}}
+.stButton > button[kind="primary"] {{ background:#35EDED !important; color:#000 !important;
+    border:none !important; font-weight:700 !important; border-radius:8px !important; }}
+.stButton > button[kind="primary"]:hover {{ background:#20d0d0 !important; }}
+.stButton > button[kind="secondary"] {{ border-color:#35EDED !important; color:#35EDED !important;
+    border-radius:8px !important; }}
+
 /* ── Tabs ── */
-.stTabs [data-baseweb="tab-list"] {{
-    border-bottom: 2px solid #1A1A1A;
-}}
-.stTabs [aria-selected="true"] {{
-    color: #35EDED !important;
-    border-bottom-color: #35EDED !important;
-}}
-/* ── Info/success boxes ── */
-.stAlert[data-baseweb="notification"] {{
-    border-left-color: #35EDED;
-}}
-/* ── Dividers ── */
-hr {{ border-color: #2a2a2a; }}
-/* ── Hide password show/hide toggle on all inputs ── */
-[data-baseweb="base-input"] button {{
-    display: none !important;
-}}
+.stTabs [data-baseweb="tab-list"] {{ border-bottom:2px solid #1A1A1A; gap:4px; }}
+.stTabs [aria-selected="true"] {{ color:#35EDED !important; border-bottom-color:#35EDED !important; }}
+
+/* ── Image cards ── */
+[data-testid="stImage"] img {{ border-radius:10px; border:1px solid #2a2a2a; }}
+
+/* ── Alerts / dividers ── */
+.stAlert[data-baseweb="notification"] {{ border-left-color:#35EDED; }}
+hr {{ border-color:#2a2a2a; }}
+[data-baseweb="base-input"] button {{ display:none !important; }}
 </style>
-{"<div class='msp-header'><img src='data:image/png;base64," + _logo_b64 + "' style='height:24px'><span class='app-label'>Blog Image Generator</span></div>" if _logo_b64 else ""}
 """, unsafe_allow_html=True)
 
+# ════════════════════════════════════════════════════════════════════════════════
+# SIDEBAR — all configuration (templates, Webflow key, image model)
+# ════════════════════════════════════════════════════════════════════════════════
+with st.sidebar:
+    st.markdown(
+        ("<div class='msp-brand'><img src='data:image/png;base64," + _logo_b64
+         + "'><b>Image Generator</b></div>") if _logo_b64
+        else "<div class='msp-brand'><span class='mark'></span><b>Image Generator</b></div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Figma templates (FIRST so the Webflow key auto-fills per client) ──
+    _pre_clients = get_figma_clients()
+    st.markdown("##### 🎨 Figma Templates")
+    _selected_slug = ""
+    if _pre_clients:
+        _tpl_labels = [_client_display_name(c) for c in _pre_clients]
+        _selected_tpl = st.selectbox(
+            "tpl_select", _tpl_labels, label_visibility="collapsed",
+            key="figma_tpl_dropdown",
+        )
+        _selected_slug = _pre_clients[_tpl_labels.index(_selected_tpl)]
+        if st.button("🗑️ Delete template", key="del_tpl_btn", use_container_width=True):
+            _cache = _load_node_cache()
+            if _selected_slug in _cache:
+                del _cache[_selected_slug]
+                FIGMA_NODE_CACHE.write_text(
+                    json.dumps(_cache, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
+                st.success(f"Deleted **{_selected_tpl}** ✓")
+                st.rerun()
+    else:
+        st.caption("No templates saved yet — add one below.")
+
+    # ── Webflow API key (auto-fills from client cache when dropdown changes) ──
+    _client_saved_key = _load_node_cache().get(_selected_slug, {}).get("webflow_api_key", "")
+    _default_key      = _client_saved_key or os.getenv("WEBFLOW_API_KEY", "")
+    _prev_slug = st.session_state.get("_prev_client_slug", "")
+    if _selected_slug != _prev_slug:
+        st.session_state["_prev_client_slug"] = _selected_slug
+        st.session_state["a_key"] = _default_key
+    elif not st.session_state.get("a_key") and _default_key:
+        st.session_state["a_key"] = _default_key
+
+    st.markdown("##### 🔑 Webflow API Key")
+    a_api_key = st.text_input(
+        "Webflow API Key", type="password", label_visibility="collapsed",
+        placeholder="Paste key → 💾 Save", key="a_key",
+    )
+    if st.button("💾 Save key for this client", use_container_width=True, key="save_key_btn"):
+        if a_api_key.strip() and _selected_slug:
+            _cache = _load_node_cache()
+            _cache[_selected_slug]["webflow_api_key"] = a_api_key.strip()
+            _save_node_cache(_cache)
+            st.success(f"Saved for **{_client_display_name(_selected_slug)}** ✓")
+
+    # ── Add a new client template ──
+    _new_tpl_url = st.text_input(
+        "add_tpl", label_visibility="collapsed",
+        placeholder="Add client: paste Figma frame link", key="add_tpl_url",
+    )
+    if st.button("➕ Add template", key="add_tpl_btn", use_container_width=True):
+        if _new_tpl_url.strip():
+            with st.spinner("Fetching from Figma..."):
+                _ok, _msg, _ = _add_client_from_figma_url(_new_tpl_url.strip())
+            if _ok:
+                st.success(_msg)
+                st.rerun()
+            else:
+                st.error(_msg)
+
+    # ── Image model ──
+    st.markdown("##### 🤖 Image Model")
+    _model_opts = {
+        "🤖 Auto (GPT Image 2 → Grok)": "auto",
+        "🎨 GPT Image 2 (best quality)": "gpt2",
+        "⚡ Grok Imagine (fallback)":     "grok",
+    }
+    _model_label = st.radio(
+        "model", list(_model_opts.keys()), label_visibility="collapsed",
+        key="model_test_radio",
+    )
+    st.session_state["_model_choice"] = _model_opts[_model_label]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# MAIN — header + tabs
+# ════════════════════════════════════════════════════════════════════════════════
+_live_badges = (
+    "<span class='badge live'>● Live</span>"
+    "<span class='badge cy'>Kie API</span>"
+    "<span class='badge'>Gemini 2.0</span>"
+) if KIE_API_KEY else "<span class='badge' style='color:#ff5b5b;border-color:rgba(255,91,91,.4)'>● KIE key missing</span>"
+st.markdown(
+    f"<div class='msp-head'><h1>Blog Image Generator</h1><div class='badges'>{_live_badges}</div></div>"
+    "<div class='msp-sub'>Turn any Webflow blog post into on-brand, MSP-themed visuals — automatically.</div>",
+    unsafe_allow_html=True,
+)
 if not KIE_API_KEY:
     st.error("🔴 **KIE_API_KEY missing** — add it to .env to enable image generation.")
-else:
-    st.success(f"🟢 **Live Mode** — Text: Gemini 2.0 Flash | Images: **Kie API** (GPT Image 2 → Grok Imagine) | KIE key: `...{KIE_API_KEY[-6:]}`")
-
-# ── Model selector (for testing individual models) ────────────────────────────
-_model_opts = {
-    "🤖 Auto (GPT Image 2 → Grok Imagine)": "auto",
-    "🎨 GPT Image 2 (best quality)":        "gpt2",
-    "⚡ Grok Imagine (fallback)":            "grok",
-}
-_model_label = st.radio(
-    "🧪 Model (select to test a specific one):",
-    list(_model_opts.keys()),
-    horizontal=True,
-    key="model_test_radio",
-)
-st.session_state["_model_choice"] = _model_opts[_model_label]
 
 tab_manual, tab_auto = st.tabs(["📥  Manual Upload", "🚀  Auto Upload to Webflow"])
 
@@ -3121,9 +3194,9 @@ with tab_manual:
     # ── Display results (shown after generation or redo) ──────────────────────
     if "m_results" in st.session_state:
         results = st.session_state["m_results"]
-        for row in range(0, len(results), 2):
-            cols = st.columns(2)
-            for ci, result in enumerate(results[row:row + 2]):
+        for row in range(0, len(results), 4):
+            cols = st.columns(4)
+            for ci, result in enumerate(results[row:row + 4]):
                 with cols[ci]:
                     i = result["index"]
                     if result["bytes"]:
@@ -3501,9 +3574,9 @@ def _render_blog_results(blog_state: dict):
     results = blog_state["results"]
     slug = blog_state["slug"]
 
-    for row_start in range(0, len(results), 2):
-        cols = st.columns(2)
-        for ci, result in enumerate(results[row_start:row_start + 2]):
+    for row_start in range(0, len(results), 4):
+        cols = st.columns(4)
+        for ci, result in enumerate(results[row_start:row_start + 4]):
             with cols[ci]:
                 i = result["index"]
                 if result["bytes"]:
@@ -3567,88 +3640,11 @@ def _render_blog_results(blog_state: dict):
 
 with tab_auto:
     st.subheader("Batch Upload to Webflow")
-    st.caption("API key is saved per client — switches automatically when you change the template.")
-
-    # ── Figma templates — dropdown + add/delete (shown FIRST so key auto-fills) ──
-    _pre_clients = get_figma_clients()
-
-    st.markdown("**Figma Templates**")
-
-    _selected_slug = ""
-    if _pre_clients:
-        _tpl_labels = [_client_display_name(c) for c in _pre_clients]
-        _drop_col, _del_col = st.columns([5, 1])
-        with _drop_col:
-            _selected_tpl = st.selectbox(
-                "tpl_select", _tpl_labels,
-                label_visibility="collapsed",
-                key="figma_tpl_dropdown",
-            )
-        with _del_col:
-            if st.button("🗑️ Delete", key="del_tpl_btn", use_container_width=True):
-                _del_slug = _pre_clients[_tpl_labels.index(_selected_tpl)]
-                _cache = _load_node_cache()
-                if _del_slug in _cache:
-                    del _cache[_del_slug]
-                    FIGMA_NODE_CACHE.write_text(
-                        json.dumps(_cache, indent=2, ensure_ascii=False), encoding="utf-8"
-                    )
-                    st.success(f"Deleted **{_selected_tpl}** ✓")
-                    st.rerun()
-
-        _selected_slug = _pre_clients[_tpl_labels.index(_selected_tpl)]
+    if _selected_slug:
+        st.caption(f"Template: **{_client_display_name(_selected_slug)}**  ·  "
+                   "manage templates & API key in the left sidebar ←")
     else:
-        st.caption("No templates saved yet — add one below.")
-
-    # ── API key — auto-fills from client cache when dropdown changes ──────────
-    # Priority: client cache → .env fallback → empty
-    _client_saved_key = _load_node_cache().get(_selected_slug, {}).get("webflow_api_key", "")
-    _default_key      = _client_saved_key or os.getenv("WEBFLOW_API_KEY", "")
-
-    # Auto-switch key when client changes, or restore if field was cleared
-    _prev_slug = st.session_state.get("_prev_client_slug", "")
-    if _selected_slug != _prev_slug:
-        st.session_state["_prev_client_slug"] = _selected_slug
-        st.session_state["a_key"] = _default_key
-    elif not st.session_state.get("a_key") and _default_key:
-        st.session_state["a_key"] = _default_key
-
-    key_col, save_col = st.columns([4, 1])
-    with key_col:
-        a_api_key = st.text_input(
-            "Webflow API Key",
-            type="password",
-            placeholder="Paste key → click 💾 to save for this client",
-            key="a_key",
-        )
-    with save_col:
-        if st.button("💾 Save", use_container_width=True, key="save_key_btn",
-                     help="Saves key for the selected client template"):
-            if a_api_key.strip() and _selected_slug:
-                # Save to client cache
-                _cache = _load_node_cache()
-                _cache[_selected_slug]["webflow_api_key"] = a_api_key.strip()
-                _save_node_cache(_cache)
-                st.success(f"API key saved for **{_client_display_name(_selected_slug)}** ✓")
-
-    # Add new client template
-    _url_col, _btn_col = st.columns([5, 1])
-    with _url_col:
-        _new_tpl_url = st.text_input(
-            "add_tpl", label_visibility="collapsed",
-            placeholder="Add new client: paste Figma frame link here",
-            key="add_tpl_url",
-        )
-    with _btn_col:
-        if st.button("➕ Add", key="add_tpl_btn", use_container_width=True):
-            if _new_tpl_url.strip():
-                with st.spinner("Fetching from Figma..."):
-                    _ok, _msg, _ = _add_client_from_figma_url(_new_tpl_url.strip())
-                if _ok:
-                    st.success(_msg)
-                    st.rerun()
-                else:
-                    st.error(_msg)
+        st.caption("Add a Figma template in the left sidebar ← to get started.")
 
     a_urls_raw = st.text_area("Blog URLs — one per line",
                                placeholder="https://www.rtcmanaged.com/blog/endpoint-security\n"
