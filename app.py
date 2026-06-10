@@ -2736,6 +2736,7 @@ def run_workflow(url: str, output_dir: Path,
             results.append({"index": i, "bytes": final_bytes, "ext": final_ext,
                              "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
                              "alt": alt, "prompt": sl.get("title", ""), "type": "infographic",
+                             "spec": sl, "brand_color": _brand_color, "brand_logo": _brand_logo,
                              "status": "ok" if final_bytes else "failed: render error",
                              "defect_reason": ""})
             continue
@@ -3115,6 +3116,7 @@ with tab_manual:
                     "index": i, "bytes": final_bytes, "ext": final_ext,
                     "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
                     "alt": alt, "prompt": sl.get("title", ""), "type": "infographic",
+                    "spec": sl, "brand_color": _m_brand_color, "brand_logo": _m_brand_logo,
                     "status": "ok" if final_bytes else "failed: render error",
                     "defect_reason": "",
                 })
@@ -3469,6 +3471,29 @@ def _regen_image(blog_state: dict, img_idx: int):
     if not result:
         return
     output_dir = Path("generated_images") / blog_state["slug"]
+
+    # Infographics stay infographics — re-render from the stored spec (never a photo)
+    if result.get("type") == "infographic":
+        with st.status(f"Re-rendering infographic {img_idx} — {blog_state['slug']}...",
+                       expanded=True) as s:
+            try:
+                spec = result.get("spec") or {"infographic_type": "checklist",
+                                              "title": result.get("prompt", ""), "items": []}
+                raw = _render_infographic(spec, DEFAULT_WIDTH, DEFAULT_HEIGHT,
+                                          brand_color=result.get("brand_color", "#1A3A5C"))
+                raw = _apply_corner_logo(raw, result.get("brand_logo"))
+                opt_bytes, ext = optimize_image(raw, max_kb=200)
+                (output_dir / f"image_{img_idx:02d}.{ext}").write_bytes(opt_bytes)
+                result.update({"bytes": opt_bytes, "ext": ext,
+                               "size_kb": round(len(opt_bytes) / 1024, 1),
+                               "status": "ok", "defect_reason": ""})
+                s.update(label=f"Infographic {img_idx} re-rendered ✓ (kept as infographic)",
+                         state="complete")
+            except Exception as e:
+                s.update(label="Infographic re-render failed", state="error")
+                st.error(f"Re-render failed: {e}")
+        return
+
     with st.status(f"Regenerating image {img_idx} — {blog_state['slug']}...",
                    expanded=True) as s:
         # Generate a new prompt variation instead of reusing the same one
