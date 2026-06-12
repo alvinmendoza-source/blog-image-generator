@@ -1046,6 +1046,12 @@ def generate_image_free(prompt: str, index: int, width: int, height: int,
            f"?width={width}&height={height}&model={model}&seed={actual_seed}"
            f"&nologo=true&enhance=false&negative={negative_encoded}")
     r = requests.get(url, timeout=120)
+    if r.status_code == 402:
+        # Pollinations now requires payment — the free fallback is unavailable.
+        raise RuntimeError(
+            "No image generator available: Kie credits are exhausted AND Pollinations "
+            "now requires payment (402). Top up Kie credits at kie.ai to resume generating."
+        )
     r.raise_for_status()
     # Resize to target width proportionally (same as Kie path) so images are never stretched
     try:
@@ -1252,8 +1258,11 @@ def generate_image_live(prompt: str, index: int = 1, width: int = 1500, height: 
                 break
 
     except RuntimeError as e:
-        # Credits exhausted — only case where Pollinations is used as fallback
-        st.warning("⚠️ Kie credits exhausted — switching to Pollinations (free) for remaining images.")
+        # Kie credits exhausted RIGHT NOW — use the free fallback for THIS image only.
+        # Kie is retried first on every image, so generation resumes on Kie automatically
+        # the moment credits are topped up — there is no sticky "use Pollinations" state.
+        st.warning("⚠️ Kie credits exhausted for this image — trying the free fallback. "
+                   "Kie is tried first on every image, so it resumes automatically once credits return.")
         return generate_image_free(prompt, index, width, height)
 
     # Normal model failure (not credits) — show error, no Pollinations fallback
