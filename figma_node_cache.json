@@ -467,43 +467,6 @@
       255
     ]
   },
-  "mbps": {
-    "name": "MBPS",
-    "main": "81:29",
-    "thumb": "81:30",
-    "main_w": 912,
-    "main_h": 532,
-    "overlay_main": "81:18",
-    "overlay_main_x": 0,
-    "overlay_main_y": 0,
-    "main_tx": 49,
-    "main_ty": 237,
-    "main_tw": 303,
-    "main_fsz": 25,
-    "main_font_family": "Inter",
-    "main_font_style": "Semi Bold",
-    "main_font_color": [
-      255,
-      255,
-      255
-    ],
-    "thumb_w": 728,
-    "thumb_h": 425,
-    "overlay_thumb": "81:17",
-    "overlay_thumb_x": 0,
-    "overlay_thumb_y": 0,
-    "thumb_tx": 38,
-    "thumb_ty": 194,
-    "thumb_tw": 303,
-    "thumb_fsz": 21,
-    "thumb_font_family": "Inter",
-    "thumb_font_style": "Semi Bold",
-    "thumb_font_color": [
-      255,
-      255,
-      255
-    ]
-  },
   "unified": {
     "name": "Unified",
     "main": "83:47",
@@ -572,6 +535,43 @@
     "thumb_fsz": 16,
     "thumb_font_family": "Geologica",
     "thumb_font_style": "SemiBold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
+  },
+  "mbps": {
+    "name": "MBPS",
+    "main": "81:29",
+    "thumb": "81:30",
+    "main_w": 912,
+    "main_h": 532,
+    "overlay_main": "81:18",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 49,
+    "main_ty": 237,
+    "main_tw": 303,
+    "main_fsz": 25,
+    "main_font_family": "Inter",
+    "main_font_style": "Semi Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 728,
+    "thumb_h": 425,
+    "overlay_thumb": "81:17",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 38,
+    "thumb_ty": 194,
+    "thumb_tw": 238,
+    "thumb_fsz": 21,
+    "thumb_font_family": "Inter",
+    "thumb_font_style": "Semi Bold",
     "thumb_font_color": [
       255,
       255,
