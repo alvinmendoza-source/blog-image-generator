@@ -577,5 +577,42 @@
       255,
       255
     ]
+  },
+  "sterling": {
+    "name": "Sterling",
+    "main": "90:77",
+    "thumb": "90:76",
+    "main_w": 1084,
+    "main_h": 720,
+    "overlay_main": "89:66",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 69,
+    "main_ty": 324,
+    "main_tw": 419,
+    "main_fsz": 28,
+    "main_font_family": "HelveticaNeueCyr",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 736,
+    "thumb_h": 560,
+    "overlay_thumb": null,
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 31,
+    "thumb_ty": 254,
+    "thumb_tw": 299,
+    "thumb_fsz": 20,
+    "thumb_font_family": "HelveticaNeueCyr",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }
