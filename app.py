@@ -2086,6 +2086,56 @@ def _ig_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
         return ImageFont.load_default()
 
 
+# ── Flat icons (Font Awesome 6 Free Solid) for icon-driven infographics ──
+_FA_FONT_PATH = ASSETS_DIR / "fa-solid-900.ttf"
+try:
+    _FA_OK = _FA_FONT_PATH.exists()
+except Exception:
+    _FA_OK = False
+
+
+def _ig_fa(size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(str(_FA_FONT_PATH), size)
+
+
+_IG_ICONS = {k: chr(v) for k, v in {
+    "lock": 0xf023, "shield": 0xf3ed, "envelope": 0xf0e0, "gear": 0xf013,
+    "cloud": 0xf0c2, "server": 0xf233, "user": 0xf007, "users": 0xf0c0,
+    "key": 0xf084, "warning": 0xf071, "check": 0xf058, "database": 0xf1c0,
+    "wifi": 0xf1eb, "bug": 0xf188, "file": 0xf15b, "laptop": 0xf109,
+    "phone": 0xf3cd, "eye": 0xf06e, "fingerprint": 0xf577, "network": 0xf6ff,
+    "ban": 0xf05e,
+}.items()}
+
+# Ordered keyword → icon rules (most specific first).
+_ICON_RULES = [
+    (("phish", "email", "mail", "spam", "inbox"), "envelope"),
+    (("password", "credential", "login"), "lock"),
+    (("mfa", "multi-factor", "two-factor", "authenticat", "biometric", "fingerprint"), "fingerprint"),
+    (("unauthor", "access control", "permission", "privilege", "restricted"), "ban"),
+    (("lost", "stolen", "device", "laptop", "endpoint", "byod"), "laptop"),
+    (("mobile", "smartphone", "phone"), "phone"),
+    (("insider", "employee", "staff", "personnel", "human error", "people", "team"), "users"),
+    (("backup", "data breach", "database", "data loss", "records"), "database"),
+    (("network", "wifi", "wi-fi", "firewall", "router", "connection"), "network"),
+    (("malware", "virus", "antivirus", "ransomware", "trojan", "spyware", "exploit", "bug"), "bug"),
+    (("cloud", "saas"), "cloud"),
+    (("monitor", "detect", "visibility", "logging", "audit"), "eye"),
+    (("server", "infrastructure", "data center", "datacenter"), "server"),
+    (("encrypt", "certificate", " key"), "key"),
+    (("patch", "update", "software", "unpatch", "outdated", "upgrade", "system"), "gear"),
+    (("breach", "alert", "incident", "risk", "threat", "attack", "vulnerab", "danger", "warning"), "warning"),
+]
+
+
+def _pick_icon(text: str) -> str:
+    t = (text or "").lower()
+    for keys, name in _ICON_RULES:
+        if any(k in t for k in keys):
+            return _IG_ICONS[name]
+    return _IG_ICONS["shield"]
+
+
 def _ig_wrap(text: str, font, max_w: int) -> list:
     words = (text or "").split()
     lines, cur = [], []
@@ -2464,14 +2514,68 @@ def _bar_columns(spec, bars, w, h, primary, accent, bg):
     return _ig_bytes(img)
 
 
+def _render_icongrid(spec, pairs, w, h, primary, accent, bg, kicker):
+    """Icon-driven 2-column card grid. Each card: a brand-accent icon disc (icon auto-
+    matched from the item text) + bold title + optional description. 100% accurate text."""
+    pad = int(w * 0.045)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, kicker, pad)
+    n = len(pairs)
+    if not n:
+        return _ig_bytes(img)
+    cols = 2 if n > 1 else 1
+    per = (n + cols - 1) // cols
+    top, bot = body_top, h - int(h * 0.05)
+    cgap, rgap = int(w * 0.028), int(h * 0.028)
+    cw = (w - 2 * pad - (cols - 1) * cgap) // cols
+    rh = (bot - top - (per - 1) * rgap) // per
+    shadow = _darken(bg, 0.90)
+    has_desc = any(dsc for _, dsc in pairs)
+    itf = _ig_font(int(h * 0.033), bold=True)
+    idf = _ig_font(int(h * 0.021))
+    for i, (title_t, desc) in enumerate(pairs):
+        col, row = divmod(i, per)
+        x = pad + col * (cw + cgap)
+        ry = top + row * (rh + rgap)
+        d.rounded_rectangle([x + 3, ry + 4, x + cw + 3, ry + rh + 4], radius=16, fill=shadow)
+        d.rounded_rectangle([x, ry, x + cw, ry + rh], radius=16, fill=(255, 255, 255))
+        disc = int(rh * 0.60)
+        dcx, dcy = x + int(rh * 0.5), ry + rh // 2
+        d.ellipse([dcx - disc // 2, dcy - disc // 2, dcx + disc // 2, dcy + disc // 2],
+                  fill=_light(accent, 0.84))
+        try:
+            d.text((dcx, dcy), _pick_icon(title_t + " " + desc),
+                   font=_ig_fa(int(disc * 0.5)), fill=accent, anchor="mm")
+        except Exception:
+            pass
+        tx = dcx + disc // 2 + int(w * 0.018)
+        tw = x + cw - tx - int(w * 0.015)
+        tlines = _ig_wrap(title_t, itf, tw)[:1 if has_desc else 2]
+        dlines = _ig_wrap(desc, idf, tw)[:2] if desc else []
+        blk = len(tlines) * int(h * 0.040) + len(dlines) * int(h * 0.028)
+        ty = dcy - blk // 2
+        for ln in tlines:
+            d.text((tx, ty), ln, font=itf, fill=primary)
+            ty += int(h * 0.040)
+        for ln in dlines:
+            d.text((tx, ty), ln, font=idf, fill=_IG["muted"])
+            ty += int(h * 0.028)
+    return _ig_bytes(img)
+
+
 def _render_steps_infographic(spec: dict, w: int, h: int,
                               primary: tuple, accent: tuple, bg: tuple, footer: str,
                               seed: str = "") -> bytes:
-    _items = (spec.get("items") or [])[:5]
+    _items = (spec.get("items") or [])[:6]
     if _items:
-        _v = _ig_variant(seed + "steps", 3)
-        if _v == 1: return _steps_timeline(spec, _items, w, h, primary, accent, bg)
-        if _v == 2: return _steps_rows(spec, _items, w, h, primary, accent, bg)
+        _nv = 4 if _FA_OK else 3
+        _v = _ig_variant(seed + "steps", _nv)
+        if _v == 3 and len(_items) <= 6:
+            _pairs = [(it.get("title") or f"Step {i + 1}", _step_desc(it))
+                      for i, it in enumerate(_items)]
+            return _render_icongrid(spec, _pairs, w, h, primary, accent, bg, "Key Steps")
+        if _v == 1: return _steps_timeline(spec, _items[:5], w, h, primary, accent, bg)
+        if _v == 2: return _steps_rows(spec, _items[:5], w, h, primary, accent, bg)
+        _items = _items[:5]
     img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
     _ig_frame(d, w, h, bg)
@@ -2598,7 +2702,11 @@ def _render_checklist_infographic(spec: dict, w: int, h: int,
                                   seed: str = "") -> bytes:
     _items = (spec.get("items") or [])[:8]
     if _items:
-        _v = _ig_variant(seed + "checklist", 3)
+        _nv = 4 if _FA_OK else 3
+        _v = _ig_variant(seed + "checklist", _nv)
+        if _v == 3 and len(_items) <= 6:
+            _pairs = [(str(s), "") for s in _items]
+            return _render_icongrid(spec, _pairs, w, h, primary, accent, bg, "Checklist")
         if _v == 1: return _checklist_rows(spec, _items, w, h, primary, accent, bg)
         if _v == 2 and len(_items) <= 6: return _checklist_pills(spec, _items, w, h, primary, accent, bg)
     img = PILImage.new("RGB", (w, h), bg)
