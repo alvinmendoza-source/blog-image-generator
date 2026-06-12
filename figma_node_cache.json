@@ -614,5 +614,42 @@
       255,
       255
     ]
+  },
+  "auit": {
+    "name": "Auit",
+    "main": "92:89",
+    "thumb": "92:90",
+    "main_w": 784,
+    "main_h": 458,
+    "overlay_main": "91:79",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 37,
+    "main_ty": 225,
+    "main_tw": 278,
+    "main_fsz": 22,
+    "main_font_family": "Satoshi",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 428,
+    "thumb_h": 250,
+    "overlay_thumb": "91:80",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 18,
+    "thumb_ty": 121,
+    "thumb_tw": 157,
+    "thumb_fsz": 13,
+    "thumb_font_family": "Satoshi",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }
