@@ -2154,10 +2154,10 @@ def _ig_header(d, w: int, h: int, primary: tuple, accent: tuple,
 
 
 def _ig_footer(d, w: int, h: int, primary: tuple, footer: str):
-    if not footer:
-        return
-    ff = _ig_font(int(h * 0.025), bold=True)
-    d.text((w // 2, h - int(h * 0.055)), footer[:64], font=ff, fill=primary, anchor="mm")
+    # Footer text disabled for ALL clients (2026-06-12): the centered "Name · domain"
+    # line truncated client names (e.g. "Unified Technician" -> "Unified") and looked
+    # messy. Branding now comes solely from the corner logo (_apply_corner_logo).
+    return
 
 
 def _render_steps_infographic(spec: dict, w: int, h: int,
