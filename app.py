@@ -2230,8 +2230,248 @@ def _ig_footer(d, w: int, h: int, primary: tuple, footer: str):
     return
 
 
+def _ig_variant(seed: str, n: int) -> int:
+    """Deterministic 0..n-1 layout pick. Seeded by client brand + blog title so
+    different clients (and different blogs) get visibly different infographic styles,
+    while the same blog re-renders identically on redo."""
+    return int(hashlib.md5((seed or "x").encode("utf-8")).hexdigest(), 16) % max(1, n)
+
+
+def _ig_setup(spec, w, h, bg, primary, accent, default_kicker, pad):
+    img = PILImage.new("RGB", (w, h), bg)
+    d = ImageDraw.Draw(img)
+    _ig_frame(d, w, h, bg)
+    body_top = _ig_header(d, w, h, primary, accent, spec, default_kicker, pad)
+    return img, d, body_top
+
+
+def _step_desc(item: dict) -> str:
+    pts = item.get("points")
+    return " ".join(pts) if isinstance(pts, list) else (pts or item.get("desc") or "")
+
+
+# ── STEPS variant 1: vertical timeline ──
+def _steps_timeline(spec, items, w, h, primary, accent, bg):
+    pad = int(w * 0.06)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "Key Steps", pad)
+    n = len(items)
+    top, bot = body_top, h - int(h * 0.06)
+    row_h = (bot - top) // n
+    cxn = pad + int(w * 0.045)
+    r = max(16, min(int(row_h * 0.30), int(h * 0.055)))
+    d.line([(cxn, top + row_h // 2), (cxn, top + (n - 1) * row_h + row_h // 2)],
+           fill=_light(accent, 0.45), width=max(3, int(w * 0.004)))
+    tf = _ig_font(int(h * 0.034), bold=True)
+    pf = _ig_font(int(h * 0.022))
+    for i, item in enumerate(items):
+        ry = top + i * row_h
+        cyc = ry + row_h // 2
+        d.ellipse([cxn - r, cyc - r, cxn + r, cyc + r], fill=accent)
+        d.text((cxn, cyc), str(item.get("number", i + 1)),
+               font=_ig_font(int(r * 1.05), bold=True), fill=(255, 255, 255), anchor="mm")
+        tx = cxn + r + int(w * 0.03)
+        ty = ry + int(row_h * 0.14)
+        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}", tf, w - tx - pad)[:1]:
+            d.text((tx, ty), ln, font=tf, fill=primary)
+            ty += int(h * 0.045)
+        for ln in _ig_wrap(_step_desc(item)[:120], pf, w - tx - pad)[:2]:
+            d.text((tx, ty), ln, font=pf, fill=_IG["muted"])
+            ty += int(h * 0.030)
+    return _ig_bytes(img)
+
+
+# ── STEPS variant 2: numbered full-width rows ──
+def _steps_rows(spec, items, w, h, primary, accent, bg):
+    pad = int(w * 0.05)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "Key Steps", pad)
+    n = len(items)
+    top, bot = body_top, h - int(h * 0.06)
+    gap = int(h * 0.022)
+    row_h = (bot - top - (n - 1) * gap) // n
+    shadow = _darken(bg, 0.91)
+    badge_w = int(row_h * 0.95)
+    tf = _ig_font(int(h * 0.032), bold=True)
+    pf = _ig_font(int(h * 0.022))
+    for i, item in enumerate(items):
+        ry = top + i * (row_h + gap)
+        d.rounded_rectangle([pad + 2, ry + 3, w - pad + 2, ry + row_h + 3], radius=12, fill=shadow)
+        d.rounded_rectangle([pad, ry, w - pad, ry + row_h], radius=12, fill=(255, 255, 255))
+        d.rounded_rectangle([pad, ry, pad + badge_w, ry + row_h], radius=12, fill=accent)
+        d.rectangle([pad + badge_w - 14, ry, pad + badge_w, ry + row_h], fill=accent)
+        d.text((pad + badge_w // 2, ry + row_h // 2), str(item.get("number", i + 1)),
+               font=_ig_font(int(row_h * 0.5), bold=True), fill=(255, 255, 255), anchor="mm")
+        tx = pad + badge_w + int(w * 0.025)
+        ty = ry + int(row_h * 0.15)
+        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}", tf, w - tx - pad)[:1]:
+            d.text((tx, ty), ln, font=tf, fill=primary)
+            ty += int(h * 0.042)
+        for ln in _ig_wrap(_step_desc(item)[:110], pf, w - tx - pad)[:2]:
+            d.text((tx, ty), ln, font=pf, fill=_IG["muted"])
+            ty += int(h * 0.029)
+    return _ig_bytes(img)
+
+
+def _ig_check(d, chx, cyc, ck, accent):
+    d.ellipse([chx, cyc - ck // 2, chx + ck, cyc + ck // 2], fill=accent)
+    d.line([(int(chx + ck * 0.27), int(cyc)),
+            (int(chx + ck * 0.43), int(cyc + ck * 0.22)),
+            (int(chx + ck * 0.75), int(cyc - ck * 0.25))],
+           fill=(255, 255, 255), width=max(2, ck // 8))
+
+
+# ── CHECKLIST variant 1: alternating flat rows ──
+def _checklist_rows(spec, items, w, h, primary, accent, bg):
+    pad = int(w * 0.055)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "Checklist", pad)
+    n = len(items)
+    top, bot = body_top, h - int(h * 0.06)
+    row_h = (bot - top) // n
+    cf = _ig_font(int(h * 0.030))
+    ck = max(18, min(int(row_h * 0.42), 40))
+    tint = _light(accent, 0.85)
+    for i, item in enumerate(items):
+        ry = top + i * row_h
+        if i % 2 == 0:
+            d.rounded_rectangle([pad, ry + 2, w - pad, ry + row_h - 2], radius=8, fill=tint)
+        cyc = ry + row_h // 2
+        chx = pad + int(w * 0.02)
+        _ig_check(d, chx, cyc, ck, accent)
+        tx = chx + ck + int(w * 0.025)
+        lines = _ig_wrap((item or "")[:100], cf, w - tx - pad)[:2]
+        ty = cyc - (len(lines) * int(h * 0.034)) // 2
+        for ln in lines:
+            d.text((tx, ty), ln, font=cf, fill=primary)
+            ty += int(h * 0.034)
+    return _ig_bytes(img)
+
+
+# ── CHECKLIST variant 2: rounded accent pills ──
+def _checklist_pills(spec, items, w, h, primary, accent, bg):
+    pad = int(w * 0.055)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "Checklist", pad)
+    n = len(items)
+    top, bot = body_top, h - int(h * 0.06)
+    gap = int(h * 0.02)
+    row_h = (bot - top - (n - 1) * gap) // n
+    cf = _ig_font(int(h * 0.029), bold=True)
+    ck = max(16, min(int(row_h * 0.42), 36))
+    tint = _light(accent, 0.82)
+    for i, item in enumerate(items):
+        ry = top + i * (row_h + gap)
+        d.rounded_rectangle([pad, ry, w - pad, ry + row_h], radius=row_h // 2, fill=tint)
+        cyc = ry + row_h // 2
+        chx = pad + int(row_h * 0.28)
+        _ig_check(d, chx, cyc, ck, accent)
+        tx = chx + ck + int(w * 0.022)
+        for ln in _ig_wrap((item or "")[:90], cf, w - tx - pad - int(row_h * 0.3))[:1]:
+            d.text((tx, cyc), ln, font=cf, fill=primary, anchor="lm")
+    return _ig_bytes(img)
+
+
+# ── STATS variant 1: big numbers in a row with dividers ──
+def _stats_bigrow(spec, stats, w, h, primary, accent, bg):
+    pad = int(w * 0.05)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "By the Numbers", pad)
+    n = len(stats)
+    top, bot = body_top, h - int(h * 0.07)
+    cell_w = (w - 2 * pad) // n
+    for idx, stat in enumerate(stats):
+        cx = pad + idx * cell_w + cell_w // 2
+        if idx > 0:
+            lx = pad + idx * cell_w
+            d.line([(lx, top + int((bot - top) * 0.2)), (lx, bot - int((bot - top) * 0.2))],
+                   fill=_darken(bg, 0.88), width=2)
+        val = str(stat.get("value") or "—")[:10]
+        vsize = int(h * 0.16)
+        vf = _ig_font(vsize, bold=True)
+        while vf.getbbox(val)[2] > cell_w - int(cell_w * 0.12) and vsize > 24:
+            vsize -= 3
+            vf = _ig_font(vsize, bold=True)
+        d.text((cx, top + int((bot - top) * 0.32)), val, font=vf, fill=accent, anchor="mm")
+        lf = _ig_font(int(h * 0.024))
+        ly = top + int((bot - top) * 0.52)
+        for ln in _ig_wrap((stat.get("label") or "")[:80], lf, cell_w - int(cell_w * 0.12))[:3]:
+            d.text((cx, ly), ln, font=lf, fill=_IG["muted"], anchor="ma")
+            ly += int(h * 0.030)
+    return _ig_bytes(img)
+
+
+# ── STATS variant 2: vertical list, big number + label ──
+def _stats_rows(spec, stats, w, h, primary, accent, bg):
+    pad = int(w * 0.05)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "By the Numbers", pad)
+    n = len(stats)
+    top, bot = body_top, h - int(h * 0.07)
+    gap = int(h * 0.025)
+    row_h = (bot - top - (n - 1) * gap) // n
+    shadow = _darken(bg, 0.90)
+    numbox_w = int(w * 0.30)
+    for idx, stat in enumerate(stats):
+        ry = top + idx * (row_h + gap)
+        d.rounded_rectangle([pad + 2, ry + 3, w - pad + 2, ry + row_h + 3], radius=14, fill=shadow)
+        d.rounded_rectangle([pad, ry, w - pad, ry + row_h], radius=14, fill=(255, 255, 255))
+        val = str(stat.get("value") or "—")[:10]
+        vsize = int(row_h * 0.5)
+        vf = _ig_font(vsize, bold=True)
+        while vf.getbbox(val)[2] > numbox_w - 20 and vsize > 20:
+            vsize -= 2
+            vf = _ig_font(vsize, bold=True)
+        d.text((pad + numbox_w // 2, ry + row_h // 2), val, font=vf, fill=accent, anchor="mm")
+        d.line([(pad + numbox_w, ry + int(row_h * 0.2)), (pad + numbox_w, ry + int(row_h * 0.8))],
+               fill=_darken(bg, 0.9), width=2)
+        lf = _ig_font(int(h * 0.026))
+        tx = pad + numbox_w + int(w * 0.025)
+        lines = _ig_wrap((stat.get("label") or "")[:100], lf, w - tx - pad)[:3]
+        ty = ry + row_h // 2 - (len(lines) * int(h * 0.032)) // 2
+        for ln in lines:
+            d.text((tx, ty), ln, font=lf, fill=primary)
+            ty += int(h * 0.032)
+    return _ig_bytes(img)
+
+
+# ── BAR_CHART variant 1: vertical columns ──
+def _bar_columns(spec, bars, w, h, primary, accent, bg):
+    pad = int(w * 0.055)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "Comparison", pad)
+    n = len(bars)
+
+    def _fval(b):
+        try:
+            return float(b.get("value", 0))
+        except Exception:
+            return 0.0
+    max_v = max((_fval(b) for b in bars), default=1) or 1
+    top = body_top + int(h * 0.04)
+    base = h - int(h * 0.16)
+    chart_h = base - top
+    gap = int(w * 0.03)
+    col_w = (w - 2 * pad - (n - 1) * gap) // n
+    vf = _ig_font(int(h * 0.030), bold=True)
+    lf = _ig_font(int(h * 0.022))
+    for i, bar in enumerate(bars):
+        cx = pad + i * (col_w + gap)
+        val = _fval(bar)
+        bh = max(4, int(chart_h * val / max_v))
+        by = base - bh
+        fill = accent if i == 0 else primary
+        unit = str(bar.get("unit", ""))
+        vstr = f"{int(val) if val == int(val) else val}{unit}"
+        d.text((cx + col_w // 2, by - int(h * 0.045)), vstr, font=vf, fill=primary, anchor="ma")
+        d.rounded_rectangle([cx, by, cx + col_w, base], radius=8, fill=fill)
+        for j, ln in enumerate(_ig_wrap(str(bar.get("label", ""))[:30], lf, col_w + gap // 2)[:2]):
+            d.text((cx + col_w // 2, base + int(h * 0.02) + j * int(h * 0.026)), ln,
+                   font=lf, fill=_IG["muted"], anchor="ma")
+    return _ig_bytes(img)
+
+
 def _render_steps_infographic(spec: dict, w: int, h: int,
-                              primary: tuple, accent: tuple, bg: tuple, footer: str) -> bytes:
+                              primary: tuple, accent: tuple, bg: tuple, footer: str,
+                              seed: str = "") -> bytes:
+    _items = (spec.get("items") or [])[:5]
+    if _items:
+        _v = _ig_variant(seed + "steps", 3)
+        if _v == 1: return _steps_timeline(spec, _items, w, h, primary, accent, bg)
+        if _v == 2: return _steps_rows(spec, _items, w, h, primary, accent, bg)
     img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
     _ig_frame(d, w, h, bg)
@@ -2293,7 +2533,13 @@ def _render_steps_infographic(spec: dict, w: int, h: int,
 
 
 def _render_stats_infographic(spec: dict, w: int, h: int,
-                              primary: tuple, accent: tuple, bg: tuple, footer: str) -> bytes:
+                              primary: tuple, accent: tuple, bg: tuple, footer: str,
+                              seed: str = "") -> bytes:
+    _stats = (spec.get("stats") or [])[:4]
+    if _stats:
+        _v = _ig_variant(seed + "stats", 3)
+        if _v == 1: return _stats_bigrow(spec, _stats, w, h, primary, accent, bg)
+        if _v == 2: return _stats_rows(spec, _stats, w, h, primary, accent, bg)
     img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
     _ig_frame(d, w, h, bg)
@@ -2348,7 +2594,13 @@ def _render_stats_infographic(spec: dict, w: int, h: int,
 
 
 def _render_checklist_infographic(spec: dict, w: int, h: int,
-                                  primary: tuple, accent: tuple, bg: tuple, footer: str) -> bytes:
+                                  primary: tuple, accent: tuple, bg: tuple, footer: str,
+                                  seed: str = "") -> bytes:
+    _items = (spec.get("items") or [])[:8]
+    if _items:
+        _v = _ig_variant(seed + "checklist", 3)
+        if _v == 1: return _checklist_rows(spec, _items, w, h, primary, accent, bg)
+        if _v == 2 and len(_items) <= 6: return _checklist_pills(spec, _items, w, h, primary, accent, bg)
     img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
     _ig_frame(d, w, h, bg)
@@ -2399,7 +2651,11 @@ def _render_checklist_infographic(spec: dict, w: int, h: int,
 
 
 def _render_bar_chart_infographic(spec: dict, w: int, h: int,
-                                  primary: tuple, accent: tuple, bg: tuple, footer: str) -> bytes:
+                                  primary: tuple, accent: tuple, bg: tuple, footer: str,
+                                  seed: str = "") -> bytes:
+    _bars = (spec.get("bars") or [])[:6]
+    if _bars and _ig_variant(seed + "bar", 2) == 1:
+        return _bar_columns(spec, _bars, w, h, primary, accent, bg)
     img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
     _ig_frame(d, w, h, bg)
@@ -2578,16 +2834,20 @@ def _apply_corner_logo(img_bytes: bytes, logo_bytes: bytes | None,
 
 
 def _render_infographic(spec: dict, w: int, h: int,
-                        brand_color: str = "#1A3A5C", footer: str = "") -> bytes:
+                        brand_color: str = "#1A3A5C", footer: str = "", seed: str = "") -> bytes:
     """Dispatch to the correct renderer. The whole palette (primary/accent/bg) is
-    derived from the client brand color. Never raises — always returns valid bytes."""
+    derived from the client brand color. Never raises — always returns valid bytes.
+    `seed` (brand + blog title) selects a layout VARIANT so different clients/blogs get
+    visibly different infographic styles instead of one fixed look per type."""
     primary, accent, bg = _ig_palette(brand_color)
+    if not seed:
+        seed = f"{brand_color}|{spec.get('title', '')}"
     try:
         t = spec.get("infographic_type", "steps")
-        if t == "stats":     return _render_stats_infographic(spec, w, h, primary, accent, bg, footer)
-        if t == "checklist": return _render_checklist_infographic(spec, w, h, primary, accent, bg, footer)
-        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h, primary, accent, bg, footer)
-        return _render_steps_infographic(spec, w, h, primary, accent, bg, footer)
+        if t == "stats":     return _render_stats_infographic(spec, w, h, primary, accent, bg, footer, seed)
+        if t == "checklist": return _render_checklist_infographic(spec, w, h, primary, accent, bg, footer, seed)
+        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h, primary, accent, bg, footer, seed)
+        return _render_steps_infographic(spec, w, h, primary, accent, bg, footer, seed)
     except Exception as e:
         img = PILImage.new("RGB", (w, h), bg)
         draw = ImageDraw.Draw(img)
