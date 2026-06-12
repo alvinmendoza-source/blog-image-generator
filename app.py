@@ -2075,28 +2075,27 @@ def _light(c: tuple, f: float = 0.6) -> tuple:
 
 
 def _ig_palette(brand_hex: str) -> tuple:
-    """Derive an editorial palette ENTIRELY from the client brand color.
-    Returns (primary, accent, bg):
+    """Derive an editorial palette ENTIRELY from the client brand color — fully on-brand.
+    Returns (primary, accent, bg), all sharing the SAME brand hue (monochromatic):
       primary = brand hue, deepened so white text reads on filled cards (title/cards/footer)
-      accent  = a contrasting hue derived from the brand via warm<->cool flip (pill/numbers/checks)
-      bg      = a very faint tint of the brand (page background — brand-derived, not a fixed cream)."""
+      accent  = the brand color itself, vivid & balanced (pill/numbers/checks/arrows)
+      bg      = a very faint tint of the brand (page background)
+    No warm<->cool flip — the accent always matches the client's actual brand color so it
+    never produces an off/clashing hue (e.g. neon cyan on an orange brand)."""
     import colorsys
     base = _hex_to_rgb(brand_hex)
     r, g, b = (c / 255 for c in base)
     h, l, s = colorsys.rgb_to_hls(r, g, b)
-    s = max(s, 0.30)
-    # PRIMARY — brand hue, deep enough for white text on a filled card
-    pr, pg, pb = colorsys.hls_to_rgb(h, min(l, 0.40), s)
+    s = max(s, 0.45)
+    # PRIMARY — deep brand shade so white text reads on a filled card
+    pr, pg, pb = colorsys.hls_to_rgb(h, min(l, 0.34), max(s, 0.50))
     primary = (int(pr * 255), int(pg * 255), int(pb * 255))
-    # ACCENT — contrasting hue derived from the brand (warm <-> cool)
-    deg = h * 360
-    if 40 <= deg < 200:      acc_h = 26 / 360      # green/teal/cyan brand -> warm orange
-    elif 200 <= deg < 290:   acc_h = 32 / 360      # blue/indigo brand     -> amber
-    else:                    acc_h = 187 / 360     # warm/red/purple brand -> teal
-    ar, ag, ab = colorsys.hls_to_rgb(acc_h, 0.52, 0.82)
+    # ACCENT — the brand hue itself, vivid but balanced (white text still reads on the pill)
+    acc_l = min(max(l, 0.46), 0.56)
+    ar, ag, ab = colorsys.hls_to_rgb(h, acc_l, min(max(s, 0.55), 0.95))
     accent = (int(ar * 255), int(ag * 255), int(ab * 255))
     # BACKGROUND — faint tint of the brand color
-    bg = tuple(int(c * 0.08 + 255 * 0.92) for c in base)
+    bg = tuple(int(c * 0.07 + 255 * 0.93) for c in base)
     return primary, accent, bg
 
 
@@ -2139,7 +2138,8 @@ def _ig_header(d, w: int, h: int, primary: tuple, accent: tuple,
         pw = (bb[2] - bb[0]) + int(w * 0.035)
         ph = int(h * 0.05)
         d.rounded_rectangle([cx - pw // 2, y, cx + pw // 2, y + ph], radius=ph // 2, fill=accent)
-        d.text((cx, y + ph // 2), kick, font=kf, fill=(255, 255, 255), anchor="mm")
+        pill_txt = (255, 255, 255) if _lum(accent) < 150 else _darken(accent, 0.45)
+        d.text((cx, y + ph // 2), kick, font=kf, fill=pill_txt, anchor="mm")
         y += ph + int(h * 0.028)
     tf = _ig_font(int(h * 0.064), bold=True)
     for ln in _ig_wrap(spec.get("title") or "Infographic", tf, w - 2 * pad)[:2]:
