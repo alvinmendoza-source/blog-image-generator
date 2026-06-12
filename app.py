@@ -3467,7 +3467,8 @@ st.markdown(
 if not KIE_API_KEY:
     st.error("🔴 **KIE_API_KEY missing** — add it to .env to enable image generation.")
 
-tab_manual, tab_auto = st.tabs(["📥  Manual Upload", "🚀  Auto Upload to Webflow"])
+tab_manual, tab_auto, tab_cover = st.tabs(
+    ["📥  Manual Upload", "🚀  Auto Upload to Webflow", "🖼️  Main + Thumbnail Only"])
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -3969,6 +3970,141 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
     return new_urls
 
 
+def do_webflow_upload_cover(wf, site_id, collection_id, item_id, was_published,
+                            main_bytes=None, thumb_bytes=None, blog_title="",
+                            client_name="", site_name=""):
+    """Upload ONLY the main (featured) image + thumbnail to the CMS item, then publish.
+    Used by the 'Main + Thumbnail Only' tab — no body images / infographics / rich text."""
+    if main_bytes or thumb_bytes:
+        with st.status("Uploading main image & thumbnail...", expanded=True) as s:
+            try:
+                fd2 = wf._get(f"/collections/{collection_id}/items/{item_id}").get("fieldData", {})
+                st.write(f"**All CMS fields:** {list(fd2.keys())}")
+                img_fields = {k: v for k, v in fd2.items()
+                              if v is None or (isinstance(v, dict) and "url" in v)}
+                st.write(f"**Image-type fields found:** {list(img_fields.keys()) or 'none'}")
+
+                def _find_field(fields, keywords):
+                    hit = next((k for k in fields if k.lower() in keywords), None)
+                    if hit:
+                        return hit
+                    return next((k for k in fields if any(kw in k.lower() for kw in keywords)), None)
+
+                def _to_jpeg(png_bytes):
+                    buf = io.BytesIO()
+                    PILImage.open(io.BytesIO(png_bytes)).convert("RGB").save(buf, format="JPEG", quality=90)
+                    return buf.getvalue(), "jpg"
+
+                THUMB_KW = ["thumbnail-image", "thumbnail_image", "thumbnail", "thumb",
+                            "card-image", "card-thumbnail", "card", "preview", "list-image"]
+                MAIN_KW  = ["main-image", "main_image", "hero-image", "featured-image",
+                            "post-image", "blog-image", "cover-image", "og-image",
+                            "main", "hero", "featured", "cover", "post-main"]
+                img_update = {}
+                tkey = _find_field(img_fields, THUMB_KW) if thumb_bytes else None
+                main_candidates = {k: v for k, v in img_fields.items() if k != tkey}
+                mkey = _find_field(main_candidates, MAIN_KW) if main_bytes else None
+                if main_bytes and not mkey and main_candidates:
+                    mkey = next(iter(main_candidates))
+                    st.write(f"ℹ️ Main image: no keyword match — using `{mkey}` as fallback")
+                st.write(f"**Matched → main:** `{mkey or 'NOT FOUND'}` | **thumb:** `{tkey or 'NOT FOUND'}`")
+                if main_bytes and mkey:
+                    jbytes, ext = _to_jpeg(main_bytes)
+                    murl = wf.upload_asset(site_id, jbytes, f"main_image.{ext}")
+                    main_alt = _gemini_text(
+                        "Write alt text for a blog featured image. Max 80 characters. No quotes.",
+                        f"Blog title: {blog_title}", max_tokens=30, temperature=0.5,
+                    ) or f"{blog_title[:70]} — featured image"
+                    if len(main_alt) > 80:
+                        main_alt = main_alt[:80].rsplit(' ', 1)[0]
+                    img_update[mkey] = {"url": murl, "alt": main_alt}
+                    st.write(f"✓ Main image → `{mkey}`")
+                elif main_bytes:
+                    st.warning(f"⚠️ No image field found for main image. Fields: {list(img_fields.keys())}")
+                if thumb_bytes and tkey:
+                    jbytes, ext = _to_jpeg(thumb_bytes)
+                    turl = wf.upload_asset(site_id, jbytes, f"thumbnail.{ext}")
+                    thumb_alt = _gemini_text(
+                        "Write alt text for a blog thumbnail image. Max 80 characters. No quotes.",
+                        f"Blog title: {blog_title}", max_tokens=30, temperature=0.5,
+                    ) or f"{blog_title[:70]} — thumbnail"
+                    if len(thumb_alt) > 80:
+                        thumb_alt = thumb_alt[:80].rsplit(' ', 1)[0]
+                    img_update[tkey] = {"url": turl, "alt": thumb_alt}
+                    st.write(f"✓ Thumbnail → `{tkey}`")
+                elif thumb_bytes:
+                    st.warning(f"⚠️ No image field found for thumbnail. Fields: {list(img_fields.keys())}")
+                if img_update:
+                    wf.update_item(collection_id, item_id, img_update)
+                    st.write(f"CMS updated: {list(img_update.keys())}")
+                s.update(label="Main image & thumbnail uploaded ✓", state="complete")
+            except Exception as e:
+                s.update(label="Main/thumbnail upload failed", state="error")
+                st.error(str(e))
+                return
+
+    with st.status("Checking publish status...", expanded=True) as s:
+        try:
+            if was_published:
+                wf.publish_items(collection_id, [item_id])
+                s.update(label="Re-published ✓", state="complete")
+            else:
+                s.update(label="Kept as draft ✓", state="complete")
+        except Exception as e:
+            s.update(label="Publish step failed", state="error")
+            st.error(str(e))
+    st.success(f"✅ Done! Main + thumbnail uploaded "
+               f"({client_name or site_name} — {'published' if was_published else 'draft'}).")
+
+
+def _resolve_blog_slug(start_url: str):
+    """Module-level slug resolver (GET redirect chain + <link rel=canonical>), used by the
+    Main+Thumbnail tab. Mirrors the auto tab's resolver; ignores Webflow /404 canonicals."""
+    def _slug_of(u):
+        u = re.sub(r"[?#].*$", "", u or "").rstrip("/")
+        return u.split("/")[-1]
+    _orig = re.sub(r"[?#].*$", "", start_url).rstrip("/")
+    try:
+        _r = requests.get(start_url, allow_redirects=True,
+                          headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                          timeout=15)
+        if not _r.ok:
+            return _orig, _slug_of(_orig)
+        _soup = BeautifulSoup(_r.content, "html.parser")
+        _canon = _soup.find("link", rel="canonical")
+        if _canon and _canon.get("href"):
+            _cu = re.sub(r"[?#].*$", "", _canon["href"]).rstrip("/")
+            _cslug = _slug_of(_cu)
+            if _cslug and _cslug.lower() != "404":
+                return _cu, _cslug
+        _fu = re.sub(r"[?#].*$", "", _r.url).rstrip("/")
+        _fslug = _slug_of(_fu)
+        if _fslug and _fslug.lower() != "404":
+            return _fu, _fslug
+        return _orig, _slug_of(_orig)
+    except Exception:
+        return _orig, _slug_of(_orig)
+
+
+def _fetch_cover_title(url, slug, wf=None, collection_id=None, item_id=None):
+    """Best-effort blog title for the cover tab: public page → Webflow CMS draft → slug."""
+    try:
+        title, _c, _i = fetch_blog(url)
+        if title:
+            return title
+    except requests.HTTPError as he:
+        if wf and str(getattr(he.response, "status_code", "")) == "404":
+            try:
+                title, _c, _i = fetch_blog_from_cms(slug, wf, collection_id, item_id)
+                if title:
+                    return title
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return slug.replace("-", " ").title()
+
+
 def _regen_image(blog_state: dict, img_idx: int):
     """Regenerate a single image with a fresh prompt variation. Mutates blog_state in place."""
     result = next((r for r in blog_state["results"] if r["index"] == img_idx), None)
@@ -4395,3 +4531,156 @@ with tab_auto:
                     st.rerun()
         elif any(b.get("uploaded") for b in batch):
             st.success("✅ All blogs uploaded to Webflow.")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+#  TAB 3 — Main + Thumbnail Only (cover composites; no body images / infographics)
+# ════════════════════════════════════════════════════════════════════════════════
+with tab_cover:
+    st.subheader("Main + Thumbnail Only")
+    if _selected_slug:
+        st.caption(f"Template: **{_client_display_name(_selected_slug)}**  ·  "
+                   "manage templates & API key in the left sidebar ←")
+    else:
+        st.caption("Add a Figma template in the left sidebar ← to get started.")
+    st.caption("Generates ONLY the featured (main) image + thumbnail — no inner-page "
+               "photos or infographics. Same Webflow flow as Auto Upload.")
+
+    c_urls_raw = st.text_area("Blog URLs — one per line",
+                              placeholder="https://www.example.com/blog/post-one\n"
+                                          "https://www.example.com/blog/post-two",
+                              height=130, key="c_urls")
+    c_btn = st.button("🖼️ Generate Main + Thumbnail", type="primary",
+                      use_container_width=True, key="c_btn")
+
+    # ── Generate ──────────────────────────────────────────────────────────────
+    if c_btn:
+        if not a_api_key.strip():
+            st.error("Enter the Webflow API key in the sidebar ←")
+            st.stop()
+        c_urls = [u.strip() for u in c_urls_raw.strip().splitlines() if u.strip()]
+        if not c_urls:
+            st.error("Enter at least one blog URL.")
+            st.stop()
+
+        cover_batch = []
+        for _ci, raw_url in enumerate(c_urls):
+          url = ("https://" + raw_url) if not raw_url.startswith("http") else raw_url
+          try:
+            final_url, slug = _resolve_blog_slug(url)
+            st.markdown(f"---\n### 📝 Blog {_ci + 1} of {len(c_urls)}: `{slug}`")
+            orig_slug = url.rstrip("/").split("/")[-1]
+            if slug != orig_slug:
+                st.info(f"↪️ Slug resolved: `{orig_slug}` → `{slug}`")
+
+            with st.status("Connecting to Webflow...", expanded=True) as s:
+                try:
+                    wf, site_id, site_name, collection_id, item_id, was_published = \
+                        do_webflow_connect(a_api_key.strip(), None, "", slug, blog_url=url)
+                    matched_client = _match_client(site_name)
+                    _suffix = (f"  →  template: **{_client_display_name(matched_client)}**"
+                               if matched_client
+                               else f"  →  ⚠️ no template for **{site_name}** — add it in the sidebar")
+                    s.update(label=f"Webflow connected ✓{_suffix}", state="complete")
+                except Exception as e:
+                    s.update(label="Webflow connection failed", state="error")
+                    st.error(str(e))
+                    cover_batch.append({"url": url, "slug": slug, "title": slug,
+                                        "main_bytes": None, "thumb_bytes": None,
+                                        "wf_info": {}, "uploaded": False, "error": str(e)})
+                    st.session_state["cover_batch"] = cover_batch
+                    continue
+
+            title = _fetch_cover_title(url, slug, wf, collection_id, item_id)
+            st.write(f"**Title:** {title}")
+
+            main_b, thumb_b = None, None
+            with st.status("Generating cover photo & compositing...", expanded=True) as s:
+                try:
+                    cover_bg = _generate_cover_bg(title, [title])
+                    m_logo, t_logo = ensure_figma_assets_for_client(matched_client)
+                    m_tpl, t_tpl = make_tpls(matched_client, m_logo, t_logo)
+                    main_b  = composite_template(cover_bg, title, m_tpl)
+                    thumb_b = composite_template(cover_bg, title, t_tpl)
+                    s.update(label="Main + thumbnail ready ✓", state="complete")
+                except Exception as _ce:
+                    st.error(f"⛔ Compositing error: {_ce}")
+                    s.update(label="Compositing failed", state="error")
+
+            cover_batch.append({
+                "url": url, "slug": slug, "title": title,
+                "main_bytes": main_b, "thumb_bytes": thumb_b,
+                "client": matched_client,
+                "wf_info": {"site_id": site_id, "collection_id": collection_id,
+                            "item_id": item_id, "was_published": was_published,
+                            "site_name": site_name},
+                "uploaded": False,
+            })
+            st.session_state["cover_batch"] = cover_batch
+          except Exception as _loop_err:
+            st.error(f"⛔ Unexpected error on `{url}` — skipped, continuing: {_loop_err}")
+            cover_batch.append({"url": url, "slug": url.rstrip('/').split('/')[-1],
+                                "title": url, "main_bytes": None, "thumb_bytes": None,
+                                "wf_info": {}, "uploaded": False, "error": str(_loop_err)})
+            st.session_state["cover_batch"] = cover_batch
+            continue
+
+        st.session_state["cover_batch"] = cover_batch
+
+    # ── Review & Upload ─────────────────────────────────────────────────────────
+    cover_batch = st.session_state.get("cover_batch", [])
+    if cover_batch:
+        st.divider()
+        st.subheader("Review & Upload")
+        for bs in cover_batch:
+            label = ("✅ " if bs.get("uploaded") else
+                     "❌ " if bs.get("error") else "🖼️ ")
+            with st.expander(f"{label}{bs['slug']} — {bs.get('title', '')}",
+                             expanded=not bs.get("uploaded")):
+                if bs.get("error"):
+                    st.error(f"Failed to process: {bs['error']}")
+                elif bs.get("main_bytes") or bs.get("thumb_bytes"):
+                    cols = st.columns(2)
+                    if bs.get("main_bytes"):
+                        cols[0].image(bs["main_bytes"], caption="Main image", use_container_width=True)
+                        cols[0].download_button("⬇️ Main", bs["main_bytes"],
+                                                file_name=f"{bs['slug']}_main.png",
+                                                key=f"c_dlm_{bs['slug']}")
+                    if bs.get("thumb_bytes"):
+                        cols[1].image(bs["thumb_bytes"], caption="Thumbnail", use_container_width=True)
+                        cols[1].download_button("⬇️ Thumbnail", bs["thumb_bytes"],
+                                                file_name=f"{bs['slug']}_thumb.png",
+                                                key=f"c_dlt_{bs['slug']}")
+                else:
+                    st.warning("No images generated.")
+
+        pending = [b for b in cover_batch if not b.get("uploaded") and not b.get("error")
+                   and (b.get("main_bytes") or b.get("thumb_bytes"))]
+        if pending:
+            st.divider()
+            if st.button(f"🚀 Upload All to Webflow — {len(pending)} blog(s)",
+                         type="primary", use_container_width=True, key="cover_upload_all_btn"):
+                if not a_api_key.strip():
+                    st.error("Enter the Webflow API key in the sidebar ←")
+                else:
+                    for bs in pending:
+                        slug = bs["slug"]
+                        st.markdown(f"#### Uploading `{slug}`...")
+                        with st.status("Connecting to Webflow...", expanded=True) as s:
+                            try:
+                                wf, site_id, site_name, collection_id, item_id, was_published = \
+                                    do_webflow_connect(a_api_key.strip(), None, "", slug)
+                                s.update(label="Connected ✓", state="complete")
+                            except Exception as e:
+                                s.update(label="Connection failed", state="error")
+                                st.error(f"`{slug}` — {e}")
+                                continue
+                        do_webflow_upload_cover(
+                            wf, site_id, collection_id, item_id, was_published,
+                            main_bytes=bs.get("main_bytes"), thumb_bytes=bs.get("thumb_bytes"),
+                            blog_title=bs.get("title", ""), client_name="", site_name=site_name)
+                        bs["uploaded"] = True
+                    st.session_state["cover_batch"] = cover_batch
+                    st.rerun()
+        elif any(b.get("uploaded") for b in cover_batch):
+            st.success("✅ All main images + thumbnails uploaded to Webflow.")
