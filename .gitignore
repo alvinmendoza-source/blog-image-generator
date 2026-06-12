@@ -2,6 +2,8 @@
 .env
 .streamlit/secrets.toml
 clients.json
+client_keys.json
+1/
 
 # Auto-downloaded overlay PNGs (re-downloaded from Figma on first use)
 template_assets/*.png

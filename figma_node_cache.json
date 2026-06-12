@@ -24,8 +24,7 @@
     "thumb_tw": 227,
     "thumb_fsz": 19,
     "thumb_font_family": "Inter",
-    "thumb_font_style": "Medium",
-    "webflow_api_key": "a846b7a576b180761d5dd6ecd3e5ffe6725beed349e9288926cf8ed0cb9b4b45"
+    "thumb_font_style": "Medium"
   },
   "guru": {
     "name": "GURU",
@@ -52,8 +51,7 @@
     "thumb_tw": 297,
     "thumb_fsz": 26,
     "thumb_font_family": "Outfit",
-    "thumb_font_style": "SemiBold",
-    "webflow_api_key": "b4405ee876dbbd78bf5c4de5a3e5bb36e924e0f681a682db817dce7f0b2d4460"
+    "thumb_font_style": "SemiBold"
   },
   "point": {
     "name": "Point",
@@ -171,8 +169,7 @@
       31,
       31,
       31
-    ],
-    "webflow_api_key": "dc9039f3f82f708cdc0c1b68dcb9716a845112df5cf029b43d6913e1f0df1128"
+    ]
   },
   "leet": {
     "name": "Leet",
@@ -209,8 +206,7 @@
       254,
       254,
       254
-    ],
-    "webflow_api_key": "c4adeedf1660b9337a3020f64809bcadc4f940f14c31ee13b6ca3b58343e31db"
+    ]
   },
   "hart": {
     "name": "Hart",
@@ -247,8 +243,7 @@
       0,
       0,
       0
-    ],
-    "webflow_api_key": "a9c666765d9bdd3cd7b7bcf91698cf6e402b83823b199419570ab9af16cc6b6d"
+    ]
   },
   "axxis": {
     "name": "Axxis",
@@ -285,8 +280,7 @@
       255,
       255,
       255
-    ],
-    "webflow_api_key": "a74a653adc36c9d2b8822b653c17ca09cefb6f7190525443d6110f8794bae464"
+    ]
   },
   "red-team": {
     "name": "Red Team IT",
@@ -323,8 +317,7 @@
       255,
       255,
       255
-    ],
-    "webflow_api_key": "a74a653adc36c9d2b8822b653c17ca09cefb6f7190525443d6110f8794bae464"
+    ]
   },
   "sonar": {
     "name": "Sonar",
@@ -361,8 +354,7 @@
       4,
       4,
       4
-    ],
-    "webflow_api_key": "c41dc14cf781c330e2af822fcb0f057522f7a2388ef6ca17f3f542de6aabbb7d"
+    ]
   },
   "infotank": {
     "name": "Infotank",
@@ -399,8 +391,7 @@
       255,
       255,
       255
-    ],
-    "webflow_api_key": "c41dc14cf781c330e2af822fcb0f057522f7a2388ef6ca17f3f542de6aabbb7d"
+    ]
   },
   "net-i": {
     "name": "Net-i",
@@ -548,7 +539,6 @@
       255,
       255,
       255
-    ],
-    "webflow_api_key": "a846b7a576b180761d5dd6ecd3e5ffe6725beed349e9288926cf8ed0cb9b4b45"
+    ]
   }
 }

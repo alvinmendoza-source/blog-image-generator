@@ -1767,10 +1767,52 @@ def _client_display_name(slug: str) -> str:
 
 
 def _save_node_cache(cache: dict):
+    # SAFETY NET: never write Webflow API keys into figma_node_cache.json — that file is
+    # committed to a PUBLIC repo. Keys live only in CLIENT_KEYS_FILE (gitignored, local).
     try:
-        FIGMA_NODE_CACHE.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+        clean = {
+            k: ({kk: vv for kk, vv in v.items() if kk != "webflow_api_key"}
+                if isinstance(v, dict) else v)
+            for k, v in cache.items()
+        }
+        FIGMA_NODE_CACHE.write_text(json.dumps(clean, indent=2), encoding="utf-8")
     except Exception:
         pass
+
+
+# ── Webflow API keys: stored LOCALLY ONLY (gitignored) so they never reach the public repo.
+#    On the live (Streamlit Cloud) app this file is absent → keys are entered manually per session.
+CLIENT_KEYS_FILE = Path("client_keys.json")
+
+
+def _load_client_keys() -> dict:
+    try:
+        return json.loads(CLIENT_KEYS_FILE.read_text(encoding="utf-8")) if CLIENT_KEYS_FILE.exists() else {}
+    except Exception:
+        return {}
+
+
+def _save_client_key(slug: str, key: str):
+    if not slug:
+        return
+    keys = _load_client_keys()
+    keys[slug] = key
+    try:
+        CLIENT_KEYS_FILE.write_text(json.dumps(keys, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _get_client_key(slug: str) -> str:
+    """Resolve a client's Webflow key: local keys file → legacy cache entry → global env/secret."""
+    if slug:
+        k = _load_client_keys().get(slug, "")
+        if k:
+            return k
+        legacy = _load_node_cache().get(slug, {}).get("webflow_api_key", "")
+        if legacy:
+            return legacy
+    return os.getenv("WEBFLOW_API_KEY", "")
 
 
 def _lookup_node_ids(slug: str) -> tuple:
@@ -2949,17 +2991,14 @@ with st.sidebar:
             _cache = _load_node_cache()
             if _selected_slug in _cache:
                 del _cache[_selected_slug]
-                FIGMA_NODE_CACHE.write_text(
-                    json.dumps(_cache, indent=2, ensure_ascii=False), encoding="utf-8"
-                )
+                _save_node_cache(_cache)
                 st.success(f"Deleted **{_selected_tpl}** ✓")
                 st.rerun()
     else:
         st.caption("No templates saved yet — add one below.")
 
-    # ── Webflow API key (auto-fills from client cache when dropdown changes) ──
-    _client_saved_key = _load_node_cache().get(_selected_slug, {}).get("webflow_api_key", "")
-    _default_key      = _client_saved_key or os.getenv("WEBFLOW_API_KEY", "")
+    # ── Webflow API key (auto-fills from LOCAL keys file when dropdown changes) ──
+    _default_key = _get_client_key(_selected_slug)
     _prev_slug = st.session_state.get("_prev_client_slug", "")
     if _selected_slug != _prev_slug:
         st.session_state["_prev_client_slug"] = _selected_slug
@@ -2974,10 +3013,10 @@ with st.sidebar:
     )
     if st.button("💾 Save key for this client", use_container_width=True, key="save_key_btn"):
         if a_api_key.strip() and _selected_slug:
-            _cache = _load_node_cache()
-            _cache[_selected_slug]["webflow_api_key"] = a_api_key.strip()
-            _save_node_cache(_cache)
-            st.success(f"Saved for **{_client_display_name(_selected_slug)}** ✓")
+            # Saved to the local-only keys file (never committed). On the live app this
+            # persists only for the running container — re-enter after a redeploy.
+            _save_client_key(_selected_slug, a_api_key.strip())
+            st.success(f"Saved locally for **{_client_display_name(_selected_slug)}** ✓")
 
     # ── Add a new client template ──
     _new_tpl_url = st.text_input(
