@@ -25,7 +25,7 @@
     "thumb_fsz": 19,
     "thumb_font_family": "Inter",
     "thumb_font_style": "Medium",
-    "webflow_api_key": "a7d544d769357769545bb4b26257e27892b279ba933e5f0687f487ff4438ef56"
+    "webflow_api_key": "a846b7a576b180761d5dd6ecd3e5ffe6725beed349e9288926cf8ed0cb9b4b45"
   },
   "guru": {
     "name": "GURU",
@@ -512,5 +512,43 @@
       255,
       255
     ]
+  },
+  "unified": {
+    "name": "Unified",
+    "main": "83:47",
+    "thumb": "83:48",
+    "main_w": 1080,
+    "main_h": 720,
+    "overlay_main": "83:32",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 64,
+    "main_ty": 378,
+    "main_tw": 325,
+    "main_fsz": 24,
+    "main_font_family": "Satoshi",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 736,
+    "thumb_h": 560,
+    "overlay_thumb": "83:33",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 47,
+    "thumb_ty": 292,
+    "thumb_tw": 252,
+    "thumb_fsz": 17,
+    "thumb_font_family": "Satoshi",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ],
+    "webflow_api_key": "a846b7a576b180761d5dd6ecd3e5ffe6725beed349e9288926cf8ed0cb9b4b45"
   }
 }
