@@ -1291,23 +1291,38 @@ class WebflowClient:
             f"{r.status_code} {r.reason} — {msg}\n(URL: {r.url})", response=r
         )
 
-    def _get(self, path, params=None):
-        r = requests.get(f"{self.BASE}{path}", headers=self.headers, params=params, timeout=30)
-        if not r.ok:
+    def _request(self, method, path, *, params=None, json_body=None, timeout=30):
+        """Single request with automatic retry on 429 (rate limit) and transient 5xx.
+        Webflow v2 caps at ~60 req/min; a batch of blogs bursts past that, so without
+        this retry the 3rd/4th blog would 429 and fail. Honors the Retry-After header."""
+        url = f"{self.BASE}{path}"
+        for attempt in range(5):
+            r = requests.request(method, url, headers=self.headers,
+                                  params=params, json=json_body, timeout=timeout)
+            if r.ok:
+                return r.json()
+            # Retry on rate limit (429) and transient server errors (502/503/504)
+            if r.status_code in (429, 502, 503, 504) and attempt < 4:
+                try:
+                    wait = float(r.headers.get("Retry-After", ""))
+                except (TypeError, ValueError):
+                    wait = 0.0
+                if wait <= 0:
+                    wait = min(2 ** attempt * 3, 30)   # 3, 6, 12, 24s backoff
+                time.sleep(wait)
+                continue
             self._raise(r)
-        return r.json()
+        # Exhausted retries — raise the last response's error
+        self._raise(r)
+
+    def _get(self, path, params=None):
+        return self._request("GET", path, params=params, timeout=30)
 
     def _post(self, path, body=None):
-        r = requests.post(f"{self.BASE}{path}", headers=self.headers, json=body, timeout=60)
-        if not r.ok:
-            self._raise(r)
-        return r.json()
+        return self._request("POST", path, json_body=body, timeout=60)
 
     def _patch(self, path, body):
-        r = requests.patch(f"{self.BASE}{path}", headers=self.headers, json=body, timeout=30)
-        if not r.ok:
-            self._raise(r)
-        return r.json()
+        return self._request("PATCH", path, json_body=body, timeout=30)
 
     def get_sites(self):
         return self._get("/sites")["sites"]
@@ -1346,21 +1361,34 @@ class WebflowClient:
 
         return collections[0] if collections else None
 
-    def find_item_by_slug(self, collection_id: str, slug: str):
-        all_items = []
-        offset = 0
+    # Shared across instances/blogs in one process so a batch of posts in the same
+    # collection fetches the item list ONCE instead of re-walking it per blog
+    # (the main driver of Webflow rate-limiting during batch runs). Short TTL.
+    _ITEMS_CACHE: dict = {}
+    _ITEMS_TTL = 120  # seconds
+
+    def _all_collection_items(self, collection_id: str) -> list:
+        cached = WebflowClient._ITEMS_CACHE.get(collection_id)
+        if cached and (time.time() - cached[0]) < WebflowClient._ITEMS_TTL:
+            return cached[1]
+        all_items, offset = [], 0
         while True:
             data = self._get(f"/collections/{collection_id}/items",
                              params={"limit": 100, "offset": offset})
             items = data.get("items", [])
             all_items.extend(items)
-            # Pass 1: exact match
-            for item in items:
-                if item.get("fieldData", {}).get("slug") == slug:
-                    return item
             if len(items) < 100:
                 break
             offset += 100
+        WebflowClient._ITEMS_CACHE[collection_id] = (time.time(), all_items)
+        return all_items
+
+    def find_item_by_slug(self, collection_id: str, slug: str):
+        all_items = self._all_collection_items(collection_id)
+        # Pass 1: exact match
+        for item in all_items:
+            if item.get("fieldData", {}).get("slug") == slug:
+                return item
         # Pass 2: case-insensitive exact match
         slug_lower = slug.lower()
         for item in all_items:
