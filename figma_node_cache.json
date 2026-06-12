@@ -540,5 +540,42 @@
       255,
       255
     ]
+  },
+  "alexant": {
+    "name": "Alexant",
+    "main": "86:62",
+    "thumb": "86:63",
+    "main_w": 1280,
+    "main_h": 512,
+    "overlay_main": "85:50",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 50,
+    "main_ty": 404,
+    "main_tw": 820,
+    "main_fsz": 33,
+    "main_font_family": "Geologica",
+    "main_font_style": "SemiBold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 546,
+    "thumb_h": 362,
+    "overlay_thumb": "85:51",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 20,
+    "thumb_ty": 303,
+    "thumb_tw": 361,
+    "thumb_fsz": 16,
+    "thumb_font_family": "Geologica",
+    "thumb_font_style": "SemiBold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }
