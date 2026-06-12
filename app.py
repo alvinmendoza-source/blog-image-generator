@@ -1879,24 +1879,33 @@ def ensure_figma_assets_for_client(client_name: str) -> tuple:
         st.warning(f"⚠️ No overlay nodes found for '{client_name}' — reload the app to refresh Figma data.")
         return main_path, thumb_path
 
-    try:
-        node_map = {}
-        if missing_main  and overlay_main_id:  node_map[overlay_main_id]  = main_path
-        if missing_thumb and overlay_thumb_id: node_map[overlay_thumb_id] = thumb_path
+    node_map = {}
+    if missing_main  and overlay_main_id:  node_map[overlay_main_id]  = main_path
+    if missing_thumb and overlay_thumb_id: node_map[overlay_thumb_id] = thumb_path
 
-        img_r = requests.get(
-            f"https://api.figma.com/v1/images/{FIGMA_FILE_KEY}",
-            headers={"X-Figma-Token": FIGMA_TOKEN},
-            params={"ids": ",".join(node_map), "format": "png", "scale": "1"},
-            timeout=30,
-        )
-        img_r.raise_for_status()
-        for node_id, url in img_r.json().get("images", {}).items():
-            if url and node_id in node_map:
-                node_map[node_id].write_bytes(requests.get(url, timeout=30).content)
+    # Only call Figma if we actually have node IDs to export. Firing with an empty
+    # `ids=` returns a 400 — this happens when a client was registered without one of
+    # the overlay nodes detected (e.g. the thumbnail overlay). Skip + warn instead.
+    if node_map:
+        try:
+            img_r = requests.get(
+                f"https://api.figma.com/v1/images/{FIGMA_FILE_KEY}",
+                headers={"X-Figma-Token": FIGMA_TOKEN},
+                params={"ids": ",".join(node_map), "format": "png", "scale": "1"},
+                timeout=30,
+            )
+            img_r.raise_for_status()
+            for node_id, url in img_r.json().get("images", {}).items():
+                if url and node_id in node_map:
+                    node_map[node_id].write_bytes(requests.get(url, timeout=30).content)
+        except Exception as e:
+            st.warning(f"⚠️ Could not download Figma overlay for '{client_name}': {e}")
 
-    except Exception as e:
-        st.warning(f"⚠️ Could not download Figma overlay for '{client_name}': {e}")
+    if missing_main and not overlay_main_id:
+        st.warning(f"⚠️ '{client_name}' has no MAIN overlay node — re-register its Figma template.")
+    if missing_thumb and not overlay_thumb_id:
+        st.info(f"ℹ️ '{client_name}' has no THUMBNAIL overlay node — thumbnail will render without "
+                f"the design overlay. Re-register its Figma template to add one.")
 
     # Pre-download fonts so composite_template never blocks on network
     for prefix in ("main", "thumb"):
