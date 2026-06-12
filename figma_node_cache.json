@@ -25,7 +25,7 @@
     "thumb_fsz": 19,
     "thumb_font_family": "Inter",
     "thumb_font_style": "Medium",
-    "webflow_api_key": "ed3dd00979b0b38309560a36c4270fb38e677d8d94d8761bb68481891f7873c5"
+    "webflow_api_key": "a7d544d769357769545bb4b26257e27892b279ba933e5f0687f487ff4438ef56"
   },
   "guru": {
     "name": "GURU",
@@ -431,6 +431,80 @@
     "thumb_ty": 272,
     "thumb_tw": 464,
     "thumb_fsz": 23,
+    "thumb_font_family": "Inter",
+    "thumb_font_style": "Semi Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
+  },
+  "rtc": {
+    "name": "RTC",
+    "main": "80:14",
+    "thumb": "80:15",
+    "main_w": 1500,
+    "main_h": 1000,
+    "overlay_main": "80:2",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 87,
+    "main_ty": 453,
+    "main_tw": 420,
+    "main_fsz": 35,
+    "main_font_family": "Inter",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 884,
+    "thumb_h": 644,
+    "overlay_thumb": "80:3",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 59,
+    "thumb_ty": 284,
+    "thumb_tw": 246,
+    "thumb_fsz": 20,
+    "thumb_font_family": "Inter",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
+  },
+  "mbps": {
+    "name": "MBPS",
+    "main": "81:29",
+    "thumb": "81:30",
+    "main_w": 912,
+    "main_h": 532,
+    "overlay_main": "81:18",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 49,
+    "main_ty": 237,
+    "main_tw": 303,
+    "main_fsz": 25,
+    "main_font_family": "Inter",
+    "main_font_style": "Semi Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 728,
+    "thumb_h": 425,
+    "overlay_thumb": "81:17",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 38,
+    "thumb_ty": 194,
+    "thumb_tw": 303,
+    "thumb_fsz": 21,
     "thumb_font_family": "Inter",
     "thumb_font_style": "Semi Bold",
     "thumb_font_color": [
