@@ -2586,14 +2586,262 @@ def _render_icongrid(spec, pairs, w, h, primary, accent, bg, kicker):
     return _ig_bytes(img)
 
 
+# ── Shared drawing helpers for the richer "infographic" styles ──────────────────
+def _series_colors(primary: tuple, accent: tuple, n: int) -> list:
+    """A small set of distinguishable on-brand colors for charts/legends."""
+    base = [accent, primary, _light(accent, 0.40), _darken(accent, 0.66),
+            _light(primary, 0.45), _darken(primary, 0.78)]
+    return [base[i % len(base)] for i in range(max(1, n))]
+
+
+def _ig_arrow_h(d, x0: int, x1: int, y: int, color: tuple, width: int):
+    """Horizontal connector with an arrowhead pointing right (x0 -> x1)."""
+    if x1 <= x0:
+        return
+    ah = max(10, width * 3)
+    d.line([(x0, y), (max(x0, x1 - ah + 2), y)], fill=color, width=width)
+    d.polygon([(x1, y), (x1 - ah, int(y - ah * 0.6)), (x1 - ah, int(y + ah * 0.6))], fill=color)
+
+
+def _ig_dashed(d, pts: list, color: tuple, width: int, dash: int = 16, gap: int = 11):
+    """Draw a dashed polyline through pts (list of (x, y))."""
+    import math
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        dist = math.hypot(x1 - x0, y1 - y0)
+        if dist <= 0:
+            continue
+        ux, uy = (x1 - x0) / dist, (y1 - y0) / dist
+        t = 0.0
+        while t < dist:
+            te = min(t + dash, dist)
+            d.line([(x0 + ux * t, y0 + uy * t), (x0 + ux * te, y0 + uy * te)],
+                   fill=color, width=width)
+            t += dash + gap
+
+
+def _ig_num(value) -> float:
+    """Pull the first number out of a stat value like '94%' or '$1.3M'."""
+    m = re.search(r"[\d]+(?:\.\d+)?", str(value or ""))
+    return float(m.group()) if m else 0.0
+
+
+# ── STEPS variant: icon process flow (connected nodes + arrows) ──
+def _steps_flow(spec, items, w, h, primary, accent, bg):
+    pad = int(w * 0.055)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "The Process", pad)
+    items = items[:4]
+    n = len(items)
+    if not n:
+        return _ig_bytes(img)
+    bot = h - int(h * 0.07)
+    seg = (w - 2 * pad) // n
+    r = min(int(seg * 0.30), int(h * 0.18))
+    midy = body_top + int((bot - body_top) * 0.34)
+    cxs = [pad + seg * i + seg // 2 for i in range(n)]
+    aw = max(3, int(w * 0.004))
+    for i in range(n - 1):
+        _ig_arrow_h(d, cxs[i] + r + int(seg * 0.05), cxs[i + 1] - r - int(seg * 0.05),
+                    midy, accent, aw)
+    tf = _ig_font(int(h * 0.032), bold=True)
+    pf = _ig_font(int(h * 0.020))
+    for i, item in enumerate(items):
+        cx = cxs[i]
+        is_last = (i == n - 1)
+        d.ellipse([cx - r, midy - r, cx + r, midy + r], fill=(accent if is_last else primary))
+        drew_icon = False
+        if _FA_OK:
+            try:
+                d.text((cx, midy), _pick_icon((item.get("title") or "") + " " + _step_desc(item)),
+                       font=_ig_fa(int(r * 0.85)), fill=(255, 255, 255), anchor="mm")
+                drew_icon = True
+            except Exception:
+                drew_icon = False
+        if not drew_icon:
+            d.text((cx, midy), str(item.get("number", i + 1)),
+                   font=_ig_font(int(r * 0.9), bold=True), fill=(255, 255, 255), anchor="mm")
+        bs = max(20, int(r * 0.62))
+        bx, by = cx + int(r * 0.72), midy - int(r * 0.72)
+        d.ellipse([bx - bs // 2, by - bs // 2, bx + bs // 2, by + bs // 2],
+                  fill=(primary if is_last else accent), outline=(255, 255, 255), width=max(2, bs // 12))
+        d.text((bx, by), str(item.get("number", i + 1)),
+               font=_ig_font(int(bs * 0.56), bold=True), fill=(255, 255, 255), anchor="mm")
+        ty = midy + r + int(h * 0.045)
+        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}", tf, seg - int(seg * 0.08))[:2]:
+            d.text((cx, ty), ln, font=tf, fill=primary, anchor="ma")
+            ty += int(h * 0.040)
+        for ln in _ig_wrap(_step_desc(item)[:70], pf, seg - int(seg * 0.08))[:2]:
+            d.text((cx, ty), ln, font=pf, fill=_IG["muted"], anchor="ma")
+            ty += int(h * 0.028)
+    return _ig_bytes(img)
+
+
+# ── STEPS variant: roadmap path (winding dashed path + milestone pins) ──
+def _steps_roadmap(spec, items, w, h, primary, accent, bg):
+    pad = int(w * 0.07)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "Your Roadmap", pad)
+    items = items[:5]
+    n = len(items)
+    if not n:
+        return _ig_bytes(img)
+    seg = (w - 2 * pad) // n
+    cxs = [pad + seg * i + seg // 2 for i in range(n)]
+    top = body_top + int(h * 0.10)
+    bot = h - int(h * 0.16)
+    mid = (top + bot) // 2
+    ys = [top if i % 2 == 0 else bot for i in range(n)]
+    _ig_dashed(d, list(zip(cxs, ys)), _light(accent, 0.25), max(4, int(w * 0.005)))
+    r = min(int(seg * 0.22), int(h * 0.11))
+    tf = _ig_font(int(h * 0.030), bold=True)
+    for i, item in enumerate(items):
+        cx, cy = cxs[i], ys[i]
+        is_last = (i == n - 1)
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(accent if is_last else primary))
+        if is_last and _FA_OK:
+            try:
+                d.text((cx, cy), _IG_ICONS["check"], font=_ig_fa(int(r * 0.95)),
+                       fill=(255, 255, 255), anchor="mm")
+            except Exception:
+                d.text((cx, cy), str(item.get("number", i + 1)),
+                       font=_ig_font(int(r * 0.9), bold=True), fill=(255, 255, 255), anchor="mm")
+        else:
+            d.text((cx, cy), str(item.get("number", i + 1)),
+                   font=_ig_font(int(r * 0.9), bold=True), fill=(255, 255, 255), anchor="mm")
+        label = item.get("title") or f"Step {i + 1}"
+        lines = _ig_wrap(label, tf, int(seg * 1.05))[:2]
+        if cy <= mid:
+            ty = cy + r + int(h * 0.025)
+        else:
+            ty = cy - r - int(h * 0.025) - len(lines) * int(h * 0.038)
+        for ln in lines:
+            d.text((cx, ty), ln, font=tf, fill=primary, anchor="ma")
+            ty += int(h * 0.038)
+    return _ig_bytes(img)
+
+
+# ── STATS variant: donut chart + legend ──
+def _stats_donut(spec, stats, w, h, primary, accent, bg):
+    pad = int(w * 0.06)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "Breakdown", pad)
+    stats = stats[:5]
+    n = len(stats)
+    if not n:
+        return _ig_bytes(img)
+    weights = [_ig_num(s.get("value")) for s in stats]
+    if sum(weights) <= 0:
+        weights = [1.0] * n
+    total = sum(weights)
+    colors = _series_colors(primary, accent, n)
+    top, bot = body_top, h - int(h * 0.07)
+    R = min(int((bot - top) * 0.46), int(w * 0.19))
+    cyc = (top + bot) // 2
+    cxc = pad + R + int(w * 0.02)
+    start = -90.0
+    for i, wt in enumerate(weights):
+        ext = 360.0 * wt / total
+        d.pieslice([cxc - R, cyc - R, cxc + R, cyc + R], start, start + ext, fill=colors[i])
+        start += ext
+    hr = int(R * 0.58)
+    d.ellipse([cxc - hr, cyc - hr, cxc + hr, cyc + hr], fill=bg)
+    big = str(stats[0].get("value") or "")[:5]
+    d.text((cxc, cyc - int(R * 0.10)), big, font=_ig_font(int(R * 0.42), bold=True),
+           fill=primary, anchor="mm")
+    d.text((cxc, cyc + int(R * 0.30)), "top share", font=_ig_font(int(R * 0.20)),
+           fill=_IG["muted"], anchor="mm")
+    lx = cxc + R + int(w * 0.06)
+    vf = _ig_font(int(h * 0.032), bold=True)
+    sf = _ig_font(int(h * 0.026))
+    row = (bot - top) // n
+    sw = int(h * 0.030)
+    for i, s in enumerate(stats):
+        ly = top + i * row + row // 2
+        d.rounded_rectangle([lx, ly - sw // 2, lx + sw, ly + sw // 2], radius=6, fill=colors[i])
+        tx = lx + sw + int(w * 0.022)
+        val = str(s.get("value") or "")[:8]
+        d.text((tx, ly), val, font=vf, fill=primary, anchor="lm")
+        vw = vf.getbbox(val)[2] + int(w * 0.015)
+        lab = str(s.get("label") or "")[:42]
+        for ln in _ig_wrap(lab, sf, w - tx - vw - pad)[:1]:
+            d.text((tx + vw, ly), ln, font=sf, fill=_IG["muted"], anchor="lm")
+    return _ig_bytes(img)
+
+
+# ── STATS variant: pictograph (dark hero, progress rings + big numbers) ──
+def _stats_pictograph(spec, stats, w, h, primary, accent, bg):
+    stats = stats[:4]
+    n = len(stats)
+    dark = _darken(primary, 0.45)
+    muted_l = (174, 188, 203)
+    img = PILImage.new("RGB", (w, h), dark)
+    d = ImageDraw.Draw(img)
+    pad = int(w * 0.06)
+    cx0 = w // 2
+    y = int(h * 0.08)
+    kick = (spec.get("kicker") or "Key Stats").strip().upper()[:48]
+    kf = _ig_font(int(h * 0.024), bold=True)
+    bb = kf.getbbox(kick)
+    pw = (bb[2] - bb[0]) + int(w * 0.035)
+    ph = int(h * 0.052)
+    d.rounded_rectangle([cx0 - pw // 2, y, cx0 + pw // 2, y + ph], radius=ph // 2, fill=accent)
+    d.text((cx0, y + ph // 2), kick, font=kf, fill=(255, 255, 255), anchor="mm")
+    y += ph + int(h * 0.03)
+    tf = _ig_font(int(h * 0.062), bold=True)
+    for ln in _ig_wrap(spec.get("title") or "By the Numbers", tf, w - 2 * pad)[:2]:
+        d.text((cx0, y), ln, font=tf, fill=(255, 255, 255), anchor="ma")
+        y += int(h * 0.072)
+    if not n:
+        return _ig_bytes(img)
+    body_top = y + int(h * 0.04)
+    bot = h - int(h * 0.07)
+    seg = (w - 2 * pad) // n
+    cxs = [pad + seg * i + seg // 2 for i in range(n)]
+    cyc = (body_top + bot) // 2 - int(h * 0.02)
+    R = min(int(seg * 0.32), int((bot - body_top) * 0.40))
+    ring_w = max(8, int(R * 0.20))
+    track = _light(dark, 0.16)
+    lf = _ig_font(int(h * 0.026))
+    for i, s in enumerate(stats):
+        cx = cxs[i]
+        val = str(s.get("value") or "")
+        m = re.search(r"(\d{1,3})\s*%", val)
+        if m:
+            pct = max(0, min(100, int(m.group(1))))
+            box = [cx - R, cyc - R, cx + R, cyc + R]
+            d.arc(box, 0, 360, fill=track, width=ring_w)
+            d.arc(box, -90, -90 + 360.0 * pct / 100.0, fill=accent, width=ring_w)
+            d.text((cx, cyc), f"{pct}%", font=_ig_font(int(R * 0.55), bold=True),
+                   fill=(255, 255, 255), anchor="mm")
+        else:
+            disp = val[:6]
+            vsize = int(R * 0.85)
+            vf = _ig_font(vsize, bold=True)
+            while vf.getbbox(disp)[2] > seg - int(seg * 0.12) and vsize > 20:
+                vsize -= 3
+                vf = _ig_font(vsize, bold=True)
+            if _FA_OK:
+                try:
+                    d.text((cx, cyc - int(R * 0.74)), _pick_icon(s.get("label") or ""),
+                           font=_ig_fa(int(R * 0.46)), fill=accent, anchor="mm")
+                except Exception:
+                    pass
+            d.text((cx, cyc + int(R * 0.12)), disp, font=vf, fill=accent, anchor="mm")
+        ly = cyc + R + int(h * 0.04)
+        for ln in _ig_wrap(str(s.get("label") or "")[:48], lf, seg - int(seg * 0.06))[:2]:
+            d.text((cx, ly), ln, font=lf, fill=muted_l, anchor="ma")
+            ly += int(h * 0.032)
+    return _ig_bytes(img)
+
+
 def _render_steps_infographic(spec: dict, w: int, h: int,
                               primary: tuple, accent: tuple, bg: tuple, footer: str,
                               seed: str = "") -> bytes:
     _items = (spec.get("items") or [])[:6]
     if _items:
-        _nv = 4 if _FA_OK else 3
-        _v = _ig_variant(seed + "steps", _nv)
-        if _v == 3 and len(_items) <= 6:
+        # styles: 0 cards (default) · 1 timeline · 2 rows · 3 icon-grid (FA) ·
+        #         4 icon process flow · 5 roadmap path
+        _v = _ig_variant(seed + "steps", 6)
+        if _v == 5: return _steps_roadmap(spec, _items[:5], w, h, primary, accent, bg)
+        if _v == 4: return _steps_flow(spec, _items[:4], w, h, primary, accent, bg)
+        if _v == 3 and _FA_OK and len(_items) <= 6:
             _pairs = [(it.get("title") or f"Step {i + 1}", _step_desc(it))
                       for i, it in enumerate(_items)]
             return _render_icongrid(spec, _pairs, w, h, primary, accent, bg, "Key Steps")
@@ -2665,7 +2913,10 @@ def _render_stats_infographic(spec: dict, w: int, h: int,
                               seed: str = "") -> bytes:
     _stats = (spec.get("stats") or [])[:4]
     if _stats:
-        _v = _ig_variant(seed + "stats", 3)
+        # styles: 0 cards (default) · 1 big-row · 2 rows · 3 donut+legend · 4 pictograph
+        _v = _ig_variant(seed + "stats", 5)
+        if _v == 3: return _stats_donut(spec, _stats, w, h, primary, accent, bg)
+        if _v == 4: return _stats_pictograph(spec, _stats, w, h, primary, accent, bg)
         if _v == 1: return _stats_bigrow(spec, _stats, w, h, primary, accent, bg)
         if _v == 2: return _stats_rows(spec, _stats, w, h, primary, accent, bg)
     img = PILImage.new("RGB", (w, h), bg)
