@@ -2863,9 +2863,21 @@ def _dominant_hex(img_bytes: bytes) -> str:
         return "#1A3A5C"
 
 
+# Explicit brand accent for clients whose overlay panel BACKGROUND isn't their
+# brand color (e.g. au-it = navy panel with an orange logo/stripe). Dominant-color
+# extraction would pick the panel bg (navy), so the infographic comes out off-brand.
+# Keyed by client slug → brand hex. Takes priority over scrape + overlay extraction.
+_BRAND_COLOR_OVERRIDE = {
+    "auit": "#E75700",   # au-it brand orange (panel bg is navy)
+}
+
+
 def _client_branding(slug: str) -> str:
     """Return hex brand color for a client by extracting dominant color from its overlay PNG.
     Only returns color — logo is always scraped from the blog URL via _scrape_page_branding."""
+    ov = _BRAND_COLOR_OVERRIDE.get((slug or "").lower())
+    if ov:
+        return ov
     logo_path = ASSETS_DIR / f"logo_panel_main_{slug}.png"
     if not logo_path.exists() or logo_path.stat().st_size < 1000:
         return "#1A3A5C"
@@ -2873,6 +2885,19 @@ def _client_branding(slug: str) -> str:
         return _dominant_hex(logo_path.read_bytes())
     except Exception:
         return "#1A3A5C"
+
+
+def _resolve_brand_color(slug: str, scraped_color: str) -> str:
+    """Pick the brand color with the right priority:
+    explicit override → scraped page theme-color → client overlay PNG → default."""
+    ov = _BRAND_COLOR_OVERRIDE.get((slug or "").lower())
+    if ov:
+        return ov
+    if scraped_color and scraped_color != "#1A3A5C":
+        return scraped_color
+    if slug:
+        return _client_branding(slug)
+    return "#1A3A5C"
 
 
 def _scrape_page_branding(url: str) -> tuple:
@@ -3224,11 +3249,8 @@ def run_workflow(url: str, output_dir: Path,
     if _has_infographics:
         with st.spinner("Detecting brand colors and logo from page..."):
             scraped_color, _brand_logo = _scrape_page_branding(url)
-        # Always use scraped color from website — more accurate than overlay PNG extraction
-        if scraped_color and scraped_color != "#1A3A5C":
-            _brand_color = scraped_color
-        elif client_slug:
-            _brand_color = _client_branding(client_slug)  # fallback: overlay PNG
+        # Priority: explicit brand override → scraped page color → overlay PNG extraction
+        _brand_color = _resolve_brand_color(client_slug, scraped_color)
     _ig_foot = _brand_footer(client_slug, url)
 
     for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
@@ -3611,7 +3633,9 @@ with tab_manual:
         _m_brand_color, _m_brand_logo = "#1A3A5C", None
         if _m_has_ig:
             with st.spinner("Detecting brand colors from page..."):
-                _m_brand_color, _m_brand_logo = _scrape_page_branding(url)
+                _m_scraped, _m_brand_logo = _scrape_page_branding(url)
+            # Priority: explicit override → scraped page color → overlay PNG
+            _m_brand_color = _resolve_brand_color(_selected_slug, _m_scraped)
         st.session_state["m_brand_color"] = _m_brand_color
         _m_foot = _brand_footer("", url)
         st.session_state["m_footer"] = _m_foot
