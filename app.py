@@ -1577,6 +1577,10 @@ def _parse_tpl(node, prefix, entry):
         entry[f"{prefix}_ty"]           = int(tbb.get("y", fy) - fy)
         entry[f"{prefix}_tw"]           = int(tbb.get("width", 290))
         entry[f"{prefix}_fsz"]          = int(round(fsz))
+        # Figma's actual line height (px). Fall back to fontSize+6 only if absent.
+        _lh = st_.get("lineHeightPx")
+        if _lh:
+            entry[f"{prefix}_lh"]       = int(round(_lh))
         entry[f"{prefix}_font_family"]  = st_.get("fontFamily", "Inter")
         entry[f"{prefix}_font_style"]   = st_.get("fontStyle",  "Medium")
         # Parse font color from Figma fills (r/g/b are 0–1 floats → convert to 0–255)
@@ -1948,6 +1952,7 @@ def make_tpls(client_name: str, main_logo: Path, thumb_logo: Path) -> tuple:
         "ty":             entry.get("main_ty",  MAIN_TPL["ty"]),
         "tw":             entry.get("main_tw",  MAIN_TPL["tw"]),
         "fsz":            entry.get("main_fsz", MAIN_TPL["fsz"]),
+        "lh":             entry.get("main_lh"),
         "font":           m_font,
         "font_weight":    m_weight,
         "font_style_name": m_style,
@@ -1963,6 +1968,7 @@ def make_tpls(client_name: str, main_logo: Path, thumb_logo: Path) -> tuple:
         "ty":             entry.get("thumb_ty",  THUMB_TPL["ty"]),
         "tw":             entry.get("thumb_tw",  THUMB_TPL["tw"]),
         "fsz":            entry.get("thumb_fsz", THUMB_TPL["fsz"]),
+        "lh":             entry.get("thumb_lh"),
         "font":           t_font,
         "font_weight":    t_weight,
         "font_style_name": t_style,
@@ -2051,7 +2057,7 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
                 if cur: lines.append(" ".join(cur))
                 cur = [word]
         if cur: lines.append(" ".join(cur))
-        lh = tpl["fsz"] + 6
+        lh = tpl.get("lh") or (tpl["fsz"] + 6)
         fc = tpl.get("font_color", (255, 255, 255))
         for i, line in enumerate(lines):
             draw.text((tpl["tx"], tpl["ty"] + i * lh), line, fill=fc, font=font)

@@ -24,7 +24,9 @@
     "thumb_tw": 227,
     "thumb_fsz": 19,
     "thumb_font_family": "Inter",
-    "thumb_font_style": "Medium"
+    "thumb_font_style": "Medium",
+    "main_lh": 29,
+    "thumb_lh": 23
   },
   "guru": {
     "name": "GURU",
@@ -51,7 +53,9 @@
     "thumb_tw": 297,
     "thumb_fsz": 26,
     "thumb_font_family": "Outfit",
-    "thumb_font_style": "SemiBold"
+    "thumb_font_style": "SemiBold",
+    "main_lh": 52,
+    "thumb_lh": 33
   },
   "point": {
     "name": "Point",
@@ -78,7 +82,9 @@
     "thumb_tw": 544,
     "thumb_fsz": 32,
     "thumb_font_family": "Outfit",
-    "thumb_font_style": "SemiBold"
+    "thumb_font_style": "SemiBold",
+    "main_lh": 40,
+    "thumb_lh": 40
   },
   "version2": {
     "name": "Version2",
@@ -105,7 +111,9 @@
     "thumb_tw": 498,
     "thumb_fsz": 32,
     "thumb_font_family": "Roboto",
-    "thumb_font_style": "Bold"
+    "thumb_font_style": "Bold",
+    "main_lh": 51,
+    "thumb_lh": 38
   },
   "carmichael": {
     "name": "Carmichael",
@@ -132,7 +140,9 @@
     "thumb_tw": 190,
     "thumb_fsz": 16,
     "thumb_font_family": "Libre Franklin",
-    "thumb_font_style": "Bold"
+    "thumb_font_style": "Bold",
+    "main_lh": 27,
+    "thumb_lh": 19
   },
   "capstone": {
     "name": "Capstone",
@@ -169,7 +179,9 @@
       31,
       31,
       31
-    ]
+    ],
+    "main_lh": 41,
+    "thumb_lh": 23
   },
   "leet": {
     "name": "Leet",
@@ -206,7 +218,9 @@
       254,
       254,
       254
-    ]
+    ],
+    "main_lh": 31,
+    "thumb_lh": 22
   },
   "hart": {
     "name": "Hart",
@@ -243,7 +257,9 @@
       0,
       0,
       0
-    ]
+    ],
+    "main_lh": 35,
+    "thumb_lh": 26
   },
   "axxis": {
     "name": "Axxis",
@@ -280,7 +296,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 49,
+    "thumb_lh": 49
   },
   "red-team": {
     "name": "Red Team IT",
@@ -317,7 +335,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 43,
+    "thumb_lh": 31
   },
   "sonar": {
     "name": "Sonar",
@@ -354,7 +374,9 @@
       4,
       4,
       4
-    ]
+    ],
+    "main_lh": 43,
+    "thumb_lh": 29
   },
   "infotank": {
     "name": "Infotank",
@@ -391,7 +413,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 43,
+    "thumb_lh": 25
   },
   "net-i": {
     "name": "Net-i",
@@ -428,7 +452,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 29,
+    "thumb_lh": 29
   },
   "rtc": {
     "name": "RTC",
@@ -465,7 +491,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 43,
+    "thumb_lh": 24
   },
   "unified": {
     "name": "Unified",
@@ -502,7 +530,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 29,
+    "thumb_lh": 21
   },
   "alexant": {
     "name": "Alexant",
@@ -539,7 +569,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 39,
+    "thumb_lh": 20
   },
   "mbps": {
     "name": "MBPS",
@@ -576,7 +608,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 33,
+    "thumb_lh": 25
   },
   "auit": {
     "name": "Auit",
@@ -613,7 +647,9 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 28,
+    "thumb_lh": 16
   },
   "sterling": {
     "name": "Sterling",
@@ -650,6 +686,8 @@
       255,
       255,
       255
-    ]
+    ],
+    "main_lh": 34,
+    "thumb_lh": 24
   }
 }
