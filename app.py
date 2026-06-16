@@ -4952,7 +4952,8 @@ with tab_auto:
                                 wf, site_id, site_name, collection_id, item_id, was_published = \
                                     do_webflow_connect(a_api_key.strip(),
                                                        None,
-                                                       blog_state.get("client_name", ""), slug)
+                                                       blog_state.get("client_name", ""), slug,
+                                                       blog_url=blog_state.get("url", ""))
                                 s.update(label="Connected ✓", state="complete")
                             except Exception as e:
                                 s.update(label="Connection failed", state="error")
@@ -5108,7 +5109,8 @@ with tab_cover:
                         with st.status("Connecting to Webflow...", expanded=True) as s:
                             try:
                                 wf, site_id, site_name, collection_id, item_id, was_published = \
-                                    do_webflow_connect(a_api_key.strip(), None, "", slug)
+                                    do_webflow_connect(a_api_key.strip(), None, "", slug,
+                                                       blog_url=bs.get("url", ""))
                                 s.update(label="Connected ✓", state="complete")
                             except Exception as e:
                                 s.update(label="Connection failed", state="error")
