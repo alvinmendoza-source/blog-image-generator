@@ -729,45 +729,6 @@
       255
     ]
   },
-  "aboutit": {
-    "name": "Aboutit",
-    "main": "109:36",
-    "thumb": "109:37",
-    "main_w": 1036,
-    "main_h": 777,
-    "overlay_main": "109:24",
-    "overlay_main_x": 0,
-    "overlay_main_y": 0,
-    "main_tx": 41,
-    "main_ty": 654,
-    "main_tw": 512,
-    "main_fsz": 28,
-    "main_lh": 32,
-    "main_font_family": "Plus Jakarta Sans",
-    "main_font_style": "Bold",
-    "main_font_color": [
-      255,
-      255,
-      255
-    ],
-    "thumb_w": 860,
-    "thumb_h": 460,
-    "overlay_thumb": "109:23",
-    "overlay_thumb_x": 0,
-    "overlay_thumb_y": 0,
-    "thumb_tx": 32,
-    "thumb_ty": 363,
-    "thumb_tw": 410,
-    "thumb_fsz": 23,
-    "thumb_lh": 27,
-    "thumb_font_family": "Plus Jakarta Sans",
-    "thumb_font_style": "Bold",
-    "thumb_font_color": [
-      255,
-      255,
-      255
-    ]
-  },
   "roxie": {
     "name": "Roxie",
     "main": "116:15",
@@ -800,6 +761,45 @@
     "thumb_fsz": 20,
     "thumb_lh": 25,
     "thumb_font_family": "AccordAlternate",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
+  },
+  "aboutit": {
+    "name": "Aboutit",
+    "main": "109:36",
+    "thumb": "109:37",
+    "main_w": 1036,
+    "main_h": 777,
+    "overlay_main": "109:24",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 41,
+    "main_ty": 654,
+    "main_tw": 551,
+    "main_fsz": 28,
+    "main_lh": 32,
+    "main_font_family": "Plus Jakarta Sans",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 860,
+    "thumb_h": 460,
+    "overlay_thumb": "109:23",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 32,
+    "thumb_ty": 363,
+    "thumb_tw": 461,
+    "thumb_fsz": 23,
+    "thumb_lh": 27,
+    "thumb_font_family": "Plus Jakarta Sans",
     "thumb_font_style": "Bold",
     "thumb_font_color": [
       255,

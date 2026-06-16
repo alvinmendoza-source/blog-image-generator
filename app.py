@@ -622,7 +622,7 @@ def _soup_to_structured_text(soup) -> str:
 
 def fetch_blog_from_cms(slug: str, wf, collection_id: str, item_id: str):
     """Fetch blog content from Webflow CMS API — used when page is draft/unpublished."""
-    item = wf._get(f"/collections/{collection_id}/items/{item_id}")
+    item = wf.get_item(collection_id, item_id)
     field_data = item.get("fieldData", {})
 
     title = (field_data.get("name") or field_data.get("title") or slug)
@@ -1297,6 +1297,20 @@ def _dispatch_image_gen(prompt: str, index: int, width: int, height: int,
 
 # ── Webflow API client ─────────────────────────────────────────────────────────
 
+def _detect_locale_tag(url: str) -> str:
+    """Return a 2-letter locale code if the URL path starts with one (e.g.
+    https://site.be/fr/blog/... → 'fr'), else None. Whether it's actually a valid
+    locale is confirmed later against the site's configured locales."""
+    try:
+        from urllib.parse import urlparse
+        parts = [p for p in urlparse(url).path.split("/") if p]
+    except Exception:
+        return None
+    if parts and re.fullmatch(r"[a-z]{2}(-[a-z]{2})?", parts[0].lower()):
+        return parts[0].lower()
+    return None
+
+
 class WebflowClient:
     BASE = "https://api.webflow.com/v2"
 
@@ -1306,6 +1320,45 @@ class WebflowClient:
             "accept": "application/json",
             "content-type": "application/json"
         }
+        # Set by set_locale_from_url() when the blog URL points to a secondary
+        # Webflow locale (e.g. /fr/). When set, all item reads/writes target that
+        # locale so French blogs generate+upload to the French CMS item.
+        self.cms_locale_id = None
+        self.locale_tag = None
+
+    def _locale_params(self, extra: dict = None) -> dict:
+        p = dict(extra or {})
+        if self.cms_locale_id:
+            p["cmsLocaleId"] = self.cms_locale_id
+        return p
+
+    def set_locale_from_url(self, site: dict, blog_url: str):
+        """Detect a locale code in the blog URL path (e.g. /fr/blog/...) and, if it
+        matches one of the site's secondary locales, target that locale for all
+        subsequent item reads/writes. Primary locale needs no cmsLocaleId.
+        Returns the matched locale tag, or None."""
+        self.cms_locale_id = None
+        self.locale_tag = None
+        tag = _detect_locale_tag(blog_url)
+        if not tag:
+            return None
+        locales = site.get("locales", {}) or {}
+        primary = locales.get("primary", {}) or {}
+        if (primary.get("tag") or "").lower() == tag:
+            self.locale_tag = tag           # primary locale — no cmsLocaleId needed
+            return tag
+        for sec in (locales.get("secondary", []) or []):
+            if (sec.get("tag") or "").lower() == tag and sec.get("enabled", True):
+                self.cms_locale_id = sec.get("cmsLocaleId")
+                self.locale_tag = tag
+                return tag
+        return None
+
+    def get_item(self, collection_id: str, item_id: str):
+        """Fetch a single CMS item in the active locale (passes cmsLocaleId when set —
+        a secondary-locale item 404s without it)."""
+        return self._get(f"/collections/{collection_id}/items/{item_id}",
+                         params=self._locale_params())
 
     def _raise(self, r):
         try:
@@ -1394,19 +1447,21 @@ class WebflowClient:
     _ITEMS_TTL = 120  # seconds
 
     def _all_collection_items(self, collection_id: str) -> list:
-        cached = WebflowClient._ITEMS_CACHE.get(collection_id)
+        # Cache per (collection, locale) — FR and EN listings have different slugs
+        cache_key = (collection_id, self.cms_locale_id)
+        cached = WebflowClient._ITEMS_CACHE.get(cache_key)
         if cached and (time.time() - cached[0]) < WebflowClient._ITEMS_TTL:
             return cached[1]
         all_items, offset = [], 0
         while True:
             data = self._get(f"/collections/{collection_id}/items",
-                             params={"limit": 100, "offset": offset})
+                             params=self._locale_params({"limit": 100, "offset": offset}))
             items = data.get("items", [])
             all_items.extend(items)
             if len(items) < 100:
                 break
             offset += 100
-        WebflowClient._ITEMS_CACHE[collection_id] = (time.time(), all_items)
+        WebflowClient._ITEMS_CACHE[cache_key] = (time.time(), all_items)
         return all_items
 
     def find_item_by_slug(self, collection_id: str, slug: str):
@@ -1462,7 +1517,9 @@ class WebflowClient:
         return asset_url
 
     def update_item(self, collection_id: str, item_id: str, field_data: dict):
-        return self._patch(f"/collections/{collection_id}/items/{item_id}", {"fieldData": field_data})
+        return self._request("PATCH", f"/collections/{collection_id}/items/{item_id}",
+                             params=self._locale_params(), json_body={"fieldData": field_data},
+                             timeout=30)
 
     def publish_items(self, collection_id: str, item_ids: list):
         return self._post(f"/collections/{collection_id}/items/publish", {"itemIds": item_ids})
@@ -2071,9 +2128,13 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
                     pass
         except Exception:
             font = ImageFont.load_default()
+        # Normalize typographic chars only. Accented Latin letters (é, è, ç, à, ô…)
+        # are KEPT so French/Dutch/etc. titles render faithfully — the template fonts
+        # cover Latin-1. Map a few >255 chars that fonts often lack to ASCII equivalents.
         _CHAR_MAP = {"®": "(R)", "™": "(TM)", "©": "(C)", "’": "'", "‘": "'",
-                     "“": '"', "”": '"', "–": "-", "—": "-",
-                     "…": "...", "°": " deg", "é": "e", "à": "a"}
+                     "“": '"', "”": '"', "–": "-", "—": "-", "…": "...",
+                     "œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE",
+                     "“": '"', "„": '"', "«": '"', "»": '"'}
         clean_title = "".join(_CHAR_MAP.get(c, c) for c in title
                                if ord(c) < 256 or c in _CHAR_MAP)
         words = clean_title.split()
@@ -4115,6 +4176,14 @@ def do_webflow_connect(api_key: str, manual_site_id: str, client_name: str, slug
         all_names = ", ".join(s.get("displayName", s["id"]) for s in sites)
         st.write(f"**Site:** {site_name}  _(API key has access to: {all_names})_")
 
+        # Multi-language sites: if the URL is /fr/... (etc.), target that locale so
+        # the post is found, fetched, and uploaded in the right language.
+        _ltag = wf.set_locale_from_url(site, blog_url)
+        if _ltag:
+            _is_secondary = bool(wf.cms_locale_id)
+            st.write(f"**Locale:** {_ltag.upper()} "
+                     f"({'secondary — CMS targets this language' if _is_secondary else 'primary'})")
+
     collection = wf.find_blog_collection(site_id)
     if not collection:
         raise ValueError("No blog collection found.")
@@ -4165,7 +4234,7 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
     # ── Update CMS item ───────────────────────────────────────────────────────
     with st.status("Updating Webflow CMS...", expanded=True) as s:
         try:
-            full_item = wf._get(f"/collections/{collection_id}/items/{item_id}")
+            full_item = wf.get_item(collection_id, item_id)
             field_data = full_item.get("fieldData", {})
 
             # Debug: show all field types so we can see the CMS structure
@@ -4220,7 +4289,7 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
     if main_bytes or thumb_bytes:
         with st.status("Uploading main image & thumbnail...", expanded=True) as s:
             try:
-                fd2 = wf._get(f"/collections/{collection_id}/items/{item_id}").get("fieldData", {})
+                fd2 = wf.get_item(collection_id, item_id).get("fieldData", {})
 
                 # Show ALL field keys so we can debug naming mismatches
                 st.write(f"**All CMS fields:** {list(fd2.keys())}")
@@ -4340,7 +4409,7 @@ def do_webflow_upload_cover(wf, site_id, collection_id, item_id, was_published,
     if main_bytes or thumb_bytes:
         with st.status("Uploading main image & thumbnail...", expanded=True) as s:
             try:
-                fd2 = wf._get(f"/collections/{collection_id}/items/{item_id}").get("fieldData", {})
+                fd2 = wf.get_item(collection_id, item_id).get("fieldData", {})
                 st.write(f"**All CMS fields:** {list(fd2.keys())}")
                 img_fields = {k: v for k, v in fd2.items()
                               if v is None or (isinstance(v, dict) and "url" in v)}
