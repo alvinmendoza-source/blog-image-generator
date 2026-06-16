@@ -2340,6 +2340,23 @@ def _ig_variant(seed: str, n: int) -> int:
     return int(hashlib.md5((seed or "x").encode("utf-8")).hexdigest(), 16) % max(1, n)
 
 
+def _ig_style_count(spec: dict) -> int:
+    """How many visual layout styles exist for this infographic type (keep in sync
+    with the per-type dispatch in the renderers)."""
+    t = spec.get("infographic_type", "steps")
+    return {"steps": 6, "stats": 5, "checklist": (4 if _FA_OK else 3),
+            "bar_chart": 2}.get(t, 1)
+
+
+def _ig_base_variant(spec: dict, brand_color: str) -> int:
+    """The deterministic variant the initial (non-redo) render picks for this spec."""
+    t = spec.get("infographic_type", "steps")
+    suffix = {"steps": "steps", "stats": "stats", "checklist": "checklist",
+              "bar_chart": "bar"}.get(t, "steps")
+    seed = f"{brand_color}|{spec.get('title', '')}"
+    return _ig_variant(seed + suffix, _ig_style_count(spec))
+
+
 def _ig_setup(spec, w, h, bg, primary, accent, default_kicker, pad):
     img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
@@ -2862,12 +2879,12 @@ def _stats_pictograph(spec, stats, w, h, primary, accent, bg):
 
 def _render_steps_infographic(spec: dict, w: int, h: int,
                               primary: tuple, accent: tuple, bg: tuple, footer: str,
-                              seed: str = "") -> bytes:
+                              seed: str = "", variant: int = None) -> bytes:
     _items = (spec.get("items") or [])[:6]
     if _items:
         # styles: 0 cards (default) · 1 timeline · 2 rows · 3 icon-grid (FA) ·
         #         4 icon process flow · 5 roadmap path
-        _v = _ig_variant(seed + "steps", 6)
+        _v = (variant % 6) if variant is not None else _ig_variant(seed + "steps", 6)
         if _v == 5: return _steps_roadmap(spec, _items[:5], w, h, primary, accent, bg)
         if _v == 4: return _steps_flow(spec, _items[:4], w, h, primary, accent, bg)
         if _v == 3 and _FA_OK and len(_items) <= 6:
@@ -2939,11 +2956,11 @@ def _render_steps_infographic(spec: dict, w: int, h: int,
 
 def _render_stats_infographic(spec: dict, w: int, h: int,
                               primary: tuple, accent: tuple, bg: tuple, footer: str,
-                              seed: str = "") -> bytes:
+                              seed: str = "", variant: int = None) -> bytes:
     _stats = (spec.get("stats") or [])[:4]
     if _stats:
         # styles: 0 cards (default) · 1 big-row · 2 rows · 3 donut+legend · 4 pictograph
-        _v = _ig_variant(seed + "stats", 5)
+        _v = (variant % 5) if variant is not None else _ig_variant(seed + "stats", 5)
         if _v == 3: return _stats_donut(spec, _stats, w, h, primary, accent, bg)
         if _v == 4: return _stats_pictograph(spec, _stats, w, h, primary, accent, bg)
         if _v == 1: return _stats_bigrow(spec, _stats, w, h, primary, accent, bg)
@@ -3003,11 +3020,11 @@ def _render_stats_infographic(spec: dict, w: int, h: int,
 
 def _render_checklist_infographic(spec: dict, w: int, h: int,
                                   primary: tuple, accent: tuple, bg: tuple, footer: str,
-                                  seed: str = "") -> bytes:
+                                  seed: str = "", variant: int = None) -> bytes:
     _items = (spec.get("items") or [])[:8]
     if _items:
         _nv = 4 if _FA_OK else 3
-        _v = _ig_variant(seed + "checklist", _nv)
+        _v = (variant % _nv) if variant is not None else _ig_variant(seed + "checklist", _nv)
         if _v == 3 and len(_items) <= 6:
             _pairs = [(str(s), "") for s in _items]
             return _render_icongrid(spec, _pairs, w, h, primary, accent, bg, "Checklist")
@@ -3064,9 +3081,10 @@ def _render_checklist_infographic(spec: dict, w: int, h: int,
 
 def _render_bar_chart_infographic(spec: dict, w: int, h: int,
                                   primary: tuple, accent: tuple, bg: tuple, footer: str,
-                                  seed: str = "") -> bytes:
+                                  seed: str = "", variant: int = None) -> bytes:
     _bars = (spec.get("bars") or [])[:6]
-    if _bars and _ig_variant(seed + "bar", 2) == 1:
+    _bv = (variant % 2) if variant is not None else _ig_variant(seed + "bar", 2)
+    if _bars and _bv == 1:
         return _bar_columns(spec, _bars, w, h, primary, accent, bg)
     img = PILImage.new("RGB", (w, h), bg)
     d = ImageDraw.Draw(img)
@@ -3271,20 +3289,23 @@ def _apply_corner_logo(img_bytes: bytes, logo_bytes: bytes | None,
 
 
 def _render_infographic(spec: dict, w: int, h: int,
-                        brand_color: str = "#1A3A5C", footer: str = "", seed: str = "") -> bytes:
+                        brand_color: str = "#1A3A5C", footer: str = "", seed: str = "",
+                        variant: int = None) -> bytes:
     """Dispatch to the correct renderer. The whole palette (primary/accent/bg) is
     derived from the client brand color. Never raises — always returns valid bytes.
     `seed` (brand + blog title) selects a layout VARIANT so different clients/blogs get
-    visibly different infographic styles instead of one fixed look per type."""
+    visibly different infographic styles instead of one fixed look per type.
+    `variant` (when set) FORCES a specific layout style index — used by redo to cycle
+    to a different design each click instead of re-rendering the same one."""
     primary, accent, bg = _ig_palette(brand_color)
     if not seed:
         seed = f"{brand_color}|{spec.get('title', '')}"
     try:
         t = spec.get("infographic_type", "steps")
-        if t == "stats":     return _render_stats_infographic(spec, w, h, primary, accent, bg, footer, seed)
-        if t == "checklist": return _render_checklist_infographic(spec, w, h, primary, accent, bg, footer, seed)
-        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h, primary, accent, bg, footer, seed)
-        return _render_steps_infographic(spec, w, h, primary, accent, bg, footer, seed)
+        if t == "stats":     return _render_stats_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
+        if t == "checklist": return _render_checklist_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
+        if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
+        return _render_steps_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
     except Exception as e:
         img = PILImage.new("RGB", (w, h), bg)
         draw = ImageDraw.Draw(img)
@@ -3823,10 +3844,19 @@ with tab_manual:
         with st.spinner(f"Regenerating image {redo_i}..."):
             try:
                 if redo_slot.get("type") == "infographic":
+                    # Redo cycles to the NEXT layout style so each click shows a
+                    # visibly different infographic design (loops through all styles).
+                    _bc = st.session_state.get("m_brand_color", "#1A3A5C")
+                    _cur_v = redo_slot.get("ig_variant")
+                    if _cur_v is None:
+                        _cur_v = _ig_base_variant(redo_slot, _bc)
+                    _new_v = (_cur_v + 1) % _ig_style_count(redo_slot)
+                    redo_slot["ig_variant"] = _new_v
                     raw = _render_infographic(
                         redo_slot, DEFAULT_WIDTH, DEFAULT_HEIGHT,
-                        brand_color=st.session_state.get("m_brand_color", "#1A3A5C"),
-                        footer=st.session_state.get("m_footer", ""))
+                        brand_color=_bc,
+                        footer=st.session_state.get("m_footer", ""),
+                        variant=_new_v)
                     new_desc = redo_slot.get("title", "")
                 else:
                     # Chain off the CURRENT prompt so each redo moves to a new scene
@@ -4457,9 +4487,18 @@ def _regen_image(blog_state: dict, img_idx: int):
                            "then redo will work and stay a proper infographic.")
                 return
             try:
+                # Redo cycles to the NEXT layout style so each click shows a
+                # visibly different infographic design (loops through all styles).
+                _bc = result.get("brand_color", "#1A3A5C")
+                _cur_v = result.get("ig_variant")
+                if _cur_v is None:
+                    _cur_v = _ig_base_variant(spec, _bc)
+                _new_v = (_cur_v + 1) % _ig_style_count(spec)
+                result["ig_variant"] = _new_v
                 raw = _render_infographic(spec, DEFAULT_WIDTH, DEFAULT_HEIGHT,
-                                          brand_color=result.get("brand_color", "#1A3A5C"),
-                                          footer=result.get("footer", ""))
+                                          brand_color=_bc,
+                                          footer=result.get("footer", ""),
+                                          variant=_new_v)
                 raw = _apply_corner_logo(raw, result.get("brand_logo"))
                 opt_bytes, ext = optimize_image(raw, max_kb=200)
                 (output_dir / f"image_{img_idx:02d}.{ext}").write_bytes(opt_bytes)
