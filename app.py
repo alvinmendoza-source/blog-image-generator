@@ -1785,18 +1785,30 @@ def _load_node_cache_clients() -> list:
 
 
 def _match_client(site_name: str) -> str:
-    """Return the cache key (slug) that best matches a Webflow site display name, or '' if none."""
+    """Return the cache key (slug) that best matches a Webflow site display name, or '' if none.
+
+    Compares with ALL non-alphanumerics stripped (not replaced by '-'), so a Webflow
+    site name like "Palm Tech" → "palmtech" matches the cache key "palmtech", and
+    "Red Team" → "redteam" matches "red-team". Earlier this normalized to "palm-tech"
+    (hyphen) and silently failed to match "palmtech" → callers fell back to the 920×613
+    default template with no overlay.
+    """
     cache = _load_node_cache()
     if not cache:
         return ""
-    s = re.sub(r"[^a-z0-9]+", "-", site_name.lower()).strip("-")
-    if s in cache:
-        return s
+    def _squash(x: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", x.lower())
+    s = _squash(site_name)
+    if not s:
+        return ""
+    # 1) exact match on the squashed form (handles "Palm Tech" == "palmtech")
     for key in cache:
-        if key in s:
+        if _squash(key) == s:
             return key
-    for key in cache:
-        if s in key:
+    # 2) containment either way (squashed), longest key first to avoid spurious short matches
+    for key in sorted(cache, key=lambda k: len(_squash(k)), reverse=True):
+        ks = _squash(key)
+        if ks and (ks in s or s in ks):
             return key
     return ""   # no match — do not fall back to a random client
 
