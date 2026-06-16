@@ -3601,6 +3601,17 @@ def display_image_grid(results: list, key_prefix: str = ""):
 st.set_page_config(page_title="MSP Launchpad — Blog Image Generator",
                    page_icon="assets/logo.png", layout="wide")
 
+# ── Build/deploy diagnostic marker ────────────────────────────────────────────
+# Confirms which version is actually live + which templates the deployed cache
+# contains. If this caption is missing or shows palmtech=NO, the running
+# Streamlit instance is stale — Reboot the app from share.streamlit.io.
+_dbg_cache = _load_node_cache()
+st.caption(
+    f"🛠️ build 2026-06-16b · {len(_dbg_cache)} templates loaded · "
+    f"palmtech={'✅' if 'palmtech' in _dbg_cache else '❌ MISSING'} · "
+    f"aboutit={'✅' if 'aboutit' in _dbg_cache else '❌ MISSING'}"
+)
+
 # ── Branding: load logo as base64 ─────────────────────────────────────────────
 _logo_path = Path("assets/logo.png")
 _logo_b64 = ""
