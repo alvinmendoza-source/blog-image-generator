@@ -767,5 +767,44 @@
       255,
       255
     ]
+  },
+  "roxie": {
+    "name": "Roxie",
+    "main": "116:15",
+    "thumb": "116:14",
+    "main_w": 1200,
+    "main_h": 450,
+    "overlay_main": "116:2",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 58,
+    "main_ty": 271,
+    "main_tw": 388,
+    "main_fsz": 28,
+    "main_lh": 33,
+    "main_font_family": "AccordAlternate",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 720,
+    "thumb_h": 440,
+    "overlay_thumb": "116:3",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 58,
+    "thumb_ty": 299,
+    "thumb_tw": 283,
+    "thumb_fsz": 20,
+    "thumb_lh": 25,
+    "thumb_font_family": "AccordAlternate",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }

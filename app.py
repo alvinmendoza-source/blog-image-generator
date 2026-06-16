@@ -555,8 +555,25 @@ def is_content_image(img_tag) -> bool:
     return True
 
 
+# Realistic browser fingerprint — many sites (e.g. roxieit.com) return 403 Forbidden
+# to bare/minimal User-Agents. A full Chrome header set bypasses most UA-based blocks.
+BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+    "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
+               "image/avif,image/webp,image/apng,*/*;q=0.8"),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+}
+
+
 def fetch_blog(url: str):
-    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}, timeout=30)
+    r = requests.get(url, headers=BROWSER_HEADERS, timeout=30)
     r.raise_for_status()
     soup = BeautifulSoup(r.content, "html.parser")
     for tag in soup(["nav", "footer", "script", "style"]):
@@ -3390,8 +3407,10 @@ def run_workflow(url: str, output_dir: Path,
             st.write(f"**Images found:** {len(image_urls)}")
             s.update(label="Blog fetched ✓", state="complete")
         except requests.HTTPError as e:
-            if wf_fallback and str(e.response.status_code) == "404":
-                st.info("🔒 Page is a draft — fetching content from Webflow CMS instead...")
+            if wf_fallback and str(e.response.status_code) in ("404", "403"):
+                _code = str(e.response.status_code)
+                st.info(f"🔒 Public page returned {_code} (draft or bot-blocked) — "
+                        f"fetching content from Webflow CMS instead...")
                 slug = url.rstrip("/").split("/")[-1]
                 try:
                     title, content, image_urls = fetch_blog_from_cms(
@@ -4379,8 +4398,7 @@ def _resolve_blog_slug(start_url: str):
     _orig = re.sub(r"[?#].*$", "", start_url).rstrip("/")
     try:
         _r = requests.get(start_url, allow_redirects=True,
-                          headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-                          timeout=15)
+                          headers=BROWSER_HEADERS, timeout=15)
         if not _r.ok:
             return _orig, _slug_of(_orig)
         _soup = BeautifulSoup(_r.content, "html.parser")
@@ -4406,7 +4424,7 @@ def _fetch_cover_title(url, slug, wf=None, collection_id=None, item_id=None):
         if title:
             return title
     except requests.HTTPError as he:
-        if wf and str(getattr(he.response, "status_code", "")) == "404":
+        if wf and str(getattr(he.response, "status_code", "")) in ("404", "403"):
             try:
                 title, _c, _i = fetch_blog_from_cms(slug, wf, collection_id, item_id)
                 if title:
