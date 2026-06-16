@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Infographic Design Themes — Mockups</title>
+<style>
+  :root{
+    /* swap these to preview any client brand */
+    --brand:#1A3A5C;      /* primary brand hue */
+    --accent:#2E6FB0;     /* vivid accent */
+    --brand-deep:#0F2438; /* dark variant */
+    --tint:#eef3f8;       /* faint page tint */
+    --ink:#1d2733;
+    --muted:#6b7785;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Inter,system-ui,sans-serif;background:#d7dde3;color:var(--ink);padding:32px}
+  h1{font-size:24px;margin-bottom:6px}
+  .lede{color:#475363;margin-bottom:8px;max-width:900px}
+  .swatch{margin:14px 0 28px;display:flex;gap:10px;align-items:center}
+  .swatch label{font-size:13px;color:#475363}
+  .swatch input{width:42px;height:30px;border:none;border-radius:6px;cursor:pointer}
+  .grid{display:flex;flex-direction:column;gap:40px;max-width:1120px;margin:0 auto}
+  .theme-block h2{font-size:18px;margin-bottom:4px}
+  .theme-block .desc{color:#475363;font-size:14px;margin-bottom:12px}
+  /* 16:9 card */
+  .card{width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;
+        box-shadow:0 10px 30px rgba(0,0,0,.18);position:relative}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:820px){.row2{grid-template-columns:1fr}}
+
+  /* ============ THEME A — Editorial Card (current baseline) ============ */
+  .A{background:var(--tint);padding:5% 6%;display:flex;flex-direction:column;
+     border:2px solid rgba(0,0,0,.06)}
+  .A .frame{border:2px solid rgba(0,0,0,.07);border-radius:18px;position:absolute;inset:2%}
+  .A .kicker{align-self:center;background:var(--accent);color:#fff;font-size:1.4vw;font-weight:700;
+             padding:.5em 1.2em;border-radius:999px;letter-spacing:.06em}
+  .A h3{text-align:center;color:var(--brand);font-size:3.6vw;font-weight:800;margin:2% 0 4%}
+  .A .steps{display:flex;flex-direction:column;gap:2.2%;flex:1;z-index:1}
+  .A .step{display:flex;align-items:center;gap:1.4em}
+  .A .num{min-width:2.4em;height:2.4em;border-radius:50%;background:var(--accent);color:#fff;
+          display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.7vw}
+  .A .stitle{color:var(--brand);font-weight:700;font-size:1.7vw}
+  .A .sdesc{color:var(--muted);font-size:1.25vw}
+
+  /* ============ THEME B — Dark Hero ============ */
+  .B{background:var(--brand-deep);padding:6% 7%;color:#fff;display:flex;flex-direction:column}
+  .B .kicker{align-self:flex-start;background:var(--accent);color:#fff;font-size:1.3vw;font-weight:700;
+             padding:.45em 1.1em;border-radius:6px;letter-spacing:.08em;text-transform:uppercase}
+  .B h3{color:#fff;font-size:3.8vw;font-weight:800;margin:2.5% 0 4%;max-width:80%}
+  .B .steps{display:grid;grid-template-columns:1fr 1fr;gap:3% 5%;flex:1}
+  .B .step{display:flex;gap:1em;align-items:flex-start}
+  .B .num{color:var(--accent);font-weight:800;font-size:3vw;line-height:1;min-width:1.6em}
+  .B .stitle{font-weight:700;font-size:1.7vw}
+  .B .sdesc{color:#aebccb;font-size:1.2vw;margin-top:.2em}
+
+  /* ============ THEME C — Sidebar Split ============ */
+  .C{display:grid;grid-template-columns:38% 62%;background:#fff}
+  .C .side{background:var(--brand);color:#fff;padding:7% 8%;display:flex;flex-direction:column;justify-content:center}
+  .C .side .kicker{font-size:1.3vw;letter-spacing:.12em;text-transform:uppercase;opacity:.8;margin-bottom:1em}
+  .C .side h3{font-size:3.4vw;font-weight:800;line-height:1.1}
+  .C .side .accentbar{width:3.5em;height:.4em;background:var(--accent);border-radius:4px;margin-top:1.2em}
+  .C .body{padding:6% 6%;display:flex;flex-direction:column;gap:4%;justify-content:center}
+  .C .step{display:flex;align-items:center;gap:1em}
+  .C .num{min-width:2.2em;height:2.2em;border-radius:10px;background:var(--accent);color:#fff;
+          display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.5vw}
+  .C .stitle{color:var(--brand);font-weight:700;font-size:1.6vw}
+  .C .sdesc{color:var(--muted);font-size:1.2vw}
+
+  /* ============ THEME D — Magazine (left-aligned, asymmetric) ============ */
+  .D{background:#fff;padding:6% 7%;display:grid;grid-template-columns:1fr 1fr;gap:6%}
+  .D .left{display:flex;flex-direction:column;justify-content:center;border-right:3px solid var(--accent);padding-right:6%}
+  .D .kicker{color:var(--accent);font-weight:800;font-size:1.2vw;letter-spacing:.14em;text-transform:uppercase}
+  .D h3{color:var(--brand);font-size:3.8vw;font-weight:800;line-height:1.05;margin-top:.5em}
+  .D .sub{color:var(--muted);font-size:1.3vw;margin-top:1em}
+  .D .right{display:flex;flex-direction:column;gap:5%;justify-content:center}
+  .D .step{display:flex;gap:.8em;align-items:baseline}
+  .D .num{color:var(--accent);font-weight:800;font-size:1.8vw;min-width:1.4em}
+  .D .stitle{color:var(--brand);font-weight:700;font-size:1.6vw}
+  .D .sdesc{color:var(--muted);font-size:1.2vw}
+
+  /* ============ THEME E — Bold Top Bar + cards ============ */
+  .E{background:var(--tint);display:flex;flex-direction:column}
+  .E .topbar{background:var(--brand);color:#fff;padding:4% 6%}
+  .E .topbar .kicker{font-size:1.2vw;letter-spacing:.1em;opacity:.85;text-transform:uppercase}
+  .E .topbar h3{font-size:3.2vw;font-weight:800;margin-top:.3em}
+  .E .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:3%;padding:4% 6%;flex:1}
+  .E .ccard{background:#fff;border-radius:12px;padding:4% 5%;box-shadow:0 4px 14px rgba(0,0,0,.08);
+            border-top:5px solid var(--accent)}
+  .E .num{color:var(--accent);font-weight:800;font-size:1.6vw}
+  .E .stitle{color:var(--brand);font-weight:700;font-size:1.5vw;margin:.2em 0}
+  .E .sdesc{color:var(--muted);font-size:1.15vw}
+
+  /* ===== content-type demos ===== */
+  /* STATS in Dark Hero */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:4%;flex:1;align-items:center}
+  .stat .val{color:var(--accent);font-weight:800;font-size:4.5vw;line-height:1}
+  .stat .lbl{color:#aebccb;font-size:1.2vw;margin-top:.4em}
+  /* BAR CHART in Editorial Card */
+  .bars{display:flex;flex-direction:column;gap:3.5%;flex:1;justify-content:center;z-index:1}
+  .bar{display:flex;align-items:center;gap:1em}
+  .bar .blbl{min-width:9em;color:var(--brand);font-weight:600;font-size:1.3vw;text-align:right}
+  .bar .track{flex:1;background:rgba(0,0,0,.06);border-radius:6px;height:1.8vw;overflow:hidden}
+  .bar .fill{height:100%;background:var(--accent);border-radius:6px}
+  .bar .bval{color:var(--brand);font-weight:800;font-size:1.3vw;min-width:3em}
+  .note{font-size:13px;color:#56636f;text-align:center;margin-top:6px}
+  .tag{display:inline-block;background:#fff;border:1px solid #cdd5dd;border-radius:6px;padding:2px 8px;font-size:12px;color:#475363;margin-left:6px}
+</style>
+</head>
+<body>
+  <h1>Infographic Design Themes — pick what to add</h1>
+  <p class="lede">Same content, 5 genuinely different skeletons (header placement, background, framing) — not just a color swap.
+  Each theme can host ANY content-type (steps / stats / checklist / chart), so the final variety = <b>theme × content-type</b>.
+  The design stays content-driven (chart when there's data, steps when there's a process, etc.) and deterministic per client+blog.</p>
+
+  <div class="swatch">
+    <label>Preview a brand color:</label>
+    <input type="color" value="#1A3A5C" oninput="setBrand(this.value)">
+    <button onclick="setBrand('#E75700')">AU-IT orange</button>
+    <button onclick="setBrand('#6C2BD9')">purple</button>
+    <button onclick="setBrand('#0E8F6E')">teal</button>
+    <button onclick="setBrand('#C0392B')">red</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- THEME A -->
+    <div class="theme-block">
+      <h2>Theme A — Editorial Card <span class="tag">current baseline</span></h2>
+      <div class="desc">Centered pill + title, light tinted page, rounded frame. Clean & safe. (What you have now.)</div>
+      <div class="card A">
+        <div class="frame"></div>
+        <div class="kicker">KEY STEPS</div>
+        <h3>How to Migrate to the Cloud Safely</h3>
+        <div class="steps">
+          <div class="step"><div class="num">1</div><div><div class="stitle">Audit current systems</div><div class="sdesc">Inventory apps, data, and dependencies before moving.</div></div></div>
+          <div class="step"><div class="num">2</div><div><div class="stitle">Choose the right model</div><div class="sdesc">Public, private, or hybrid based on workload needs.</div></div></div>
+          <div class="step"><div class="num">3</div><div><div class="stitle">Migrate in phases</div><div class="sdesc">Pilot non-critical workloads first, then scale up.</div></div></div>
+          <div class="step"><div class="num">4</div><div><div class="stitle">Validate & monitor</div><div class="sdesc">Test performance and lock down security post-move.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THEME B -->
+    <div class="theme-block">
+      <h2>Theme B — Dark Hero</h2>
+      <div class="desc">Deep brand background, white text, accent numbers. High-impact, modern, very different at a glance.</div>
+      <div class="card B">
+        <div class="kicker">Key Steps</div>
+        <h3>How to Migrate to the Cloud Safely</h3>
+        <div class="steps">
+          <div class="step"><div class="num">01</div><div><div class="stitle">Audit current systems</div><div class="sdesc">Inventory apps, data, and dependencies.</div></div></div>
+          <div class="step"><div class="num">02</div><div><div class="stitle">Choose the right model</div><div class="sdesc">Public, private, or hybrid.</div></div></div>
+          <div class="step"><div class="num">03</div><div><div class="stitle">Migrate in phases</div><div class="sdesc">Pilot non-critical workloads first.</div></div></div>
+          <div class="step"><div class="num">04</div><div><div class="stitle">Validate & monitor</div><div class="sdesc">Test performance, lock security.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THEME C -->
+    <div class="theme-block">
+      <h2>Theme C — Sidebar Split</h2>
+      <div class="desc">Brand-color panel on the left holds the title; content lives on the white right panel. Strong brand presence.</div>
+      <div class="card C">
+        <div class="side">
+          <div class="kicker">Key Steps</div>
+          <h3>Migrate to the Cloud Safely</h3>
+          <div class="accentbar"></div>
+        </div>
+        <div class="body">
+          <div class="step"><div class="num">1</div><div><div class="stitle">Audit current systems</div><div class="sdesc">Inventory apps & dependencies.</div></div></div>
+          <div class="step"><div class="num">2</div><div><div class="stitle">Choose the right model</div><div class="sdesc">Public, private, or hybrid.</div></div></div>
+          <div class="step"><div class="num">3</div><div><div class="stitle">Migrate in phases</div><div class="sdesc">Pilot non-critical first.</div></div></div>
+          <div class="step"><div class="num">4</div><div><div class="stitle">Validate & monitor</div><div class="sdesc">Test & lock down security.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THEME D -->
+    <div class="theme-block">
+      <h2>Theme D — Magazine (left-aligned, asymmetric)</h2>
+      <div class="desc">Big left-aligned title with an accent rule, content column on the right. Editorial / premium feel.</div>
+      <div class="card D">
+        <div class="left">
+          <div class="kicker">Key Steps</div>
+          <h3>Cloud Migration Done Right</h3>
+          <div class="sub">A practical 4-step framework for a safe move.</div>
+        </div>
+        <div class="right">
+          <div class="step"><div class="num">1</div><div><div class="stitle">Audit current systems</div><div class="sdesc">Inventory apps & dependencies.</div></div></div>
+          <div class="step"><div class="num">2</div><div><div class="stitle">Choose the right model</div><div class="sdesc">Public, private, or hybrid.</div></div></div>
+          <div class="step"><div class="num">3</div><div><div class="stitle">Migrate in phases</div><div class="sdesc">Pilot non-critical first.</div></div></div>
+          <div class="step"><div class="num">4</div><div><div class="stitle">Validate & monitor</div><div class="sdesc">Test & lock down security.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THEME E -->
+    <div class="theme-block">
+      <h2>Theme E — Bold Top Bar + Cards</h2>
+      <div class="desc">Full-width brand header bar, content as white cards in a grid. Feels like a dashboard / report.</div>
+      <div class="card E">
+        <div class="topbar">
+          <div class="kicker">Key Steps</div>
+          <h3>How to Migrate to the Cloud Safely</h3>
+        </div>
+        <div class="cards">
+          <div class="ccard"><div class="num">01</div><div class="stitle">Audit current systems</div><div class="sdesc">Inventory apps, data, and dependencies.</div></div>
+          <div class="ccard"><div class="num">02</div><div class="stitle">Choose the right model</div><div class="sdesc">Public, private, or hybrid.</div></div>
+          <div class="ccard"><div class="num">03</div><div class="stitle">Migrate in phases</div><div class="sdesc">Pilot non-critical workloads first.</div></div>
+          <div class="ccard"><div class="num">04</div><div class="stitle">Validate & monitor</div><div class="sdesc">Test performance, lock security.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTENT-TYPE PROOF -->
+    <div class="theme-block">
+      <h2>Same themes, different content-type (stays content-driven)</h2>
+      <div class="desc">When the blog has numbers → STATS. When it has comparisons → BAR CHART. The theme just wraps it.</div>
+      <div class="row2">
+        <div class="card B">
+          <div class="kicker">By the numbers</div>
+          <h3>Cloud Adoption in 2026</h3>
+          <div class="stats">
+            <div class="stat"><div class="val">94%</div><div class="lbl">of enterprises use cloud</div></div>
+            <div class="stat"><div class="val">$1.3T</div><div class="lbl">global spend</div></div>
+            <div class="stat"><div class="val">3.2x</div><div class="lbl">faster deployment</div></div>
+          </div>
+        </div>
+        <div class="card A">
+          <div class="frame"></div>
+          <div class="kicker">COMPARISON</div>
+          <h3>Downtime by Hosting Type</h3>
+          <div class="bars">
+            <div class="bar"><div class="blbl">On-prem</div><div class="track"><div class="fill" style="width:88%"></div></div><div class="bval">8.7h</div></div>
+            <div class="bar"><div class="blbl">Hybrid</div><div class="track"><div class="fill" style="width:42%"></div></div><div class="bval">4.1h</div></div>
+            <div class="bar"><div class="blbl">Full cloud</div><div class="track"><div class="fill" style="width:13%"></div></div><div class="bval">1.3h</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="note">Tip: change the brand color above to confirm every theme stays on-brand.</p>
+
+<script>
+function setBrand(hex){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  const mix=(t)=>`rgb(${Math.round(r+(255-r)*t)},${Math.round(g+(255-g)*t)},${Math.round(b+(255-b)*t)})`;
+  const dark=(f)=>`rgb(${Math.round(r*f)},${Math.round(g*f)},${Math.round(b*f)})`;
+  const root=document.documentElement.style;
+  root.setProperty('--brand',hex);
+  root.setProperty('--accent',mix(0.18));
+  root.setProperty('--brand-deep',dark(0.55));
+  root.setProperty('--tint',mix(0.93));
+}
+</script>
+</body>
+</html>

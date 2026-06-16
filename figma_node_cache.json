@@ -689,5 +689,44 @@
       255,
       255
     ]
+  },
+  "palmtech": {
+    "name": "Palmtech",
+    "main": "103:19",
+    "thumb": "103:21",
+    "main_w": 1200,
+    "main_h": 660,
+    "overlay_main": "103:2",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 37,
+    "main_ty": 539,
+    "main_tw": 794,
+    "main_fsz": 36,
+    "main_lh": 44,
+    "main_font_family": "Mulish",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 580,
+    "thumb_h": 387,
+    "overlay_thumb": "103:3",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 16,
+    "thumb_ty": 328,
+    "thumb_tw": 382,
+    "thumb_fsz": 18,
+    "thumb_lh": 21,
+    "thumb_font_family": "Mulish",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }
