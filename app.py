@@ -4214,6 +4214,11 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
                       image_urls, ok_results, site_name, client_name,
                       main_bytes=None, thumb_bytes=None, blog_title=""):
     """Upload assets, update CMS, publish. Returns list of new asset URLs."""
+    if getattr(wf, "cms_locale_id", None):
+        st.write(f"🌍 **Upload target locale: {wf.locale_tag.upper()}** "
+                 f"(secondary — CMS item `{item_id}`)")
+    else:
+        st.write(f"🌍 **Upload target locale: primary/default** (CMS item `{item_id}`)")
     # ── Upload assets ─────────────────────────────────────────────────────────
     with st.status("Uploading images to Webflow...", expanded=True) as s:
         try:
@@ -4406,6 +4411,11 @@ def do_webflow_upload_cover(wf, site_id, collection_id, item_id, was_published,
                             client_name="", site_name=""):
     """Upload ONLY the main (featured) image + thumbnail to the CMS item, then publish.
     Used by the 'Main + Thumbnail Only' tab — no body images / infographics / rich text."""
+    if getattr(wf, "cms_locale_id", None):
+        st.write(f"🌍 **Upload target locale: {wf.locale_tag.upper()}** "
+                 f"(secondary — CMS item `{item_id}`)")
+    else:
+        st.write(f"🌍 **Upload target locale: primary/default** (CMS item `{item_id}`)")
     if main_bytes or thumb_bytes:
         with st.status("Uploading main image & thumbnail...", expanded=True) as s:
             try:
