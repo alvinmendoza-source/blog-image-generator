@@ -4796,10 +4796,27 @@ with tab_auto:
         if not urls:
             st.error("Enter at least one blog URL.")
             st.stop()
+        # Queue the URLs and process them ONE per rerun (block below). The old
+        # all-in-one run took minutes; a mid-run interruption (websocket timeout
+        # or rerun) silently kept only the blogs finished so far — the cause of
+        # "I pasted 4 links but only 1-2 generated".
+        st.session_state["batch"] = []
+        st.session_state["batch_queue"] = urls
+        st.session_state["batch_total"] = len(urls)
+        st.rerun()
 
-        batch = []
-        for _bi, raw_url in enumerate(urls):
+    # Process the NEXT queued blog, then rerun for the following one. Short
+    # per-blog runs survive interruptions and auto-resume from the queue.
+    if st.session_state.get("batch_queue"):
+        _queue = st.session_state["batch_queue"]
+        batch = st.session_state.get("batch", [])
+        _total = st.session_state.get("batch_total", len(_queue) + len(batch))
+        _start = _total - len(_queue)
+        for _qi, raw_url in enumerate([_queue[0]]):   # single-item loop: keeps `continue` valid
+          _bi = _start + _qi
           url = ("https://" + raw_url) if not raw_url.startswith("http") else raw_url
+          st.info(f"⏳ Processing blog {_bi + 1} of {_total} — keep this tab open; "
+                  "the next blog starts automatically.")
           try:
 
             # Resolve the real slug via GET (follows redirects) + canonical tag fallback.
@@ -4846,7 +4863,7 @@ with tab_auto:
             output_dir = Path("generated_images") / safe_slug
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            st.markdown(f"---\n### 📝 Blog {_bi + 1} of {len(urls)}: `{slug}`")
+            st.markdown(f"---\n### 📝 Blog {_bi + 1} of {_total}: `{slug}`")
             orig_slug = url.rstrip("/").split("/")[-1]
             if slug != orig_slug:
                 st.info(f"↪️ Slug resolved: `{orig_slug}` → `{slug}`")
@@ -4922,7 +4939,14 @@ with tab_auto:
             st.session_state["batch"] = batch
             continue
 
+        # Advance the queue and rerun to process the next blog (or finish).
         st.session_state["batch"] = batch
+        st.session_state["batch_queue"] = _queue[1:]
+        if st.session_state["batch_queue"]:
+            st.rerun()
+        else:
+            st.session_state.pop("batch_queue", None)
+            st.success(f"✅ All {_total} blogs processed — review below.")
 
     # ── Review results (grouped per blog) ────────────────────────────────────
     batch = st.session_state.get("batch", [])
