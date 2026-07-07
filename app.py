@@ -3169,7 +3169,7 @@ def _render_checklist_infographic(spec: dict, w: int, h: int,
                 (int(chx + ck * 0.75), int(cyc - ck * 0.25))],
                fill=(255, 255, 255), width=max(2, ck // 8))
         tx = chx + ck + int(col_w * 0.045)
-        lines = _ig_wrap((item or "")[:90], cf, cx + col_w - tx - int(col_w * 0.04))[:2]
+        lines = _wrap_clip((item or "").strip(), cf, cx + col_w - tx - int(col_w * 0.04), 2)
         ty = cyc - (len(lines) * int(h * 0.033)) // 2
         for ln in lines:
             d.text((tx, ty), ln, font=cf, fill=primary)
