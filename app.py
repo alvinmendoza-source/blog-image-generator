@@ -285,7 +285,10 @@ KIE_QUALITY_SUFFIX = (
     "Sony A7 IV, no color grading, no filter, no CGI, "
     "plain unbranded clothing with no logos or company names, "
     "white Caucasian American office workers, "
-    "no food on desk, no drinks on desk, no water bottle, no coffee cup, no snacks, clean professional workspace"
+    "no food on desk, no drinks on desk, no water bottle, no coffee cup, no snacks, clean professional workspace, "
+    # monitors/screens must not show readable text — the model tends to paint the blog "
+    # title onto displays, which then looks cut off. Keep screens blank/blurred.
+    "any monitors or screens are blank or softly blurred with no readable text, no title text on screens, no words on displays"
 )
 KIE_NEGATIVE_PROMPT = NEGATIVE_PROMPT + (
     # text in scene
@@ -594,6 +597,11 @@ def fetch_blog(url: str):
         title = re.split(r"\s*[|\-–]\s*", _pt.get_text(strip=True))[0].strip()
     else:
         title = ""
+    # Strip a trailing site-name suffix ("Post Title | Site Name") from ANY source —
+    # h1/og:title often carry it too, not just <title>. Pipe only, so hyphenated
+    # titles like "Cloud Migration - A 5-Step Guide" are left intact.
+    if title and "|" in title:
+        title = re.split(r"\s*\|\s*", title)[0].strip() or title
     content_el = next((soup.select_one(s) for s in CONTENT_SELECTORS if soup.select_one(s)), None)
     if content_el:
         content = _soup_to_structured_text(content_el)
@@ -849,16 +857,16 @@ def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> lis
 
     # ── steps: "Step 1", "Phase 1", or a numbered list (1. 2. 3.) ──
     step_items = []
-    for m in re.finditer(r"(?im)\b(?:step|phase)\s+(\d+)\s*[:.\)\-]?\s*(.{3,70})", text):
+    for m in re.finditer(r"(?im)\b(?:step|phase)\s+(\d+)\s*[:.\)\-]?\s*(.{3,120})", text):
         label = re.split(r"[\n.|•]", m.group(2).strip())[0].strip()
         if label:
-            step_items.append({"number": int(m.group(1)), "title": label[:60], "points": []})
+            step_items.append({"number": int(m.group(1)), "title": _clip_words(label, 90), "points": []})
     if len(step_items) < 3:  # fall back to a plain numbered list
         nums = []
-        for m in re.finditer(r"(?m)^\s*(\d+)[.\)]\s+(.{3,80})", text):
+        for m in re.finditer(r"(?m)^\s*(\d+)[.\)]\s+(.{3,120})", text):
             label = re.split(r"[\n.|•]", m.group(2).strip())[0].strip()
             if label:
-                nums.append({"number": int(m.group(1)), "title": label[:60], "points": []})
+                nums.append({"number": int(m.group(1)), "title": _clip_words(label, 90), "points": []})
         if len(nums) >= 3:
             step_items = nums
     # dedup by number, keep order, cap at 7
@@ -876,9 +884,9 @@ def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> lis
         if not re.search(r"%|percent|\$|million|billion", val, re.I):
             continue  # only keep meaningful figures, not bare numbers
         start = max(0, m.start() - 0)
-        tail = text[m.end():m.end() + 70]
+        tail = text[m.end():m.end() + 100]
         label = re.split(r"[.\n|•]", tail)[0].strip(" ,:-")
-        label = re.sub(r"\s+", " ", label)[:60]
+        label = _clip_words(label, 80)
         if label and len(label) > 8:
             disp = val.replace("percent", "%").replace(" ", "")
             stats.append({"value": disp, "label": label})
@@ -889,10 +897,10 @@ def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> lis
 
     # ── checklist: bullet list or tips/best-practices keywords ──
     bullets = []
-    for m in re.finditer(r"(?m)^\s*[-•*▪‣]\s+(.{3,70})", text):
+    for m in re.finditer(r"(?m)^\s*[-•*▪‣]\s+(.{3,120})", text):
         item = re.split(r"[\n|]", m.group(1).strip())[0].strip()
         if item:
-            bullets.append(item[:60])
+            bullets.append(_clip_words(item, 90))
     if len(bullets) >= 4:
         found.append({"infographic_type": "checklist", "title": ig_title, "items": bullets[:8]})
 
@@ -2270,6 +2278,37 @@ def _ig_wrap(text: str, font, max_w: int) -> list:
     return lines or [""]
 
 
+def _clip_words(text: str, max_chars: int) -> str:
+    """Trim text to <= max_chars at a WORD boundary, adding … only if truncated.
+    Prevents mid-word cuts like 'permissions' → 'per' or 'iCloud' → 'i'."""
+    text = re.sub(r"\s+", " ", (text or "")).strip()
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars].rsplit(" ", 1)[0].rstrip(" ,;:-–—")
+    return (cut or text[:max_chars].rstrip()) + "…"
+
+
+def _wrap_clip(text: str, font, max_w: int, max_lines: int) -> list:
+    """Wrap to fit max_w; if it overflows max_lines, clip the last kept line at a
+    word boundary and append … so no words are silently dropped off the card."""
+    lines = _ig_wrap(text, font, max_w)
+    if len(lines) <= max_lines:
+        return lines
+    kept = lines[:max_lines]
+    words = kept[-1].split()
+    while words:
+        cand = " ".join(words) + "…"
+        try:
+            wpx = font.getbbox(cand)[2]
+        except Exception:
+            wpx = len(cand) * 8
+        if wpx <= max_w:
+            break
+        words.pop()
+    kept[-1] = (" ".join(words) + "…") if words else (kept[-1] + "…")
+    return kept
+
+
 def _ig_bytes(img: PILImage.Image) -> bytes:
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="JPEG", quality=93)
@@ -2376,7 +2415,7 @@ def _ig_header(d, w: int, h: int, primary: tuple, accent: tuple,
         d.text((cx, y + ph // 2), kick, font=kf, fill=pill_txt, anchor="mm")
         y += ph + int(h * 0.028)
     tf = _ig_font(int(h * 0.064), bold=True)
-    for ln in _ig_wrap(spec.get("title") or "Infographic", tf, w - 2 * pad)[:2]:
+    for ln in _wrap_clip(spec.get("title") or "Infographic", tf, w - 2 * pad, 2):
         d.text((cx, y), ln, font=tf, fill=primary, anchor="ma")
         y += int(h * 0.075)
     sub = (spec.get("subtitle") or "")[:120]
@@ -2452,10 +2491,10 @@ def _steps_timeline(spec, items, w, h, primary, accent, bg):
                font=_ig_font(int(r * 1.05), bold=True), fill=(255, 255, 255), anchor="mm")
         tx = cxn + r + int(w * 0.03)
         ty = ry + int(row_h * 0.14)
-        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}", tf, w - tx - pad)[:1]:
+        for ln in _wrap_clip(item.get("title") or f"Step {i + 1}", tf, w - tx - pad, 1):
             d.text((tx, ty), ln, font=tf, fill=primary)
             ty += int(h * 0.045)
-        for ln in _ig_wrap(_step_desc(item)[:120], pf, w - tx - pad)[:2]:
+        for ln in _wrap_clip(_step_desc(item), pf, w - tx - pad, 2):
             d.text((tx, ty), ln, font=pf, fill=_IG["muted"])
             ty += int(h * 0.030)
     return _ig_bytes(img)
@@ -2483,10 +2522,10 @@ def _steps_rows(spec, items, w, h, primary, accent, bg):
                font=_ig_font(int(row_h * 0.5), bold=True), fill=(255, 255, 255), anchor="mm")
         tx = pad + badge_w + int(w * 0.025)
         ty = ry + int(row_h * 0.15)
-        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}", tf, w - tx - pad)[:1]:
+        for ln in _wrap_clip(item.get("title") or f"Step {i + 1}", tf, w - tx - pad, 1):
             d.text((tx, ty), ln, font=tf, fill=primary)
             ty += int(h * 0.042)
-        for ln in _ig_wrap(_step_desc(item)[:110], pf, w - tx - pad)[:2]:
+        for ln in _wrap_clip(_step_desc(item), pf, w - tx - pad, 2):
             d.text((tx, ty), ln, font=pf, fill=_IG["muted"])
             ty += int(h * 0.029)
     return _ig_bytes(img)
@@ -2518,7 +2557,7 @@ def _checklist_rows(spec, items, w, h, primary, accent, bg):
         chx = pad + int(w * 0.02)
         _ig_check(d, chx, cyc, ck, accent)
         tx = chx + ck + int(w * 0.025)
-        lines = _ig_wrap((item or "")[:100], cf, w - tx - pad)[:2]
+        lines = _wrap_clip((item or "").strip(), cf, w - tx - pad, 2)
         ty = cyc - (len(lines) * int(h * 0.034)) // 2
         for ln in lines:
             d.text((tx, ty), ln, font=cf, fill=primary)
@@ -2544,7 +2583,7 @@ def _checklist_pills(spec, items, w, h, primary, accent, bg):
         chx = pad + int(row_h * 0.28)
         _ig_check(d, chx, cyc, ck, accent)
         tx = chx + ck + int(w * 0.022)
-        for ln in _ig_wrap((item or "")[:90], cf, w - tx - pad - int(row_h * 0.3))[:1]:
+        for ln in _wrap_clip((item or "").strip(), cf, w - tx - pad - int(row_h * 0.3), 1):
             d.text((tx, cyc), ln, font=cf, fill=primary, anchor="lm")
     return _ig_bytes(img)
 
@@ -2571,7 +2610,7 @@ def _stats_bigrow(spec, stats, w, h, primary, accent, bg):
         d.text((cx, top + int((bot - top) * 0.32)), val, font=vf, fill=accent, anchor="mm")
         lf = _ig_font(int(h * 0.024))
         ly = top + int((bot - top) * 0.52)
-        for ln in _ig_wrap((stat.get("label") or "")[:80], lf, cell_w - int(cell_w * 0.12))[:3]:
+        for ln in _wrap_clip((stat.get("label") or "").strip(), lf, cell_w - int(cell_w * 0.12), 3):
             d.text((cx, ly), ln, font=lf, fill=_IG["muted"], anchor="ma")
             ly += int(h * 0.030)
     return _ig_bytes(img)
@@ -2773,10 +2812,10 @@ def _steps_flow(spec, items, w, h, primary, accent, bg):
         d.text((bx, by), str(item.get("number", i + 1)),
                font=_ig_font(int(bs * 0.56), bold=True), fill=(255, 255, 255), anchor="mm")
         ty = midy + r + int(h * 0.045)
-        for ln in _ig_wrap(item.get("title") or f"Step {i + 1}", tf, seg - int(seg * 0.08))[:2]:
+        for ln in _wrap_clip(item.get("title") or f"Step {i + 1}", tf, seg - int(seg * 0.08), 2):
             d.text((cx, ty), ln, font=tf, fill=primary, anchor="ma")
             ty += int(h * 0.040)
-        for ln in _ig_wrap(_step_desc(item)[:70], pf, seg - int(seg * 0.08))[:2]:
+        for ln in _wrap_clip(_step_desc(item), pf, seg - int(seg * 0.08), 2):
             d.text((cx, ty), ln, font=pf, fill=_IG["muted"], anchor="ma")
             ty += int(h * 0.028)
     return _ig_bytes(img)
