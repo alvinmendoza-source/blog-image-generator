@@ -786,44 +786,36 @@ FORMAT:
 ════════════════════════════
 INFOGRAPHIC DECISION (critical)
 ════════════════════════════
-MAXIMUM 2 infographic slots. Only add an infographic when the blog content clearly supports it.
+MAXIMUM 2 infographic slots. An infographic is ALWAYS a data chart built from REAL numbers.
 
-ADD an infographic slot when:
-  • Blog has numbered phases, steps, or a process → "steps"
-  • Blog mentions specific percentages, stats, or dollar figures → "stats"
-  • Blog gives tips, action items, best practices, or a "how to" list → "checklist"
-  • Blog compares options, before/after, or has measurable improvements → "bar_chart"
+ADD an infographic slot ONLY when the blog TEXT already states real quantitative data you can chart:
+  • Specific percentages, statistics, ratios, dollar figures, time/cost savings, or counts → "stats"
+  • Two or more measurable values that compare (before/after, adoption rates, option A vs B) → "bar_chart"
 
-Add a SECOND infographic only when there are two clearly distinct structured sections that each map well to a different type.
+Use the EXACT numbers written in the blog. NEVER invent, estimate, guess, or fabricate a number.
+If a value is not literally stated in the content, it does not exist — do not chart it.
 
-If the blog is thin, introductory, or does not contain clear structure/data/steps → use 0 infographics (all photos).
+If the blog has NO real numbers to chart → use 0 infographics (all photos). Do NOT create checklists,
+step/process diagrams, tip lists, or any text-only "infographic" — those are NOT allowed anymore.
+When in doubt, choose 0 infographics.
+
+Add a SECOND infographic only when there are two distinct sets of real numbers.
 
 Infographic slots skip the required-environments list.
 
 ════════════════
-INFOGRAPHIC TYPES
+INFOGRAPHIC TYPES (charts only — both REQUIRE real numbers from the blog)
 ════════════════
-"steps" — Numbered phases or process steps.
-  Required: "items": [{"number":1,"title":"Phase Name","points":["detail 1","detail 2"]}, ...] (3–7 items, max 4 bullet points each)
-  Optional: "subtitle": "...", "footer": "One closing insight or tip (max 100 chars)"
-  Best for: migration roadmaps, implementation phases, how-to guides, onboarding processes
-
-"stats" — Key impact statistics.
-  Required: "stats": [{"value":"94%","label":"of businesses saw improved security after migration"}, ...] (2–4 stats only)
+"stats" — Key figures pulled verbatim from the blog.
+  Required: "stats": [{"value":"94%","label":"of businesses saw improved security"}, ...] (2–4 stats).
+  Values must be real figures stated in the blog (e.g. "94%", "$1.3M", "3x", "24/7", "60%").
   Optional: "subtitle": "..."
-  Best for: blogs citing specific percentages, dollar amounts, time savings, ROI data
 
-"checklist" — Action items or best practices.
-  Required: "items": ["First action item", "Second action item", ...] (4–8 items, max 60 chars each)
+"bar_chart" — Comparison of real measurable values.
+  Required: "bars": [{"label":"Before Cloud","value":72,"unit":"%"}, ...] (3–6 bars, values must be real numbers from the blog)
   Optional: "subtitle": "..."
-  Best for: "what to do before/after", "common mistakes to avoid", "must-have features" lists
 
-"bar_chart" — Comparison with measurable values.
-  Required: "bars": [{"label":"Before Cloud","value":72,"unit":"%"}, ...] (3–6 bars, values must be numbers)
-  Optional: "subtitle": "..."
-  Best for: before/after comparisons, adoption rates, feature comparison percentages
-
-Infographic titles: 4–8 words, specific to the blog topic. Keep data concise — quality over quantity.
+Infographic titles: 4–8 words, specific to the blog topic. Quality over quantity — only real data.
 
 ══════════════════════════════
 PHOTO DESCRIPTION RULES (type="photo")
@@ -846,44 +838,21 @@ Total slots: {count}""".strip()
 def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> list:
     """Quota-free heuristic infographic detector — used when Gemini is unavailable.
 
-    Scans raw blog text for structure (numbered steps, percentages/dollar stats,
-    bullet lists) and returns 0..max_ig infographic spec dicts. Content-driven:
-    returns [] when the blog has no clear structure (matches Gemini behavior)."""
+    CHARTS ONLY, from REAL numbers. Scans the blog text for genuine statistics
+    (percentages / dollar / large-magnitude figures) and returns a single "stats"
+    chart when it finds enough real numbers. Returns [] when the blog has no real
+    numbers to chart — no checklist / steps / text-only infographics are produced."""
     if max_ig <= 0:
         return []
     text = content or ""
     ig_title = " ".join((title or "Key Insights").split()[:8]) or "Key Insights"
-    found = []
 
-    # ── steps: "Step 1", "Phase 1", or a numbered list (1. 2. 3.) ──
-    step_items = []
-    for m in re.finditer(r"(?im)\b(?:step|phase)\s+(\d+)\s*[:.\)\-]?\s*(.{3,120})", text):
-        label = re.split(r"[\n.|•]", m.group(2).strip())[0].strip()
-        if label:
-            step_items.append({"number": int(m.group(1)), "title": _clip_words(label, 90), "points": []})
-    if len(step_items) < 3:  # fall back to a plain numbered list
-        nums = []
-        for m in re.finditer(r"(?m)^\s*(\d+)[.\)]\s+(.{3,120})", text):
-            label = re.split(r"[\n.|•]", m.group(2).strip())[0].strip()
-            if label:
-                nums.append({"number": int(m.group(1)), "title": _clip_words(label, 90), "points": []})
-        if len(nums) >= 3:
-            step_items = nums
-    # dedup by number, keep order, cap at 7
-    if len(step_items) >= 3:
-        seen, uniq = set(), []
-        for it in step_items:
-            if it["number"] not in seen:
-                seen.add(it["number"]); uniq.append(it)
-        found.append({"infographic_type": "steps", "title": ig_title, "items": uniq[:7]})
-
-    # ── stats: percentages and dollar figures with a short label ──
+    # stats: only REAL figures actually written in the blog (never invented)
     stats = []
     for m in re.finditer(r"([\$]?\d[\d,]*(?:\.\d+)?\s*(?:%|percent|million|billion|k\b|M\b|B\b)?)", text):
         val = m.group(1).strip()
         if not re.search(r"%|percent|\$|million|billion", val, re.I):
             continue  # only keep meaningful figures, not bare numbers
-        start = max(0, m.start() - 0)
         tail = text[m.end():m.end() + 100]
         label = re.split(r"[.\n|•]", tail)[0].strip(" ,:-")
         label = _clip_words(label, 80)
@@ -893,18 +862,8 @@ def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> lis
         if len(stats) >= 4:
             break
     if len(stats) >= 2:
-        found.append({"infographic_type": "stats", "title": ig_title, "stats": stats[:4]})
-
-    # ── checklist: bullet list or tips/best-practices keywords ──
-    bullets = []
-    for m in re.finditer(r"(?m)^\s*[-•*▪‣]\s+(.{3,120})", text):
-        item = re.split(r"[\n|]", m.group(1).strip())[0].strip()
-        if item:
-            bullets.append(_clip_words(item, 90))
-    if len(bullets) >= 4:
-        found.append({"infographic_type": "checklist", "title": ig_title, "items": bullets[:8]})
-
-    return found[:max_ig]
+        return [{"infographic_type": "stats", "title": ig_title, "stats": stats[:4]}][:max_ig]
+    return []
 
 
 def _plan_image_slots(title: str, content: str, count: int) -> list:
@@ -2373,21 +2332,21 @@ def _ig_palette(brand_hex: str) -> tuple:
 
 
 def _brand_footer(client_slug: str, url: str) -> str:
-    """Footer label like 'Client Name · clientsite.com' from the client + blog URL."""
-    name = ""
-    try:
-        name = _client_display_name(client_slug) if client_slug else ""
-    except Exception:
-        name = ""
+    """Footer label — the website domain only (e.g. 'clientsite.com'). The client name
+    is dropped: 'Version2 · version2llc.com' read redundant, so show just the site."""
     domain = ""
     try:
         from urllib.parse import urlparse
         domain = urlparse(url or "").netloc.lower().removeprefix("www.")
     except Exception:
         domain = ""
-    if name and domain:
-        return f"{name} · {domain}"
-    return name or domain or ""
+    if domain:
+        return domain
+    # No usable URL → fall back to the client name so the footer isn't blank.
+    try:
+        return _client_display_name(client_slug) if client_slug else ""
+    except Exception:
+        return ""
 
 
 def _ig_frame(d, w: int, h: int, bg: tuple):
@@ -2444,15 +2403,17 @@ def _ig_style_count(spec: dict) -> int:
     """How many visual layout styles exist for this infographic type (keep in sync
     with the per-type dispatch in the renderers)."""
     t = spec.get("infographic_type", "steps")
-    return {"steps": 6, "stats": 5, "checklist": (4 if _FA_OK else 3),
-            "bar_chart": 2}.get(t, 1)
+    if t in ("stats", "bar_chart"):
+        return len(_chart_styles(spec))   # charts: 1–3 styles depending on the data
+    return {"checklist": (4 if _FA_OK else 3), "steps": 6}.get(t, 1)
 
 
 def _ig_base_variant(spec: dict, brand_color: str) -> int:
     """The deterministic variant the initial (non-redo) render picks for this spec."""
     t = spec.get("infographic_type", "steps")
-    suffix = {"steps": "steps", "stats": "stats", "checklist": "checklist",
-              "bar_chart": "bar"}.get(t, "steps")
+    # stats/bar_chart share the "chart" seed suffix so this matches the dispatch below.
+    suffix = "chart" if t in ("stats", "bar_chart") else \
+        {"steps": "steps", "checklist": "checklist"}.get(t, "steps")
     seed = f"{brand_color}|{spec.get('title', '')}"
     return _ig_variant(seed + suffix, _ig_style_count(spec))
 
@@ -3388,6 +3349,456 @@ def _apply_corner_logo(img_bytes: bytes, logo_bytes: bytes | None,
         return img_bytes
 
 
+# ── Chart-only infographic renderers (charts built from REAL numbers) ───────────
+def _num_of(v):
+    """First number in a value like '94%', '$1.3M', '3x' → float, else None."""
+    m = re.search(r"-?\d[\d,]*(?:\.\d+)?", str(v or ""))
+    if not m:
+        return None
+    try:
+        return float(m.group().replace(",", ""))
+    except Exception:
+        return None
+
+
+def _seq_shade(primary, rank, n):
+    """Sequential brand shade, light (low) → dark (high)."""
+    lo, hi = _light(primary, 0.35), _darken(primary, 0.70)
+    t = 0.0 if n <= 1 else rank / (n - 1)
+    return tuple(int(lo[i] + (hi[i] - lo[i]) * t) for i in range(3))
+
+
+def _chart_styles(spec) -> list:
+    """Applicable chart styles for a numeric spec, in a stable order. Redo cycles
+    through this list; the initial render picks one deterministically. Only offers a
+    style the data actually supports — bars/rings need comparable values, so a mixed
+    stat set ($1.3M, 3x, 24/7) stays a KPI card (no misleading bar lengths)."""
+    t = spec.get("infographic_type", "")
+    vals, pct = [], []
+    for b in (spec.get("bars") or []):
+        nx = _num_of(b.get("value"))
+        if nx is not None:
+            vals.append(nx)
+            pct.append("%" in str(b.get("value")) or str(b.get("unit", "")).strip() == "%")
+    for s in (spec.get("stats") or []):
+        nx = _num_of(s.get("value"))
+        if nx is not None:
+            vals.append(nx)
+            pct.append("%" in str(s.get("value")))
+    all_pct = bool(vals) and all(pct) and all(0 <= v <= 100 for v in vals)
+    comparison = ["hbars", "columns", "lollipop"]           # bar length vs the largest
+    percentage = ["rings", "gauge", "progbars"]             # fill vs a 100% track
+    figure = ["kpi", "band", "hero", "iconkpi", "list", "callout"]  # any values
+    styles = []
+    if t == "bar_chart" and len(vals) >= 3:
+        styles += comparison
+    if all_pct:
+        styles += percentage
+        if len(vals) >= 3:
+            styles += comparison                            # %-metrics can render as bars too
+    styles += figure
+    seen, out = set(), []                                   # dedup, keep order
+    for s in styles:
+        if s not in seen:
+            seen.add(s); out.append(s)
+    return out or ["kpi"]
+
+
+def _chart_header(d, w, h, primary, accent, eyebrow, title):
+    """Corporate report header: deep-brand band + left accent bar + tracked eyebrow +
+    white title. The title AUTO-FITS — the font shrinks until it fits in two lines, so a
+    long blog title is never cut off. Returns the body top y."""
+    Hh = int(h * 0.228)
+    d.rectangle([0, 0, w, Hh], fill=_darken(primary, 0.82))
+    d.rectangle([0, 0, max(10, int(w * 0.0115)), Hh], fill=accent)  # left accent bar
+    px = int(w * 0.054)
+    ef = _ig_font(int(h * 0.027), bold=True)
+    x, ey = px, int(h * 0.058)
+    for ch in (eyebrow or "").upper():          # letter-tracked eyebrow
+        d.text((x, ey), ch, font=ef, fill=_light(accent, 0.45))
+        x += d.textlength(ch, font=ef) + 3
+    title = title or "Infographic"
+    maxw = w - px - int(w * 0.06)
+    tsize, floor = int(h * 0.053), int(h * 0.036)
+    tf = _ig_font(tsize, bold=True)
+    while tsize > floor and len(_ig_wrap(title, tf, maxw)) > 2:   # shrink to fit 2 lines
+        tsize -= 2
+        tf = _ig_font(tsize, bold=True)
+    lines = _wrap_clip(title, tf, maxw, 2)
+    ty = int(h * 0.10) if len(lines) > 1 else int(h * 0.118)
+    step = int(tsize * 1.18)
+    for ln in lines:
+        d.text((px, ty), ln, font=tf, fill=(255, 255, 255))
+        ty += step
+    return Hh
+
+
+def _chart_footer(d, w, h, primary, accent, bg, footer):
+    """Thin rule + brand swatch + 'Client · domain'."""
+    if not footer:
+        return
+    px = int(w * 0.054)
+    y = h - int(h * 0.084)
+    d.line([(px, y), (w - px, y)], fill=_darken(bg, 0.90), width=2)
+    sw = int(h * 0.020)
+    sy = y + int(h * 0.026)
+    d.rectangle([px, sy, px + sw, sy + sw], fill=accent)
+    d.text((px + sw + 8, sy + sw // 2), footer,
+           font=_ig_font(int(h * 0.023), bold=True), fill=_IG["muted"], anchor="lm")
+
+
+def _chart_canvas(w, h):
+    img = PILImage.new("RGB", (w, h), (255, 255, 255))
+    return img, ImageDraw.Draw(img)
+
+
+def _cnum(v):
+    n = _num_of(v)
+    return 0.0 if n is None else n
+
+
+def _fa_glyph(d, cx, cy, label, size, fill):
+    try:
+        d.text((cx, cy), _pick_icon(label), font=_ig_fa(size), fill=fill, anchor="mm")
+    except Exception:
+        pass
+
+
+def _its_num(items):
+    """[(label, numeric, display_str)] for the comparison/column charts."""
+    out = []
+    for s in items:
+        n = _num_of(s.get("value"))
+        if n is not None:
+            out.append((str(s.get("label", "")), n, str(s.get("value"))))
+    return out
+
+
+# ── Comparison styles (bar length relative to the largest value) ────────────────
+def _chart_hbars(spec, items, w, h, primary, accent, bg, footer):
+    """Horizontal bar chart — lead bar in the brand accent, rest in sequential shades."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "By the Numbers",
+                        spec.get("title")) + int(h * 0.06)
+    rows = sorted(_its_num(items), key=lambda r: -r[1])[:6]
+    n = max(1, len(rows))
+    pad = int(w * 0.054); x0 = pad + int(w * 0.28); x1 = w - int(w * 0.12); bot = h - int(h * 0.13)
+    rowspan = (bot - top) // n
+    bh = min(int(h * 0.052), int(rowspan * 0.5))
+    maxv = max((r[1] for r in rows), default=1) or 1
+    for i, (lab, v, disp) in enumerate(rows):
+        cyc = top + i * rowspan + rowspan // 2
+        lab1 = _wrap_clip(lab, _ig_font(int(h * 0.028), bold=True), int(w * 0.25), 2)
+        lyy = cyc - (len(lab1) - 1) * int(h * 0.016)
+        for ln in lab1:
+            d.text((pad, lyy), ln, font=_ig_font(int(h * 0.028), bold=True), fill=primary, anchor="lm")
+            lyy += int(h * 0.032)
+        bw = max(4, int((x1 - x0) * v / maxv))
+        col = accent if i == 0 else _light(primary, min(0.82, 0.30 + 0.12 * i))
+        d.rounded_rectangle([x0, cyc - bh // 2, x0 + bw, cyc + bh // 2], radius=6, fill=col)
+        d.text((x0 + bw + int(w * 0.012), cyc), disp, font=_ig_font(int(h * 0.035), bold=True),
+               fill=primary, anchor="lm")
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_columns(spec, items, w, h, primary, accent, bg, footer):
+    """Vertical columns — accent fill, value on the cap, labels beneath."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "By the Numbers",
+                        spec.get("title")) + int(h * 0.05)
+    rows = _its_num(items)[:6]
+    m = max(1, len(rows)); pad = int(w * 0.07); cw = (w - 2 * pad) // m
+    base = h - int(h * 0.19); ctop = top + int(h * 0.03); colw = min(int(w * 0.085), int(cw * 0.52))
+    maxv = max((r[1] for r in rows), default=1) or 1
+    for i, (lab, v, disp) in enumerate(rows):
+        cx = pad + i * cw + cw // 2
+        d.rounded_rectangle([cx - colw // 2, ctop, cx + colw // 2, base], radius=10, fill=_light(primary, 0.87))
+        fy = base - int((base - ctop) * v / maxv)
+        d.rounded_rectangle([cx - colw // 2, fy, cx + colw // 2, base], radius=10, fill=accent)
+        d.text((cx, fy - int(h * 0.03)), disp, font=_ig_font(int(h * 0.033), bold=True), fill=primary, anchor="mm")
+        ly = base + int(h * 0.02)
+        for ln in _wrap_clip(lab, _ig_font(int(h * 0.024)), cw - int(w * 0.01), 2):
+            d.text((cx, ly), ln, font=_ig_font(int(h * 0.024)), fill=_IG["muted"], anchor="ma")
+            ly += int(h * 0.030)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_lollipop(spec, items, w, h, primary, accent, bg, footer):
+    """Lollipop chart — thin stem + accent dot, value beside."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "By the Numbers",
+                        spec.get("title")) + int(h * 0.06)
+    rows = sorted(_its_num(items), key=lambda r: -r[1])[:6]
+    n = max(1, len(rows)); pad = int(w * 0.054)
+    x0 = pad + int(w * 0.28); x1 = w - int(w * 0.12); rh = (h - int(h * 0.13) - top) // n
+    maxv = max((r[1] for r in rows), default=1) or 1; r = int(h * 0.026)
+    for i, (lab, v, disp) in enumerate(rows):
+        cyc = top + i * rh + rh // 2
+        lab1 = _wrap_clip(lab, _ig_font(int(h * 0.028), bold=True), int(w * 0.25), 2)
+        lyy = cyc - (len(lab1) - 1) * int(h * 0.016)
+        for ln in lab1:
+            d.text((pad, lyy), ln, font=_ig_font(int(h * 0.028), bold=True), fill=primary, anchor="lm")
+            lyy += int(h * 0.032)
+        ex = x0 + int((x1 - x0) * v / maxv)
+        d.line([(x0, cyc), (ex, cyc)], fill=_light(primary, 0.60), width=max(4, int(h * 0.006)))
+        d.ellipse([ex - r, cyc - r, ex + r, cyc + r], fill=accent)
+        d.text((ex + r + int(w * 0.012), cyc), disp, font=_ig_font(int(h * 0.032), bold=True),
+               fill=primary, anchor="lm")
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+# ── Figure styles (work for any numeric values: $ / x / % / counts) ─────────────
+def _chart_kpi(spec, items, w, h, primary, accent, bg, footer):
+    """KPI cards — big brand figures with a top accent strip."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "Key Metrics",
+                        spec.get("title")) + int(h * 0.05)
+    its = items[:4]; m = max(1, len(its)); pad = int(w * 0.054); gap = int(w * 0.022)
+    cw = (w - 2 * pad - (m - 1) * gap) // m; ch = h - int(h * 0.14) - top
+    for i, s in enumerate(its):
+        x = pad + i * (cw + gap)
+        d.rounded_rectangle([x, top, x + cw, top + ch], radius=14, fill=(250, 251, 253),
+                            outline=_darken(bg, 0.90), width=2)
+        d.rounded_rectangle([x, top, x + cw, top + 8], radius=4, fill=accent)
+        val = str(s["value"])[:8]; vs = int(h * 0.15); vf = _ig_font(vs, bold=True)
+        while vf.getbbox(val)[2] > cw - 44 and vs > 26:
+            vs -= 3; vf = _ig_font(vs, bold=True)
+        d.text((x + cw // 2, top + int(ch * 0.38)), val, font=vf, fill=primary, anchor="mm")
+        d.line([(x + cw // 2 - int(cw * 0.10), top + int(ch * 0.585)),
+                (x + cw // 2 + int(cw * 0.10), top + int(ch * 0.585))], fill=accent, width=3)
+        klab = _ig_font(int(h * 0.026)); ly = top + int(ch * 0.64)
+        for ln in _wrap_clip(str(s["label"]), klab, cw - 44, 3):
+            d.text((x + cw // 2, ly), ln, font=klab, fill=_IG["muted"], anchor="ma")
+            ly += int(h * 0.034)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_band(spec, items, w, h, primary, accent, bg, footer):
+    """Stat band — big accent numbers separated by thin vertical dividers."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "Key Metrics",
+                        spec.get("title")) + int(h * 0.03)
+    its = items[:4]; m = max(1, len(its)); pad = int(w * 0.054); cw = (w - 2 * pad) // m
+    zb = h - int(h * 0.12)
+    for i, s in enumerate(its):
+        cx = pad + i * cw + cw // 2
+        if i:
+            d.line([(pad + i * cw, top + int((zb - top) * 0.12)),
+                    (pad + i * cw, zb - int((zb - top) * 0.12))], fill=_darken(bg, 0.90), width=2)
+        val = str(s["value"])[:7]; vs = int(h * 0.105); vf = _ig_font(vs, bold=True)
+        while vf.getbbox(val)[2] > cw - 30 and vs > 26:
+            vs -= 3; vf = _ig_font(vs, bold=True)
+        d.text((cx, top + int((zb - top) * 0.34)), val, font=vf, fill=accent, anchor="mm")
+        klab = _ig_font(int(h * 0.026)); ly = top + int((zb - top) * 0.60)
+        for ln in _wrap_clip(str(s["label"]), klab, cw - 30, 3):
+            d.text((cx, ly), ln, font=klab, fill=primary, anchor="ma"); ly += int(h * 0.032)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_hero(spec, items, w, h, primary, accent, bg, footer):
+    """Big hero number — one dominant figure + supporting rows."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "Headline Result",
+                        spec.get("title")) + int(h * 0.04)
+    its = items[:4]; pad = int(w * 0.054); zb = h - int(h * 0.12)
+    lead = its[0]; rest = its[1:]; lw = int(w * 0.42)
+    lv = str(lead["value"])[:6]; hf = _ig_font(int(h * 0.20), bold=True)
+    while hf.getbbox(lv)[2] > lw and hf.size > 60:
+        hf = _ig_font(hf.size - 6, bold=True)
+    d.text((pad, top + int((zb - top) * 0.30)), lv, font=hf, fill=accent, anchor="lm")
+    ly = top + int((zb - top) * 0.60)
+    for ln in _wrap_clip(str(lead["label"]), _ig_font(int(h * 0.030), bold=True), lw, 3):
+        d.text((pad, ly), ln, font=_ig_font(int(h * 0.030), bold=True), fill=primary); ly += int(h * 0.038)
+    rx = pad + lw + int(w * 0.04); rn = max(1, len(rest)); rh = (zb - top) // rn
+    for i, s in enumerate(rest):
+        ry = top + i * rh + rh // 2
+        d.text((rx, ry), str(s["value"])[:6], font=_ig_font(int(h * 0.066), bold=True), fill=primary, anchor="lm")
+        lab1 = _wrap_clip(str(s["label"]), _ig_font(int(h * 0.024)), w - rx - int(w * 0.17), 2)
+        lyy = ry - (len(lab1) - 1) * int(h * 0.015)
+        for ln in lab1:
+            d.text((rx + int(w * 0.14), lyy), ln, font=_ig_font(int(h * 0.024)), fill=_IG["muted"], anchor="lm")
+            lyy += int(h * 0.030)
+        if i:
+            d.line([(rx, top + i * rh), (w - pad, top + i * rh)], fill=_darken(bg, 0.92), width=1)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_iconkpi(spec, items, w, h, primary, accent, bg, footer):
+    """Icon KPI cards — an auto-matched icon disc above each figure."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "Key Metrics",
+                        spec.get("title")) + int(h * 0.05)
+    its = items[:4]; m = max(1, len(its)); pad = int(w * 0.054); gap = int(w * 0.022)
+    cw = (w - 2 * pad - (m - 1) * gap) // m; ch = h - int(h * 0.14) - top
+    for i, s in enumerate(its):
+        x = pad + i * (cw + gap)
+        d.rounded_rectangle([x, top, x + cw, top + ch], radius=14, fill=(250, 251, 253),
+                            outline=_darken(bg, 0.90), width=2)
+        disc = int(h * 0.09); dcx = x + cw // 2; dtop = top + int(ch * 0.06)
+        d.ellipse([dcx - disc // 2, dtop, dcx + disc // 2, dtop + disc], fill=_light(accent, 0.84))
+        _fa_glyph(d, dcx, dtop + disc // 2, str(s["label"]), int(disc * 0.5), accent)
+        val = str(s["value"])[:8]; vs = int(h * 0.072); vf = _ig_font(vs, bold=True)
+        while vf.getbbox(val)[2] > cw - 40 and vs > 22:
+            vs -= 3; vf = _ig_font(vs, bold=True)
+        d.text((dcx, top + int(ch * 0.54)), val, font=vf, fill=primary, anchor="mm")
+        klab = _ig_font(int(h * 0.024)); ly = top + int(ch * 0.72)
+        for ln in _wrap_clip(str(s["label"]), klab, cw - 28, 3):
+            d.text((dcx, ly), ln, font=klab, fill=_IG["muted"], anchor="ma"); ly += int(h * 0.031)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_list(spec, items, w, h, primary, accent, bg, footer):
+    """Numbered stat list — big accent figure + label per row, thin dividers."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "Key Findings",
+                        spec.get("title")) + int(h * 0.03)
+    its = items[:6]; n = max(1, len(its)); pad = int(w * 0.054); rh = (h - int(h * 0.12) - top) // n
+    for i, s in enumerate(its):
+        ry = top + i * rh; cyc = ry + rh // 2
+        d.text((pad + int(w * 0.01), cyc), str(s["value"])[:7], font=_ig_font(int(h * 0.062), bold=True),
+               fill=accent, anchor="lm")
+        lab1 = _wrap_clip(str(s["label"]), _ig_font(int(h * 0.030), bold=True), w - pad - int(w * 0.22), 1)
+        d.text((pad + int(w * 0.18), cyc), lab1[0] if lab1 else "", font=_ig_font(int(h * 0.030), bold=True),
+               fill=primary, anchor="lm")
+        if i:
+            d.line([(pad, ry), (w - pad, ry)], fill=_darken(bg, 0.92), width=2)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_callout(spec, items, w, h, primary, accent, bg, footer):
+    """Callout blocks — alternating filled accent / tint cards with big figures."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "At a Glance",
+                        spec.get("title")) + int(h * 0.05)
+    its = items[:4]; m = max(1, len(its)); pad = int(w * 0.054); gap = int(w * 0.020)
+    cw = (w - 2 * pad - (m - 1) * gap) // m; ch = h - int(h * 0.14) - top
+    for i, s in enumerate(its):
+        x = pad + i * (cw + gap); filled = (i % 2 == 0)
+        d.rounded_rectangle([x, top, x + cw, top + ch], radius=14,
+                            fill=(accent if filled else _light(accent, 0.86)))
+        tc = (255, 255, 255) if filled else primary
+        val = str(s["value"])[:8]; vs = int(h * 0.088); vf = _ig_font(vs, bold=True)
+        while vf.getbbox(val)[2] > cw - 34 and vs > 26:
+            vs -= 3; vf = _ig_font(vs, bold=True)
+        d.text((x + cw // 2, top + int(ch * 0.36)), val, font=vf, fill=tc, anchor="mm")
+        klab = _ig_font(int(h * 0.025), bold=True); ly = top + int(ch * 0.60)
+        for ln in _wrap_clip(str(s["label"]), klab, cw - 28, 3):
+            d.text((x + cw // 2, ly), ln, font=klab, fill=tc, anchor="ma"); ly += int(h * 0.031)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+# ── Percentage styles (values 0..100, filled against a 100% track) ──────────────
+def _chart_rings(spec, items, w, h, primary, accent, bg, footer):
+    """Progress rings — accent arc on a light brand track."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "Results",
+                        spec.get("title")) + int(h * 0.04)
+    its = items[:4]; m = max(1, len(its)); pad = int(w * 0.054); cw = (w - 2 * pad) // m
+    zb = h - int(h * 0.13); cy = top + int((zb - top) * 0.42)
+    R = min(int(min(cw, zb - top) * 0.34), int(h * 0.155)); th = max(16, int(R * 0.26))
+    track = _light(primary, 0.86)
+    for i, s in enumerate(its):
+        pct = max(0.0, min(100.0, _cnum(s["value"]))); cx = pad + i * cw + cw // 2
+        box = [cx - R, cy - R, cx + R, cy + R]
+        d.ellipse(box, outline=track, width=th)
+        d.arc(box, -90, -90 + 360 * pct / 100, fill=accent, width=th)
+        d.text((cx, cy), str(s["value"])[:6], font=_ig_font(int(R * 0.52), bold=True), fill=primary, anchor="mm")
+        ly = cy + R + int(h * 0.045)
+        for ln in _wrap_clip(str(s["label"]), _ig_font(int(h * 0.026), bold=True), cw - 30, 2):
+            d.text((cx, ly), ln, font=_ig_font(int(h * 0.026), bold=True), fill=primary, anchor="ma")
+            ly += int(h * 0.032)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_gauge(spec, items, w, h, primary, accent, bg, footer):
+    """Half-circle gauges — semicircle fill to the value."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "Performance",
+                        spec.get("title")) + int(h * 0.04)
+    its = items[:4]; m = max(1, len(its)); pad = int(w * 0.054); cw = (w - 2 * pad) // m
+    zb = h - int(h * 0.13); cy = top + int((zb - top) * 0.52)
+    R = min(int(cw * 0.36), int(h * 0.17)); th = max(16, int(R * 0.24)); track = _light(primary, 0.86)
+    for i, s in enumerate(its):
+        pct = max(0.0, min(100.0, _cnum(s["value"]))); cx = pad + i * cw + cw // 2
+        box = [cx - R, cy - R, cx + R, cy + R]
+        d.arc(box, 180, 360, fill=track, width=th)
+        d.arc(box, 180, 180 + 180 * pct / 100, fill=accent, width=th)
+        d.text((cx, cy - int(R * 0.20)), str(s["value"])[:6], font=_ig_font(int(R * 0.44), bold=True),
+               fill=primary, anchor="mm")
+        ly = cy + int(R * 0.18)
+        for ln in _wrap_clip(str(s["label"]), _ig_font(int(h * 0.024), bold=True), cw - 24, 2):
+            d.text((cx, ly), ln, font=_ig_font(int(h * 0.024), bold=True), fill=primary, anchor="ma")
+            ly += int(h * 0.030)
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+def _chart_progbars(spec, items, w, h, primary, accent, bg, footer):
+    """Horizontal progress bars — label, rounded track + accent fill, value."""
+    img, d = _chart_canvas(w, h)
+    top = _chart_header(d, w, h, primary, accent, spec.get("kicker") or "Coverage",
+                        spec.get("title")) + int(h * 0.05)
+    its = items[:6]; n = max(1, len(its)); pad = int(w * 0.054)
+    x0 = pad + int(w * 0.29); x1 = w - int(w * 0.12); rh = (h - int(h * 0.12) - top) // n; bh = int(h * 0.043)
+    track = _light(primary, 0.87)
+    for i, s in enumerate(its):
+        pct = max(0.0, min(100.0, _cnum(s["value"]))); cyc = top + i * rh + rh // 2
+        lab1 = _wrap_clip(str(s["label"]), _ig_font(int(h * 0.028), bold=True), int(w * 0.26), 2)
+        lyy = cyc - (len(lab1) - 1) * int(h * 0.016)
+        for ln in lab1:
+            d.text((pad, lyy), ln, font=_ig_font(int(h * 0.028), bold=True), fill=primary, anchor="lm")
+            lyy += int(h * 0.032)
+        d.rounded_rectangle([x0, cyc - bh // 2, x1, cyc + bh // 2], radius=bh // 2, fill=track)
+        d.rounded_rectangle([x0, cyc - bh // 2, x0 + int((x1 - x0) * pct / 100), cyc + bh // 2],
+                            radius=bh // 2, fill=accent)
+        d.text((x1 + int(w * 0.012), cyc), str(s["value"])[:6], font=_ig_font(int(h * 0.032), bold=True),
+               fill=primary, anchor="lm")
+    _chart_footer(d, w, h, primary, accent, bg, footer)
+    return _ig_bytes(img)
+
+
+_CHART_RENDERERS = {
+    "kpi": _chart_kpi, "band": _chart_band, "hero": _chart_hero, "iconkpi": _chart_iconkpi,
+    "list": _chart_list, "callout": _chart_callout, "rings": _chart_rings, "gauge": _chart_gauge,
+    "progbars": _chart_progbars, "hbars": _chart_hbars, "columns": _chart_columns, "lollipop": _chart_lollipop,
+}
+
+
+def _infographic_qc(spec: dict, w: int, h: int):
+    """Post-plan text check for a chart infographic. Returns (spec, notes).
+    The header already auto-shrinks the title to fit two lines; this is the belt-and-
+    suspenders pass — if the title is so long it can't fit even at the smallest header
+    font, drop trailing whole words so nothing is ever cut mid-word. Also flags any
+    over-long data label. Notes are surfaced to the user as a visible QC line."""
+    notes = []
+    title = str(spec.get("title") or "")
+    floor = _ig_font(int(h * 0.036), bold=True)
+    maxw = w - int(w * 0.054) - int(w * 0.06)
+    words = title.split()
+    if len(words) > 3 and len(_ig_wrap(title, floor, maxw)) > 2:
+        while len(words) > 3 and len(_ig_wrap(" ".join(words), floor, maxw)) > 2:
+            words.pop()
+        if " ".join(words) != title:
+            spec = {**spec, "title": " ".join(words)}
+            notes.append(f"title shortened to {len(words)} words to fit")
+    labels = [str(s.get("label", "")) for s in (spec.get("stats") or [])] + \
+             [str(b.get("label", "")) for b in (spec.get("bars") or [])]
+    long_labels = [lab for lab in labels if len(lab) > 60]
+    if long_labels:
+        notes.append(f"{len(long_labels)} long label(s) will wrap")
+    return spec, notes
+
+
 def _render_infographic(spec: dict, w: int, h: int,
                         brand_color: str = "#1A3A5C", footer: str = "", seed: str = "",
                         variant: int = None) -> bytes:
@@ -3401,9 +3812,25 @@ def _render_infographic(spec: dict, w: int, h: int,
     if not seed:
         seed = f"{brand_color}|{spec.get('title', '')}"
     try:
-        t = spec.get("infographic_type", "steps")
-        if t == "stats":     return _render_stats_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
+        t = spec.get("infographic_type", "")
+        # Charts only — normalize to one numeric item list: {value(str), label}.
+        if spec.get("stats"):
+            items = [{"value": str(s.get("value")), "label": s.get("label", "")}
+                     for s in spec["stats"]]
+        elif spec.get("bars"):
+            items = [{"value": f"{b.get('value')}{b.get('unit', '') or ''}", "label": b.get("label", "")}
+                     for b in spec["bars"]]
+        else:
+            items = []
+        items = [it for it in items if _num_of(it["value"]) is not None][:6]
+        if len(items) >= 2:
+            styles = _chart_styles(spec)                     # applicable styles for this data
+            idx = (variant % len(styles)) if variant is not None else _ig_variant(seed + "chart", len(styles))
+            fn = _CHART_RENDERERS.get(styles[idx], _chart_kpi)   # redo cycles through them
+            return fn(spec, items, w, h, primary, accent, bg, footer)
+        # Not enough numeric data — legacy fallbacks (planner/detector normally avoid this).
         if t == "checklist": return _render_checklist_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
+        if t == "stats":     return _render_stats_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
         if t == "bar_chart": return _render_bar_chart_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
         return _render_steps_infographic(spec, w, h, primary, accent, bg, footer, seed, variant)
     except Exception as e:
@@ -3662,6 +4089,9 @@ def run_workflow(url: str, output_dir: Path,
         if sl.get("type") == "infographic":
             ig_label = sl.get("infographic_type", "").upper()
             st.write(f"📊 Rendering infographic [{ig_label}]: **{sl.get('title', '')}** (brand: `{_brand_color}`)")
+            # QC: check/repair the text so nothing is cut before we render
+            sl, _qc_notes = _infographic_qc(sl, target_w, target_h)
+            st.write("🔎 Text check: " + ("; ".join(_qc_notes) if _qc_notes else "title & labels fit ✓"))
             final_bytes, final_ext = None, "jpg"
             try:
                 raw = _render_infographic(sl, target_w, target_h,
