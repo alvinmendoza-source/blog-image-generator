@@ -899,6 +899,38 @@ def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> lis
     return []
 
 
+_ALLOWED_IG_TYPES = {"stats", "bar_chart"}
+
+
+def _has_digit(v) -> bool:
+    return any(ch.isdigit() for ch in str(v))
+
+
+def _sanitize_infographic(slot: dict):
+    """Enforce charts-only IN CODE (the prompt alone isn't reliably obeyed —
+    gemini still returns 'steps' diagrams and word-only 'stats' like 'Ongoing').
+    Returns a cleaned infographic slot, or None if it should become a photo.
+      • type must be stats or bar_chart (steps / checklist / etc. → rejected)
+      • stats: keep only values containing a digit (drops 'over half', 'Ongoing',
+        'Regular'; keeps '94%', '$1.3M', '24/7'); need ≥2 real stats
+      • bar_chart: keep only bars with a numeric value; need ≥2 bars"""
+    itype = (slot.get("infographic_type") or "").lower()
+    if itype not in _ALLOWED_IG_TYPES:
+        return None
+    if itype == "stats":
+        stats = [s for s in (slot.get("stats") or [])
+                 if isinstance(s, dict) and _has_digit(s.get("value", ""))]
+        if len(stats) < 2:
+            return None
+        return {**slot, "stats": stats[:4]}
+    # bar_chart
+    bars = [b for b in (slot.get("bars") or [])
+            if isinstance(b, dict) and _has_digit(b.get("value", ""))]
+    if len(bars) < 2:
+        return None
+    return {**slot, "bars": bars[:6]}
+
+
 def _plan_image_slots(title: str, content: str, count: int) -> list:
     """Plan all image slots in one Gemini call — returns list of slot dicts.
     Gracefully falls back to all-photo mode on any failure."""
@@ -964,6 +996,20 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
         slots = data.get("slots", [])
         if len(slots) != count:
             raise ValueError(f"Expected {count} slots, got {len(slots)}")
+
+        # Enforce charts-only IN CODE — gemini doesn't reliably obey the prompt.
+        # Any infographic that isn't a real numeric chart becomes a photo.
+        _ig_photo = f"An IT professional focused on a task related to {(title or 'IT services')[:50]}."
+        for s in slots:
+            if s.get("type") == "infographic":
+                clean = _sanitize_infographic(s)
+                if clean is None:
+                    _num = s.get("slot")
+                    s.clear()
+                    s.update({"slot": _num, "type": "photo", "description": _ig_photo})
+                else:
+                    s.update(clean)
+
         for s in slots:
             if s.get("type") == "photo" and not (s.get("description") or "").strip():
                 raise ValueError(f"Slot {s.get('slot')} photo missing description")
