@@ -750,6 +750,18 @@ def generate_prompts_free(title: str, content: str, count: int) -> list:
     return prompts[:count]
 
 
+def _gemini_retryable(err_str: str) -> bool:
+    """True for transient Gemini errors worth retrying: rate limits (429) AND
+    server overload (503 UNAVAILABLE / 'high demand' / 500). Previously only 429
+    was retried, so a demand spike (503) dropped the slot planner to the weak
+    fallback → blogs with real data silently got 0 infographics."""
+    s = err_str.lower()
+    return any(k in s for k in (
+        "429", "503", "500", "unavailable", "resource_exhausted",
+        "overloaded", "high demand", "try again",
+    ))
+
+
 def generate_prompts_live(title: str, content: str, count: int) -> list:
     try:
         from google import genai
@@ -769,7 +781,7 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
                 )
                 break
             except Exception as _e:
-                if "429" in str(_e) and _attempt < 2:
+                if _gemini_retryable(str(_e)) and _attempt < 2:
                     time.sleep(8)
                 else:
                     raise
@@ -908,7 +920,7 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
             .replace("{required_envs}", required_envs)
         )
         user_msg = f"Blog Title:\n{title}\n\nBlog Content:\n{content[:5000]}"
-        for _attempt in range(3):
+        for _attempt in range(5):
             try:
                 resp = client.models.generate_content(
                     model="gemini-2.5-flash-lite",
@@ -921,8 +933,8 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
                 )
                 break
             except Exception as _e:
-                if "429" in str(_e) and _attempt < 2:
-                    time.sleep(8)
+                if _gemini_retryable(str(_e)) and _attempt < 4:
+                    time.sleep(min(2 ** _attempt * 3, 24))   # 3,6,12,24s backoff
                 else:
                     raise
         _debug_raw = resp.text or ""
