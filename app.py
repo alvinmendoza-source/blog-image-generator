@@ -410,7 +410,7 @@ def analyze_image_quality(img_bytes: bytes) -> dict:
         try:
             import google.generativeai as genai
             genai.configure(api_key=GOOGLE_API_KEY)
-            model = genai.GenerativeModel("gemini-2.0-flash-lite")
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
             img_part = {"mime_type": "image/jpeg", "data": b64}
             resp = model.generate_content([_QUALITY_PROMPT, img_part])
             match = re.search(r'\{.*\}', resp.text.strip(), re.DOTALL)
@@ -470,6 +470,19 @@ _ANATOMY_CHECK_PROMPT = (
 )
 
 
+def _qa_cant_evaluate(reason: str) -> bool:
+    """True if the QA model's 'defect' is really 'I couldn't see the image'.
+    A dead/blind vision model returns has_defect:true with reasons like 'no image
+    provided' — treating that as a real defect triggers pointless 3x regeneration.
+    Treat these as a PASS so a broken QA never blocks a good image."""
+    r = (reason or "").lower()
+    return any(k in r for k in (
+        "no image", "not provided", "wasn't provided", "was not provided",
+        "cannot evaluate", "can't evaluate", "unable to evaluate", "no image supplied",
+        "image supplied", "not supplied", "cannot see", "can't see", "no picture",
+    ))
+
+
 def check_anatomy(img_bytes: bytes) -> tuple[bool, str]:
     """Vision AI check for anatomy and physical defects. Returns (is_ok, reason)."""
     try:
@@ -484,7 +497,7 @@ def check_anatomy(img_bytes: bytes) -> tuple[bool, str]:
         try:
             import google.generativeai as genai
             genai.configure(api_key=GOOGLE_API_KEY)
-            model = genai.GenerativeModel("gemini-2.0-flash-lite")
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
             img_part = {"mime_type": "image/jpeg", "data": b64}
             resp = model.generate_content([_ANATOMY_CHECK_PROMPT, img_part])
             content = resp.text.strip()
@@ -492,7 +505,10 @@ def check_anatomy(img_bytes: bytes) -> tuple[bool, str]:
             if match:
                 data = json.loads(match.group())
                 if data.get("has_defect"):
-                    return False, data.get("reason", "defect detected")
+                    reason = data.get("reason", "defect detected")
+                    if _qa_cant_evaluate(reason):
+                        return True, ""   # QA couldn't see the image → don't regenerate
+                    return False, reason
                 return True, ""
         except Exception:
             pass  # fall through to Pollinations
@@ -514,7 +530,9 @@ def check_anatomy(img_bytes: bytes) -> tuple[bool, str]:
         if match:
             data = json.loads(match.group())
             if data.get("has_defect"):
-                return False, data.get("reason", "defect detected")
+                reason = data.get("reason", "defect detected")
+                if not _qa_cant_evaluate(reason):
+                    return False, reason
     except Exception:
         pass
     return True, ""
@@ -700,7 +718,7 @@ def _gemini_text(system: str, user: str, max_tokens: int = 200, temperature: flo
         from google.genai import types as gt
         client = genai.Client(api_key=GOOGLE_API_KEY)
         resp = client.models.generate_content(
-            model="gemini-2.0-flash-lite",
+            model="gemini-2.5-flash-lite",
             contents=user,
             config=gt.GenerateContentConfig(
                 system_instruction=system,
@@ -741,7 +759,7 @@ def generate_prompts_live(title: str, content: str, count: int) -> list:
         for _attempt in range(3):
             try:
                 resp = client.models.generate_content(
-                    model="gemini-2.0-flash-lite",
+                    model="gemini-2.5-flash-lite",
                     contents=f"Blog Title:\n{title}\n\nWhole Blog:\n{content}",
                     config=gt.GenerateContentConfig(
                         system_instruction=SYSTEM_PROMPT_TEMPLATE.format(count=count, required_envs=required_envs),
@@ -893,7 +911,7 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
         for _attempt in range(3):
             try:
                 resp = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-2.5-flash-lite",
                     contents=user_msg,
                     config=gt.GenerateContentConfig(
                         system_instruction=system_instr,
