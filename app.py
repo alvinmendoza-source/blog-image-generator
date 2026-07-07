@@ -286,9 +286,12 @@ KIE_QUALITY_SUFFIX = (
     "plain unbranded clothing with no logos or company names, "
     "white Caucasian American office workers, "
     "no food on desk, no drinks on desk, no water bottle, no coffee cup, no snacks, clean professional workspace, "
-    # monitors/screens must not show readable text — the model tends to paint the blog "
-    # title onto displays, which then looks cut off. Keep screens blank/blurred.
-    "any monitors or screens are blank or softly blurred with no readable text, no title text on screens, no words on displays"
+    # monitors/screens must not show readable text — the model tends to paint the blog
+    # title onto displays, which then looks cut off. Keep screens active-looking but only
+    # lightly (~30%) blurred so no title/words are legible, NOT blank white.
+    "monitors and screens are turned on showing soft out-of-focus generic dashboard interfaces with muted colors, "
+    "only slightly blurred so no text is legible, the displays clearly look active and in use, "
+    "never blank white screens, no readable words or title text on any display"
 )
 KIE_NEGATIVE_PROMPT = NEGATIVE_PROMPT + (
     # text in scene
