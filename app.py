@@ -5,6 +5,7 @@ import random
 import base64
 import io
 import json
+import math
 import hashlib
 import requests
 import urllib.parse
@@ -824,40 +825,44 @@ FORMAT:
 ════════════════════════════
 INFOGRAPHIC DECISION (critical)
 ════════════════════════════
-MAXIMUM 2 infographic slots. An infographic is ALWAYS a data chart built from REAL numbers.
+MAXIMUM 2 infographic slots. An infographic visualizes REAL, structured content the blog already
+contains. Everything in it must come from the blog text — NEVER invent, estimate, or pad content.
 
-FIRST, scan the blog carefully for ANY real figure — a percentage, statistic, ratio, dollar amount,
-time/cost saving, count, or duration that is written literally in the text. Look hard before giving up.
+Scan the blog for the RICHEST piece of structured content you can pull, in this priority order:
+  1. Real numbers to chart (percentages, dollars, ratios, durations) → "stats" or "bar_chart"
+  2. A clear ENUMERATED LIST the blog gives — common mistakes, benefits, best practices, tips,
+     types, features, signs (usually 3–6 items) → "list"
+  3. A real STEP-BY-STEP process the blog describes ("how to…", numbered stages, 3–5 steps) → "steps"
 
-ADD an infographic slot when the blog TEXT states real quantitative data you can chart:
-  • Even ONE specific percentage, statistic, dollar figure, count, or duration → "stats"
-    (a single strong figure is enough — do not require several)
-  • Two or more measurable values that compare (before/after, adoption rates, option A vs B) → "bar_chart"
+QUALITY BAR — an infographic must look FULL, never sparse:
+  • "list" and "steps" need AT LEAST 3 real items. If you cannot find 3 genuine items in the blog,
+    do NOT make that infographic — use a photo instead.
+  • Each list/step item is a SHORT phrase (3–7 words), paraphrased tightly from the blog — not a
+    full sentence. Keep the blog's real meaning; never make items up to reach 3.
+  • "stats"/"bar_chart" must use figures written literally in the blog.
 
-Use the EXACT numbers written in the blog. NEVER invent, estimate, guess, or fabricate a number.
-If a value is not literally stated in the content, it does not exist — do not chart it.
-
-If, after looking carefully, the blog has NO real numbers at all → use 0 infographics (all photos).
-Do NOT create checklists, step/process diagrams, tip lists, or any text-only "infographic" — those
-are NOT allowed. Only fall back to 0 when there is genuinely not a single real figure to chart.
-
-Add a SECOND infographic only when there are two distinct sets of real numbers.
+If the blog has neither chartable numbers NOR a genuine 3+ item list/process → 0 infographics (all photos).
+Add a SECOND infographic only if a second, DIFFERENT block of structured content exists.
 
 Infographic slots skip the required-environments list.
 
 ════════════════
-INFOGRAPHIC TYPES (charts only — both REQUIRE real numbers from the blog)
+INFOGRAPHIC TYPES
 ════════════════
 "stats" — Key figures pulled verbatim from the blog.
-  Required: "stats": [{"value":"94%","label":"of businesses saw improved security"}, ...] (1–4 stats; one is fine).
-  Values must be real figures stated in the blog (e.g. "94%", "$1.3M", "3x", "24/7", "60%").
-  Optional: "subtitle": "..."
+  Required: "stats": [{"value":"94%","label":"of businesses saw improved security"}, ...] (1–4; one is fine).
+  Values must be real figures (e.g. "94%", "$1.3M", "3x", "24/7"). Never a bare list-count like "6".
 
 "bar_chart" — Comparison of real measurable values.
-  Required: "bars": [{"label":"Before Cloud","value":72,"unit":"%"}, ...] (3–6 bars, values must be real numbers from the blog)
-  Optional: "subtitle": "..."
+  Required: "bars": [{"label":"Before Cloud","value":72,"unit":"%"}, ...] (3–6 bars, real numbers only).
 
-Infographic titles: 4–8 words, specific to the blog topic. Quality over quantity — only real data.
+"list" — A real enumerated list from the blog (mistakes / benefits / best practices / tips / types).
+  Required: "items": ["Keep a single backup location", "Skip recovery testing", ...] (3–6 short items).
+
+"steps" — A real ordered process the blog describes.
+  Required: "steps": ["Assess your infrastructure", "Set priorities", "Partner with a provider", ...] (3–5).
+
+Infographic titles: 4–8 words, specific to the blog topic. Only real content — quality over quantity.
 
 ══════════════════════════════
 PHOTO DESCRIPTION RULES (type="photo")
@@ -908,7 +913,7 @@ def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> lis
     return []
 
 
-_ALLOWED_IG_TYPES = {"stats", "bar_chart"}
+_ALLOWED_IG_TYPES = {"stats", "bar_chart", "list", "steps"}
 
 
 def _has_digit(v) -> bool:
@@ -929,16 +934,28 @@ def _is_weak_stat(v) -> bool:
 
 
 def _sanitize_infographic(slot: dict):
-    """Enforce charts-only IN CODE (the prompt alone isn't reliably obeyed —
-    gemini still returns 'steps' diagrams and word-only 'stats' like 'Ongoing').
+    """Enforce infographic quality IN CODE (the prompt alone isn't reliably obeyed).
     Returns a cleaned infographic slot, or None if it should become a photo.
-      • type must be stats or bar_chart (steps / checklist / etc. → rejected)
-      • stats: keep only values containing a digit (drops 'over half', 'Ongoing',
-        'Regular'; keeps '94%', '$1.3M', '24/7'); need ≥2 real stats
-      • bar_chart: keep only bars with a numeric value; need ≥2 bars"""
+      • type must be stats / bar_chart / list / steps
+      • stats: values must contain a digit and not be a bare list-count; need ≥1
+      • bar_chart: bars need a numeric value; need ≥2
+      • list / steps: need ≥3 real non-empty items (else it looks sparse → photo);
+        items are never invented — the planner pulls them from the blog text."""
     itype = (slot.get("infographic_type") or "").lower()
     if itype not in _ALLOWED_IG_TYPES:
         return None
+    if itype in ("list", "steps"):
+        key = "steps" if itype == "steps" else "items"
+        raw = slot.get(key) or slot.get("items") or slot.get("steps") or []
+        entries, seen = [], set()
+        for x in raw:
+            s = (x.get("text") if isinstance(x, dict) else str(x)).strip()
+            if s and s.lower() not in seen:
+                seen.add(s.lower()); entries.append(s)
+        if len(entries) < 3:            # too few → looks empty → use a photo instead
+            return None
+        cap = 5 if itype == "steps" else 6
+        return {**slot, key: entries[:cap]}
     if itype == "stats":
         stats = [s for s in (slot.get("stats") or [])
                  if isinstance(s, dict) and _has_digit(s.get("value", ""))
@@ -954,19 +971,24 @@ def _sanitize_infographic(slot: dict):
     return {**slot, "bars": bars[:6]}
 
 
-_IG_QA_SYSTEM = """You are a strict QA reviewer for a DATA-CHART infographic about to be published on a client's blog.
+_IG_QA_SYSTEM = """You are a strict QA reviewer for an infographic about to be published on a client's blog.
 
-You are given the blog text and a proposed infographic: its type, title, and the figures + labels it would display.
+You are given the blog text and a proposed infographic: its type, title, and the content it would display
+(figures for "stats"/"bar_chart", or short text items for "list"/"steps").
 
 KEEP the infographic ONLY when ALL of these hold:
-- Every displayed value is a REAL statistic literally stated in the blog — a percentage, dollar amount, ratio/multiplier, time or cost saving, or a substantive quantity.
-- The figures are NOT list counts or structural numbers (e.g. "6 common mistakes", "5 steps", "7 tips", "3 reasons") — those are not statistics.
-- The values are meaningful on their own (a reader learns something), not vague ("over half", "many") or word-only ("Ongoing", "Regular").
-- The numbers are actually present in the blog text (not invented or estimated).
-- The title matches the blog topic and the figures.
-- There is enough genuine data to be worth a chart (a single strong statistic is fine, but it must be a real number, not a count of list items).
+- Every element comes from the blog. Figures must be REAL numbers stated in the blog; list/step items must
+  reflect points the blog actually makes. NOTHING is invented, estimated, or padded to fill space.
+- For "stats"/"bar_chart": values are real statistics, NOT list counts ("6 common mistakes") or vague
+  words ("over half", "Ongoing").
+- For "list"/"steps": there are at least 3 genuine, distinct items that really appear in the blog, each a
+  meaningful point (not filler, not near-duplicates, not invented to reach 3).
+- The title matches the blog topic and the content shown.
+- The result is substantive — a reader learns something real, and it will not look empty.
 
-REJECT it if it is thin, empty, built on a list count, uses vague/invented numbers, the numbers are not in the blog, or the title does not match. A rejected infographic becomes a plain photo, so the post never shows a hollow or misleading chart.
+REJECT it if it is thin, invented, padded, built on a list count, uses vague numbers, contains items not in
+the blog, or the title does not match. A rejected infographic becomes a plain photo, so the post never shows
+a hollow or misleading graphic.
 
 Return ONLY JSON, no other text: {"keep": true, "reason": "<short reason>"}"""
 
@@ -982,7 +1004,7 @@ def _verify_infographic(spec: dict, title: str, content: str):
     if not GOOGLE_API_KEY:
         return True, "qa skipped (no key)"
     try:
-        _ig = {k: spec.get(k) for k in ("infographic_type", "title", "subtitle", "stats", "bars") if spec.get(k) is not None}
+        _ig = {k: spec.get(k) for k in ("infographic_type", "title", "subtitle", "stats", "bars", "items", "steps") if spec.get(k) is not None}
         user_msg = (f"Blog Title:\n{title}\n\nBlog Content:\n{(content or '')[:4000]}\n\n"
                     f"Proposed infographic:\n{json.dumps(_ig, ensure_ascii=False)}")
         from google import genai
@@ -2580,15 +2602,19 @@ def _ig_style_count(spec: dict) -> int:
     t = spec.get("infographic_type", "steps")
     if t in ("stats", "bar_chart"):
         return len(_chart_styles(spec))   # charts: 1–3 styles depending on the data
-    return {"checklist": (4 if _FA_OK else 3), "steps": 6}.get(t, 1)
+    if t == "list":
+        return len(_LIST_RENDERERS)
+    if t == "steps":
+        return len(_STEPS_RENDERERS)
+    return {"checklist": (4 if _FA_OK else 3)}.get(t, 1)
 
 
 def _ig_base_variant(spec: dict, brand_color: str) -> int:
     """The deterministic variant the initial (non-redo) render picks for this spec."""
     t = spec.get("infographic_type", "steps")
-    # stats/bar_chart share the "chart" seed suffix so this matches the dispatch below.
+    # suffix MUST match the seed suffix used in the _render_infographic dispatch.
     suffix = "chart" if t in ("stats", "bar_chart") else \
-        {"steps": "steps", "checklist": "checklist"}.get(t, "steps")
+        {"list": "list", "steps": "steps2", "checklist": "checklist"}.get(t, "steps2")
     seed = f"{brand_color}|{spec.get('title', '')}"
     return _ig_variant(seed + suffix, _ig_style_count(spec))
 
@@ -3988,6 +4014,181 @@ _CHART_RENDERERS = {
 }
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Content-driven infographic renderers (LISTS / STEPS) — flat, brand-colored.
+# items = list of short strings (real content pulled from the blog, never invented).
+# Palette (primary/accent/bg) is derived from the client brand via _ig_palette.
+# ══════════════════════════════════════════════════════════════════════════════
+def _ci_dashed(d, p0, p1, dash, gap, fill, width):
+    x0, y0 = p0; x1, y1 = p1
+    dist = math.hypot(x1 - x0, y1 - y0)
+    if not dist:
+        return
+    dx, dy = (x1 - x0) / dist, (y1 - y0) / dist
+    i = 0
+    while i * (dash + gap) < dist:
+        s = i * (dash + gap); e = min(s + dash, dist)
+        d.line([(x0 + dx * s, y0 + dy * s), (x0 + dx * e, y0 + dy * e)], fill=fill, width=width)
+        i += 1
+
+
+def _ci_ml(d, x, y, lines, font, fill, lh, anchor="la"):
+    for ln in lines:
+        d.text((x, y), ln, font=font, fill=fill, anchor=anchor)
+        y += lh
+
+
+def _ci_header(d, w, h, title, ink=(96, 104, 116), rule=(206, 213, 221)):
+    """Top-left title + thin rule to its right (light-bg styles). Returns body_top."""
+    px = int(w * 0.058)
+    ty = int(h * 0.072)
+    tf = _ig_font(int(h * 0.046), bold=True)
+    tt = (title or "Key Points").upper()
+    maxw = int(w * 0.60)
+    while tf.getbbox(tt)[2] > maxw and tf.size > int(h * 0.030):
+        tf = _ig_font(tf.size - 2, bold=True)
+    d.text((px, ty), tt, font=tf, fill=ink)
+    rx = px + tf.getbbox(tt)[2] + int(w * 0.028)
+    d.line([(rx, ty + tf.size // 2), (w - px, ty + tf.size // 2)], fill=rule, width=2)
+    return ty + int(h * 0.105)
+
+
+def _ci_sidebar(spec, items, w, h, primary, accent, bg, footer):
+    """Magazine split — brand sidebar (title) + numbered list on white."""
+    ink = _IG["ink"]
+    img = PILImage.new("RGB", (w, h), (255, 255, 255)); d = ImageDraw.Draw(img)
+    sw = int(w * 0.40); pad = int(w * 0.052)
+    d.rectangle([0, 0, sw, h], fill=primary)
+    d.text((pad, int(h * 0.11)), (spec.get("kicker") or "Overview").upper(),
+           font=_ig_font(int(h * 0.024), bold=True), fill=_light(primary, 0.62))
+    tf = _ig_font(int(h * 0.056), bold=True); ty = int(h * 0.155)
+    for ln in _wrap_clip(spec.get("title") or "", tf, sw - 2 * pad, 4):
+        d.text((pad, ty), ln, font=tf, fill=(255, 255, 255)); ty += int(h * 0.068)
+    if footer:
+        d.text((pad, h - int(h * 0.088)), footer, font=_ig_font(int(h * 0.021), bold=True),
+               fill=_light(primary, 0.62))
+    its = items[:6]; n = max(1, len(its))
+    rx = sw + int(w * 0.045); rw = w - rx - int(w * 0.052)
+    top, bot = int(h * 0.12), h - int(h * 0.12); rh = (bot - top) // n
+    itf = _ig_font(int(h * 0.033), bold=True)
+    for i, it in enumerate(its):
+        y = top + i * rh; cy = y + rh // 2
+        if i:
+            d.line([(rx, y), (rx + rw, y)], fill=(226, 231, 238), width=2)
+        br = int(h * 0.026)
+        d.ellipse([rx, cy - br, rx + 2 * br, cy + br], fill=accent)
+        d.text((rx + br, cy), str(i + 1), font=_ig_font(int(br * 1.2), bold=True),
+               fill=(255, 255, 255), anchor="mm")
+        tx = rx + 2 * br + int(w * 0.018)
+        ls = _wrap_clip(it, itf, rx + rw - tx, 2)
+        _ci_ml(d, tx, cy - (len(ls) - 1) * int(h * 0.020), ls, itf, ink, int(h * 0.040), "lm")
+    return _ig_bytes(img)
+
+
+def _ci_orbit(spec, items, w, h, primary, accent, bg, footer):
+    """Hub-and-spoke — brand hub + fanned white chips with icon discs."""
+    ink = _IG["ink"]
+    img = PILImage.new("RGB", (w, h), bg); d = ImageDraw.Draw(img)
+    body_top = _ci_header(d, w, h, spec.get("title"))
+    hx, hy, R = int(w * 0.20), int(h * 0.56), int(h * 0.16)
+    for rr in (R + int(h * 0.028), R + int(h * 0.056)):
+        d.arc([hx - rr, hy - rr, hx + rr, hy + rr], -66, 66, fill=_darken(bg, 0.93), width=2)
+    d.ellipse([hx - R, hy - R, hx + R, hy + R], fill=accent)
+    _ci_ml(d, hx, hy - int(h * 0.025), _wrap_clip(spec.get("kicker") or spec.get("title") or "Key Points",
+           _ig_font(int(h * 0.036), bold=True), int(2 * R * 0.86), 3),
+           _ig_font(int(h * 0.036), bold=True), (255, 255, 255), int(h * 0.042), "mm")
+    its = items[:6]; n = max(1, len(its))
+    x0, cw, ch = int(w * 0.40), int(w * 0.52), int(h * 0.102)
+    ys = [int(h * 0.20 + (h * 0.69 - h * 0.20) * (i / max(1, n - 1))) for i in range(n)]
+    itf = _ig_font(int(h * 0.028), bold=True)
+    for i, it in enumerate(its):
+        cy = ys[i]
+        ang = math.atan2(cy - hy, x0 - hx)
+        p0 = (hx + math.cos(ang) * R, hy + math.sin(ang) * R)
+        _ci_dashed(d, p0, (x0 + int(w * 0.008), cy), int(h * 0.010), int(h * 0.008), (176, 186, 198), 2)
+        d.rounded_rectangle([x0 + 3, cy - ch // 2 + 4, x0 + cw + 3, cy + ch // 2 + 4], radius=ch // 2, fill=(219, 226, 234))
+        d.rounded_rectangle([x0, cy - ch // 2, x0 + cw, cy + ch // 2], radius=ch // 2, fill=(255, 255, 255))
+        ir = int(h * 0.042)
+        d.ellipse([x0 + 8, cy - ir, x0 + 8 + 2 * ir, cy + ir], fill=accent)
+        _fa_glyph(d, x0 + 8 + ir, cy, it, int(ir * 0.95), (255, 255, 255))
+        tx = x0 + 8 + 2 * ir + int(w * 0.014)
+        ls = _wrap_clip(it, itf, x0 + cw - tx - int(w * 0.015), 2)
+        _ci_ml(d, tx, cy - (len(ls) - 1) * int(h * 0.018), ls, itf, ink, int(h * 0.036), "lm")
+    if footer:
+        d.text((int(w * 0.058), h - int(h * 0.06)), footer, font=_ig_font(int(h * 0.021), bold=True), fill=_IG["muted"])
+    return _ig_bytes(img)
+
+
+def _ci_flow(spec, items, w, h, primary, accent, bg, footer):
+    """Dark zigzag process — connected numbered nodes, labels alternate above/below."""
+    dbg = _darken(primary, 0.16); ink = (233, 239, 246)
+    img = PILImage.new("RGB", (w, h), dbg); d = ImageDraw.Draw(img)
+    for x in range(0, w, int(w * 0.019)):
+        for y in range(0, h, int(h * 0.033)):
+            d.point((x, y), fill=_light(dbg, 0.06))
+    px = int(w * 0.058)
+    d.text((px, int(h * 0.068)), "// " + (spec.get("kicker") or "Process").upper(),
+           font=_ig_font(int(h * 0.026), bold=True), fill=_light(accent, 0.35))
+    tf = _ig_font(int(h * 0.050), bold=True); ty = int(h * 0.108)
+    for ln in _wrap_clip(spec.get("title") or "Process", tf, w - 2 * px, 2):
+        d.text((px, ty), ln, font=tf, fill=ink); ty += int(h * 0.060)
+    its = items[:5]; n = max(1, len(its)); pad = int(w * 0.10)
+    xs = [pad + (w - 2 * pad) * (i / max(1, n - 1)) for i in range(n)]
+    ys = [h * 0.60 if i % 2 == 0 else h * 0.44 for i in range(n)]
+    for i in range(n - 1):
+        d.line([(xs[i], ys[i]), (xs[i + 1], ys[i + 1])], fill=_darken(accent, 0.7), width=4)
+    R = int(h * 0.078); nf = _ig_font(int(h * 0.028), bold=True); lf = _ig_font(int(h * 0.027), bold=True)
+    for i, s in enumerate(its):
+        cx, cy = xs[i], ys[i]
+        d.ellipse([cx - R - 8, cy - R - 8, cx + R + 8, cy + R + 8], outline=_darken(accent, 0.55), width=2)
+        d.ellipse([cx - R, cy - R, cx + R, cy + R], fill=accent)
+        _fa_glyph(d, cx, cy - int(h * 0.018), s, int(h * 0.048), (255, 255, 255))
+        d.text((cx, cy + int(h * 0.033)), f"STEP {i + 1}", font=_ig_font(int(h * 0.021), bold=True),
+               fill=_light(accent, 0.75), anchor="mm")
+        ls = _wrap_clip(s, lf, int(w * 0.20), 3)
+        ly = cy + R + int(h * 0.038) if i % 2 == 0 else cy - R - int(h * 0.038) - len(ls) * int(h * 0.036)
+        _ci_ml(d, cx, ly, ls, lf, ink, int(h * 0.036), "ma")
+    return _ig_bytes(img)
+
+
+def _ci_blueprint(spec, items, w, h, primary, accent, bg, footer):
+    """Technical grid — corner ticks + numbered nodes connected on a baseline."""
+    dbg = _darken(primary, 0.15); ink = (234, 243, 255)
+    img = PILImage.new("RGB", (w, h), dbg); d = ImageDraw.Draw(img)
+    grid = _light(dbg, 0.10)
+    for x in range(0, w, int(w * 0.021)):
+        d.line([(x, 0), (x, h)], fill=grid, width=1)
+    for y in range(0, h, int(h * 0.038)):
+        d.line([(0, y), (w, y)], fill=grid, width=1)
+    for a, b in [((26, 26), (58, 26)), ((26, 26), (26, 58)),
+                 ((w - 26, h - 26), (w - 58, h - 26)), ((w - 26, h - 26), (w - 26, h - 58))]:
+        d.line([a, b], fill=accent, width=3)
+    px = int(w * 0.058)
+    d.text((px, int(h * 0.068)), "// " + (spec.get("kicker") or "Process").upper(),
+           font=_ig_font(int(h * 0.026), bold=True), fill=_light(accent, 0.4))
+    tf = _ig_font(int(h * 0.050), bold=True); ty = int(h * 0.108)
+    for ln in _wrap_clip(spec.get("title") or "Process", tf, w - 2 * px, 2):
+        d.text((px, ty), ln, font=tf, fill=ink); ty += int(h * 0.060)
+    its = items[:5]; n = max(1, len(its)); pad = int(w * 0.10)
+    cy = int(h * 0.56); xs = [pad + (w - 2 * pad) * (i / max(1, n - 1)) for i in range(n)]
+    if n > 1:
+        d.line([(xs[0], cy), (xs[-1], cy)], fill=_darken(accent, 0.7), width=3)
+    R = int(h * 0.052); nf = _ig_font(int(h * 0.044), bold=True); lf = _ig_font(int(h * 0.026), bold=True)
+    for i, s in enumerate(its):
+        cx = xs[i]
+        d.ellipse([cx - R, cy - R, cx + R, cy + R], fill=dbg, outline=accent, width=4)
+        d.text((cx, cy), str(i + 1), font=nf, fill=accent, anchor="mm")
+        ls = _wrap_clip(s, lf, int(w * 0.19), 4)
+        _ci_ml(d, cx, cy + R + int(h * 0.032), ls, lf, ink, int(h * 0.034), "ma")
+    if footer:
+        d.text((px, h - int(h * 0.06)), footer.upper(), font=_ig_font(int(h * 0.021), bold=True), fill=_light(accent, 0.6))
+    return _ig_bytes(img)
+
+
+_LIST_RENDERERS = {"sidebar": _ci_sidebar, "orbit": _ci_orbit}
+_STEPS_RENDERERS = {"flow": _ci_flow, "blueprint": _ci_blueprint}
+
+
 def _infographic_qc(spec: dict, w: int, h: int):
     """Post-plan text check for a chart infographic. Returns (spec, notes).
     The header already auto-shrinks the title to fit two lines; this is the belt-and-
@@ -4027,7 +4228,18 @@ def _render_infographic(spec: dict, w: int, h: int,
         seed = f"{brand_color}|{spec.get('title', '')}"
     try:
         t = spec.get("infographic_type", "")
-        # Charts only — normalize to one numeric item list: {value(str), label}.
+        # Content-driven types (real text pulled from the blog, never invented).
+        if t == "list":
+            entries = [str(x).strip() for x in (spec.get("items") or []) if str(x).strip()][:6]
+            styles = list(_LIST_RENDERERS)
+            idx = (variant % len(styles)) if variant is not None else _ig_variant(seed + "list", len(styles))
+            return _LIST_RENDERERS[styles[idx]](spec, entries, w, h, primary, accent, bg, footer)
+        if t == "steps":
+            entries = [str(x).strip() for x in (spec.get("steps") or spec.get("items") or []) if str(x).strip()][:5]
+            styles = list(_STEPS_RENDERERS)
+            idx = (variant % len(styles)) if variant is not None else _ig_variant(seed + "steps2", len(styles))
+            return _STEPS_RENDERERS[styles[idx]](spec, entries, w, h, primary, accent, bg, footer)
+        # Charts — normalize to one numeric item list: {value(str), label}.
         if spec.get("stats"):
             items = [{"value": str(s.get("value")), "label": s.get("label", "")}
                      for s in spec["stats"]]
