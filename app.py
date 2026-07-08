@@ -821,16 +821,20 @@ INFOGRAPHIC DECISION (critical)
 ════════════════════════════
 MAXIMUM 2 infographic slots. An infographic is ALWAYS a data chart built from REAL numbers.
 
-ADD an infographic slot ONLY when the blog TEXT already states real quantitative data you can chart:
-  • Specific percentages, statistics, ratios, dollar figures, time/cost savings, or counts → "stats"
+FIRST, scan the blog carefully for ANY real figure — a percentage, statistic, ratio, dollar amount,
+time/cost saving, count, or duration that is written literally in the text. Look hard before giving up.
+
+ADD an infographic slot when the blog TEXT states real quantitative data you can chart:
+  • Even ONE specific percentage, statistic, dollar figure, count, or duration → "stats"
+    (a single strong figure is enough — do not require several)
   • Two or more measurable values that compare (before/after, adoption rates, option A vs B) → "bar_chart"
 
 Use the EXACT numbers written in the blog. NEVER invent, estimate, guess, or fabricate a number.
 If a value is not literally stated in the content, it does not exist — do not chart it.
 
-If the blog has NO real numbers to chart → use 0 infographics (all photos). Do NOT create checklists,
-step/process diagrams, tip lists, or any text-only "infographic" — those are NOT allowed anymore.
-When in doubt, choose 0 infographics.
+If, after looking carefully, the blog has NO real numbers at all → use 0 infographics (all photos).
+Do NOT create checklists, step/process diagrams, tip lists, or any text-only "infographic" — those
+are NOT allowed. Only fall back to 0 when there is genuinely not a single real figure to chart.
 
 Add a SECOND infographic only when there are two distinct sets of real numbers.
 
@@ -840,7 +844,7 @@ Infographic slots skip the required-environments list.
 INFOGRAPHIC TYPES (charts only — both REQUIRE real numbers from the blog)
 ════════════════
 "stats" — Key figures pulled verbatim from the blog.
-  Required: "stats": [{"value":"94%","label":"of businesses saw improved security"}, ...] (2–4 stats).
+  Required: "stats": [{"value":"94%","label":"of businesses saw improved security"}, ...] (1–4 stats; one is fine).
   Values must be real figures stated in the blog (e.g. "94%", "$1.3M", "3x", "24/7", "60%").
   Optional: "subtitle": "..."
 
@@ -894,7 +898,7 @@ def _detect_infographics_from_text(title: str, content: str, max_ig: int) -> lis
             stats.append({"value": disp, "label": label})
         if len(stats) >= 4:
             break
-    if len(stats) >= 2:
+    if len(stats) >= 1:   # loosened 2→1: even one real figure earns a stats chart
         return [{"infographic_type": "stats", "title": ig_title, "stats": stats[:4]}][:max_ig]
     return []
 
@@ -920,7 +924,7 @@ def _sanitize_infographic(slot: dict):
     if itype == "stats":
         stats = [s for s in (slot.get("stats") or [])
                  if isinstance(s, dict) and _has_digit(s.get("value", ""))]
-        if len(stats) < 2:
+        if len(stats) < 1:   # loosened 2→1: a single real figure is enough for a stats chart
             return None
         return {**slot, "stats": stats[:4]}
     # bar_chart
@@ -3099,6 +3103,10 @@ def _render_stats_infographic(spec: dict, w: int, h: int,
                               seed: str = "", variant: int = None) -> bytes:
     _stats = (spec.get("stats") or [])[:4]
     if _stats:
+        # A lone figure renders cleanest as one hero number; donut (1 full slice) and
+        # pictograph look broken with a single stat, so force the big-row style.
+        if len(_stats) == 1:
+            return _stats_bigrow(spec, _stats, w, h, primary, accent, bg)
         # styles: 0 cards (default) · 1 big-row · 2 rows · 3 donut+legend · 4 pictograph
         _v = (variant % 5) if variant is not None else _ig_variant(seed + "stats", 5)
         if _v == 3: return _stats_donut(spec, _stats, w, h, primary, accent, bg)
