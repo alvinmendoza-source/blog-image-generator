@@ -4037,7 +4037,7 @@ def _render_infographic(spec: dict, w: int, h: int,
         else:
             items = []
         items = [it for it in items if _num_of(it["value"]) is not None][:6]
-        if len(items) >= 2:
+        if len(items) >= 1:   # single stats too — so REDO cycles their layouts (was >=2)
             styles = _chart_styles(spec)                     # applicable styles for this data
             idx = (variant % len(styles)) if variant is not None else _ig_variant(seed + "chart", len(styles))
             fn = _CHART_RENDERERS.get(styles[idx], _chart_kpi)   # redo cycles through them
