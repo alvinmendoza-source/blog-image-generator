@@ -954,6 +954,66 @@ def _sanitize_infographic(slot: dict):
     return {**slot, "bars": bars[:6]}
 
 
+_IG_QA_SYSTEM = """You are a strict QA reviewer for a DATA-CHART infographic about to be published on a client's blog.
+
+You are given the blog text and a proposed infographic: its type, title, and the figures + labels it would display.
+
+KEEP the infographic ONLY when ALL of these hold:
+- Every displayed value is a REAL statistic literally stated in the blog — a percentage, dollar amount, ratio/multiplier, time or cost saving, or a substantive quantity.
+- The figures are NOT list counts or structural numbers (e.g. "6 common mistakes", "5 steps", "7 tips", "3 reasons") — those are not statistics.
+- The values are meaningful on their own (a reader learns something), not vague ("over half", "many") or word-only ("Ongoing", "Regular").
+- The numbers are actually present in the blog text (not invented or estimated).
+- The title matches the blog topic and the figures.
+- There is enough genuine data to be worth a chart (a single strong statistic is fine, but it must be a real number, not a count of list items).
+
+REJECT it if it is thin, empty, built on a list count, uses vague/invented numbers, the numbers are not in the blog, or the title does not match. A rejected infographic becomes a plain photo, so the post never shows a hollow or misleading chart.
+
+Return ONLY JSON, no other text: {"keep": true, "reason": "<short reason>"}"""
+
+
+def _verify_infographic(spec: dict, title: str, content: str):
+    """Smart content QA for a planned infographic (text, not vision — layout is
+    deterministic). Asks Gemini whether the chart is a genuine, meaningful, complete
+    chart grounded in real numbers from the blog. Returns (keep: bool, reason: str).
+
+    Fail-open: on any API/quota/parse error returns (True, ...) so a valid infographic
+    is never dropped just because QA could not run (the deterministic _sanitize_infographic
+    rules have already caught the egregious cases). Same philosophy as _qa_cant_evaluate."""
+    if not GOOGLE_API_KEY:
+        return True, "qa skipped (no key)"
+    try:
+        _ig = {k: spec.get(k) for k in ("infographic_type", "title", "subtitle", "stats", "bars") if spec.get(k) is not None}
+        user_msg = (f"Blog Title:\n{title}\n\nBlog Content:\n{(content or '')[:4000]}\n\n"
+                    f"Proposed infographic:\n{json.dumps(_ig, ensure_ascii=False)}")
+        from google import genai
+        from google.genai import types as gt
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        for _attempt in range(3):
+            try:
+                resp = client.models.generate_content(
+                    model="gemini-2.5-flash-lite",
+                    contents=user_msg,
+                    config=gt.GenerateContentConfig(
+                        system_instruction=_IG_QA_SYSTEM,
+                        max_output_tokens=300,
+                        temperature=0.2,
+                    ),
+                )
+                break
+            except Exception as _e:
+                if _gemini_retryable(str(_e)) and _attempt < 2:
+                    time.sleep(min(2 ** _attempt * 3, 12))
+                else:
+                    raise
+        raw = (resp.text or "").strip()
+        s, e = raw.find("{"), raw.rfind("}")
+        data = json.loads(raw[s:e + 1]) if s != -1 and e > s else {}
+        keep = bool(data.get("keep", True))
+        return keep, str(data.get("reason", ""))[:200]
+    except Exception as _e:
+        return True, f"qa unavailable ({_e})"  # fail-open — never drop a valid chart on QA error
+
+
 def _plan_image_slots(title: str, content: str, count: int) -> list:
     """Plan all image slots in one Gemini call — returns list of slot dicts.
     Gracefully falls back to all-photo mode on any failure."""
@@ -1022,16 +1082,27 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
 
         # Enforce charts-only IN CODE — gemini doesn't reliably obey the prompt.
         # Any infographic that isn't a real numeric chart becomes a photo.
+        # Two gates: (1) deterministic _sanitize_infographic rules, then (2) a smart
+        # Gemini content-QA that rejects thin / list-count / vague / off-topic charts
+        # so the post never shows a hollow infographic.
         _ig_photo = f"An IT professional focused on a task related to {(title or 'IT services')[:50]}."
+        _qa_notes = []
         for s in slots:
             if s.get("type") == "infographic":
                 clean = _sanitize_infographic(s)
+                _reject_reason = None
                 if clean is None:
-                    _num = s.get("slot")
-                    s.clear()
-                    s.update({"slot": _num, "type": "photo", "description": _ig_photo})
+                    _reject_reason = "no real chartable numbers"
                 else:
                     s.update(clean)
+                    keep, reason = _verify_infographic(s, title, content)
+                    if not keep:
+                        _reject_reason = reason or "QA: low-value chart"
+                if _reject_reason is not None:
+                    _num = s.get("slot")
+                    _qa_notes.append(f"Slot {_num}: infographic → photo ({_reject_reason})")
+                    s.clear()
+                    s.update({"slot": _num, "type": "photo", "description": _ig_photo})
 
         for s in slots:
             if s.get("type") == "photo" and not (s.get("description") or "").strip():
@@ -1049,6 +1120,8 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
                         f"**Slot {s['slot']} 📊 INFOGRAPHIC "
                         f"[{s.get('infographic_type','').upper()}]:** {s.get('title','')}"
                     )
+            for note in _qa_notes:
+                st.caption(f"🔎 {note}")
         return slots
 
     except Exception as e:
