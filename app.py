@@ -915,6 +915,19 @@ def _has_digit(v) -> bool:
     return any(ch.isdigit() for ch in str(v))
 
 
+def _is_weak_stat(v) -> bool:
+    """A bare list-count like '6', '5', '3 tips' — a lone 1–2 digit integer with no
+    %/$/unit/ratio signal. These are listicle counts ('6 common mistakes'), NOT real
+    statistics, and render as a near-empty solo infographic. Values with a real signal
+    (%, $, x, /, k/M/B, time units) are kept, and so are larger figures (100+)."""
+    s = str(v).strip()
+    if re.search(r"[%$€£/x×]|percent|million|billion|"
+                 r"\b\d+\s*(?:k|m|b|hrs?|hours?|mins?|minutes?|days?|weeks?|months?|years?|x)\b",
+                 s, re.I):
+        return False
+    return bool(re.fullmatch(r"\D*(\d{1,2})(?:\.\d+)?\D*", s))
+
+
 def _sanitize_infographic(slot: dict):
     """Enforce charts-only IN CODE (the prompt alone isn't reliably obeyed —
     gemini still returns 'steps' diagrams and word-only 'stats' like 'Ongoing').
@@ -928,8 +941,9 @@ def _sanitize_infographic(slot: dict):
         return None
     if itype == "stats":
         stats = [s for s in (slot.get("stats") or [])
-                 if isinstance(s, dict) and _has_digit(s.get("value", ""))]
-        if len(stats) < 1:   # loosened 2→1: a single real figure is enough for a stats chart
+                 if isinstance(s, dict) and _has_digit(s.get("value", ""))
+                 and not _is_weak_stat(s.get("value", ""))]
+        if len(stats) < 1:   # ≥1 real figure needed; bare list-counts ('6 mistakes') dropped
             return None
         return {**slot, "stats": stats[:4]}
     # bar_chart
@@ -2665,6 +2679,41 @@ def _stats_bigrow(spec, stats, w, h, primary, accent, bg):
     return _ig_bytes(img)
 
 
+# ── STATS single: one large hero figure centered, fills the frame (no dead space) ──
+def _stats_hero(spec, stat, w, h, primary, accent, bg):
+    pad = int(w * 0.06)
+    img, d, body_top = _ig_setup(spec, w, h, bg, primary, accent, "By the Numbers", pad)
+    bot = h - int(h * 0.07)
+    cx = w // 2
+
+    val = str(stat.get("value") or "—")[:14]
+    vsize = int((bot - body_top) * 0.60)          # big hero number
+    vf = _ig_font(vsize, bold=True)
+    while vf.getbbox(val)[2] > w - 2 * pad and vsize > 40:
+        vsize -= 6
+        vf = _ig_font(vsize, bold=True)
+
+    lf = _ig_font(int(h * 0.038))
+    lh = int(h * 0.050)
+    llines = _wrap_clip((stat.get("label") or "").strip(), lf, w - 2 * int(w * 0.13), 3)
+    gap = int(h * 0.035)
+    block_h = vsize + gap + len(llines) * lh
+    top = body_top + max(0, (bot - body_top - block_h) // 2)   # vertically centered
+
+    # thin accent underline under the number for a finished look
+    d.text((cx, top + vsize // 2), val, font=vf, fill=accent, anchor="mm")
+    uw = int(min(w * 0.10, vf.getbbox(val)[2] * 0.5))
+    uy = top + vsize + int(gap * 0.35)
+    d.rounded_rectangle([cx - uw, uy, cx + uw, uy + max(4, int(h * 0.008))],
+                        radius=4, fill=accent)
+
+    ly = top + vsize + gap
+    for ln in llines:
+        d.text((cx, ly), ln, font=lf, fill=_IG["muted"], anchor="ma")
+        ly += lh
+    return _ig_bytes(img)
+
+
 # ── STATS variant 2: vertical list, big number + label ──
 def _stats_rows(spec, stats, w, h, primary, accent, bg):
     pad = int(w * 0.05)
@@ -3108,10 +3157,10 @@ def _render_stats_infographic(spec: dict, w: int, h: int,
                               seed: str = "", variant: int = None) -> bytes:
     _stats = (spec.get("stats") or [])[:4]
     if _stats:
-        # A lone figure renders cleanest as one hero number; donut (1 full slice) and
-        # pictograph look broken with a single stat, so force the big-row style.
+        # A lone figure renders cleanest as one big centered hero number; the multi-stat
+        # variants (bigrow/donut/pictograph) leave dead space with a single value.
         if len(_stats) == 1:
-            return _stats_bigrow(spec, _stats, w, h, primary, accent, bg)
+            return _stats_hero(spec, _stats[0], w, h, primary, accent, bg)
         # styles: 0 cards (default) · 1 big-row · 2 rows · 3 donut+legend · 4 pictograph
         _v = (variant % 5) if variant is not None else _ig_variant(seed + "stats", 5)
         if _v == 3: return _stats_donut(spec, _stats, w, h, primary, accent, bg)
