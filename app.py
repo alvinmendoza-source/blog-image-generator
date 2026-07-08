@@ -215,6 +215,9 @@ _QUALITY_BLOCK = (
     # human realism
     "subtle facial asymmetry, natural skin texture, visible pores, "
     "believable posture, candid body language, "
+    # expression — each person has a genuine, understated smile (never forced/toothy)
+    "each person has a subtle warm natural smile, relaxed friendly approachable expression, "
+    "looking pleasant and content while working, "
     # environment
     "authentic lived-in office, slightly messy desk, "
     # ethnicity anchor
@@ -285,6 +288,8 @@ KIE_QUALITY_SUFFIX = (
     "Sony A7 IV, no color grading, no filter, no CGI, "
     "plain unbranded clothing with no logos or company names, "
     "white Caucasian American office workers, "
+    # expression — genuine understated smile so people never look flat/unfriendly
+    "each person has a subtle warm natural smile, relaxed friendly approachable expression, looking pleasant and content, "
     "no food on desk, no drinks on desk, no water bottle, no coffee cup, no snacks, clean professional workspace, "
     # monitors/screens must not show readable text — the model tends to paint the blog
     # title onto displays, which then looks cut off. Keep screens active-looking but only
