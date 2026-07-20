@@ -89,62 +89,128 @@ Each image must show a DIFFERENT activity — same topic, different angle of the
 - NO photography words. NO dramatic adjectives (stunning, cinematic, dramatic, perfect, etc.)"""
 
 # ── Scene type pool ───────────────────────────────────────────────────────────
-SCENE_TYPES = [
-    ("SOLO WORKSTATION",
-     "one person alone at a single desk with a laptop or monitor"),
-    ("SIDE-BY-SIDE PAIR",
-     "two people seated side by side reviewing something on a shared screen"),
-    ("MEETING TABLE",
-     "two to four people seated around a meeting room table in discussion"),
-    ("STANDING DESK",
-     "one person standing at a height-adjustable standing desk looking at their screen"),
-    ("HELP DESK COUNTER",
-     "one person at a help desk counter with headset and two monitors"),
-    ("OPEN PLAN WIDE",
-     "wide shot of three or four people at separate desks across an open-plan office floor"),
-    ("INFORMAL HUDDLE",
-     "two people standing and talking near a kitchen counter or office hallway"),
-    ("WALKING CORRIDOR",
-     "one or two people walking mid-stride through a bright office corridor"),
-    ("DUAL MONITOR DESK",
-     "one person at a corner desk with two large monitors"),
-    ("PHONE CALL AT DESK",
-     "one person at a desk with phone to one ear, notepad in front"),
-    ("WHITEBOARD SESSION",
-     "one or two people standing at a whiteboard with markers, no readable text on board"),
-    ("RECEPTION AREA",
-     "one person standing at a front reception desk in a modern office lobby"),
-    ("COFFEE BREAK CHAT",
-     "two people having a casual standing conversation near a coffee machine in a break room"),
-    ("WINDOW SEAT LAPTOP",
-     "one person working on a laptop at a desk beside a large office window with natural daylight coming in"),
-    ("PRESENTATION SCREEN",
-     "one person standing beside a large wall-mounted TV or presentation screen, pointing at content"),
-    ("SMALL CONFERENCE ROOM",
-     "three people seated around a small table inside a glass-walled conference room"),
-    ("FOCUSED READING",
-     "one person seated at a desk reading printed documents or a report, pen in hand"),
-    ("LOUNGE AREA LAPTOP",
-     "one person working on a laptop in a casual office lounge with soft seating"),
-    ("STICKY NOTE WALL",
-     "two people standing at a wall covered with colorful sticky notes, organizing ideas"),
-    ("OUTDOOR TERRACE",
-     "one or two people working at a table on a sunny outdoor office terrace or rooftop"),
+# ~100 scenes across 3 visual categories. Each scene fixes the ENVIRONMENT +
+# framing/composition (angle, distance, people count); the ACTIVITY is filled in
+# per blog by Gemini (content-driven, RULE 2). More scenes + varied framing =
+# generations that don't look repetitive. SCENE_TYPES and the _SCENE_* category
+# sets are derived from these lists so no label is ever left uncategorized.
+# NOTE: deliberately NO server-room / server-rack scenes (past off-topic issue).
+
+_DESK_SCENES = [   # one person seated at an individual computer/desk
+    ("SOLO WORKSTATION", "one person alone at a single desk with a laptop, shot from a slight side angle"),
+    ("DUAL MONITOR DESK", "one person at a corner desk with two large monitors, viewed over their shoulder"),
+    ("WINDOW SEAT LAPTOP", "one person on a laptop at a desk beside a large office window with daylight coming in"),
+    ("LOUNGE AREA LAPTOP", "one person working on a laptop in a casual office lounge with soft seating"),
+    ("PHONE CALL AT DESK", "one person at a desk with a phone to one ear, notepad open in front of them"),
+    ("FOCUSED READING", "one person at a desk reading a printed report, pen in hand, monitor off to the side"),
+    ("HELP DESK COUNTER", "one person at a help-desk counter wearing a headset, two monitors in front"),
+    ("LAPTOP HANDS CLOSE-UP", "tight close-up of one person's hands on a laptop keyboard, their face softly blurred behind"),
+    ("OVER-SHOULDER MONITOR", "over-the-shoulder framing of one person studying a dark dashboard on a monitor"),
+    ("STICKY-NOTE DESK", "one person at a desk edged with sticky notes, adding a note to one of them"),
+    ("HEADSET SUPPORT DESK", "one person in a headset at a support desk mid-conversation, gesturing with one hand"),
+    ("EVENING DESK LAMP", "one person at a desk lit mostly by a warm desk lamp in a dim after-hours office"),
+    ("NOTEBOOK AND SCREEN", "one person splitting attention between a paper notebook and a monitor"),
+    ("CORNER CUBICLE WIDE", "wide framing of one person seated in a corner cubicle with the office visible beyond"),
+    ("SIDE-PROFILE TYPING", "strict side profile of one person typing, monitor glow lighting their face"),
+    ("BACK-TO-CAMERA DESK", "one person shot from behind at their desk, facing a wall-mounted monitor"),
+    ("TABLET AT DESK", "one person at a desk reviewing something on a tablet held in both hands"),
+    ("BAR-HEIGHT STOOL DESK", "one person perched on a stool at a bar-height bench desk with a laptop"),
+    ("TWO-SCREEN TERMINAL", "one person between two monitors showing dark terminal windows"),
+    ("RECLINED THINKING", "one person leaning back in an office chair, hands laced behind head, considering a screen"),
+    ("LEANING-IN FOCUS", "one person leaning close toward a single monitor, elbows on the desk"),
+    ("DESK PHONE AND KEYBOARD", "one person cradling a desk phone on their shoulder while typing"),
+    ("HOT-DESK OPEN BENCH", "one person alone at a long shared hot-desk bench, other seats empty"),
+    ("QUIET POD SEAT", "one person working inside an enclosed single-person acoustic office pod"),
+    ("DESK NEAR PLANTS", "one person at a desk framed by tall office plants in the foreground"),
+    ("DOWN-ANGLE DESK", "high downward angle looking onto one person at a tidy desk from above"),
+    ("LOW-ANGLE DESK", "low angle looking slightly up at one person seated at their monitor"),
+    ("MORNING LIGHT DESK", "one person at a desk with long soft morning light raking across the surface"),
+    ("HANDWRITING AT DESK", "one person writing notes by hand on a legal pad beside a closed laptop"),
+    ("EXTERNAL MONITOR LAPTOP", "one person with a laptop connected to a larger external monitor on a riser"),
+    ("SWIVELLED CHAIR", "one person turned sideways in a swivel chair, glancing back at their screen"),
+    ("DESK BY BOOKSHELF", "one person at a desk set against a low bookshelf of binders and manuals"),
+    ("STANDING-MAT DESK", "one person standing on an anti-fatigue mat at a raised desk, weight on one leg"),
+    ("PRINTOUT AND SCREEN", "one person holding a printout up beside their monitor to compare the two"),
+    ("EARBUDS FOCUS DESK", "one person with earbuds in, focused on a monitor, fingers resting on the keyboard"),
+    ("WIDE SOLO OPEN FLOOR", "very wide shot of one person at a lone desk on a large open office floor"),
+    ("DESK EDGE PERCH", "one person perched on the edge of their own desk reading from a tablet"),
+    ("DUSK WINDOW DESK", "one person at a window-side desk at dusk, city lights softly out of focus behind"),
+    ("HEADPHONES DUAL SCREEN", "one person in over-ear headphones scanning across two side-by-side monitors"),
+    ("CLOSE DESK DETAIL", "close framing on one person's face and hands at a desk, background thrown out of focus"),
 ]
 
-# Scenes grouped by visual category — used to enforce variety in each batch
-_SCENE_DESK = {   # person seated at individual computer/desk
-    "SOLO WORKSTATION", "DUAL MONITOR DESK", "WINDOW SEAT LAPTOP",
-    "LOUNGE AREA LAPTOP", "PHONE CALL AT DESK", "FOCUSED READING", "HELP DESK COUNTER",
-}
-_SCENE_GROUP = {  # group of people at table/meeting room
-    "MEETING TABLE", "SMALL CONFERENCE ROOM", "SIDE-BY-SIDE PAIR",
-}
-_SCENE_ACTIVE = { # standing or walking — clearly NOT seated at a desk
-    "WALKING CORRIDOR", "WHITEBOARD SESSION", "PRESENTATION SCREEN",
-    "OUTDOOR TERRACE", "STICKY NOTE WALL", "INFORMAL HUDDLE",
-    "COFFEE BREAK CHAT", "OPEN PLAN WIDE", "STANDING DESK", "RECEPTION AREA",
-}
+_GROUP_SCENES = [  # several people together at a table / shared screen
+    ("MEETING TABLE", "two to four people seated around a meeting-room table in discussion"),
+    ("SMALL CONFERENCE ROOM", "three people seated around a small table inside a glass-walled conference room"),
+    ("SIDE-BY-SIDE PAIR", "two people seated side by side reviewing something on one shared screen"),
+    ("BOARDROOM WIDE", "wide shot of five people spaced around a long boardroom table, one leaning in"),
+    ("LAPTOP PAIR REVIEW", "two people leaning together over a single open laptop at a table"),
+    ("THREE AT ONE MONITOR", "three people clustered around one desktop monitor, one pointing at it"),
+    ("CROSS-TABLE DISCUSSION", "two people facing each other across a small table, papers between them"),
+    ("PAPER REVIEW PAIR", "two people at a table comparing two printed documents side by side"),
+    ("HUDDLE ROOM BENCH", "three people on a bench seat along a huddle-room wall facing a small screen"),
+    ("ROUND TABLE FOUR", "four people around a round café-style table in an office breakout space"),
+    ("MENTOR OVER SHOULDER", "one person seated at a desk while a colleague leans over their shoulder to look"),
+    ("STANDUP AT DESK CLUSTER", "three colleagues gathered standing around one seated person's desk"),
+    ("GLASS ROOM FROM OUTSIDE", "a meeting of three people seen through the glass wall of a conference room"),
+    ("TABLE WITH LAPTOPS", "four people at a table each with a laptop, mid-collaboration, one talking"),
+    ("CORNER SOFA MEETING", "three people on a corner sofa arrangement with a low table, talking casually"),
+    ("PAIR AT STANDING TABLE", "two people standing at a high poseur table with a laptop between them"),
+    ("NOTE-TAKER AND SPEAKER", "two people at a table, one speaking while the other takes notes on a laptop"),
+    ("SEMICIRCLE BRIEFING", "four people seated in a loose semicircle facing one colleague briefing them"),
+    ("SHARED SCREEN POINT", "two seated people looking at a monitor as one points to a section of it"),
+    ("CLIENT-STYLE MEETING", "two people on one side of a table facing a third across it, handshake-neutral"),
+    ("BREAKOUT TABLE FIVE", "five people around a breakout table mid-discussion, papers and a laptop out"),
+    ("PAIR REVIEWING TABLET", "two people seated close, both looking down at one tablet held between them"),
+    ("TABLE FROM ABOVE", "high angle looking down onto four people working around a table"),
+    ("QUIET TWO-PERSON DESK", "two colleagues at adjacent desks turned toward each other in quiet discussion"),
+    ("WORKSHOP LONG TABLE", "wide shot of six people along a long workshop table with laptops and notes"),
+]
+
+_ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a desk
+    ("STANDING DESK", "one person standing at a height-adjustable standing desk looking at their screen"),
+    ("WALKING CORRIDOR", "one or two people walking mid-stride through a bright office corridor"),
+    ("WHITEBOARD SESSION", "one or two people at a whiteboard with markers, no readable text on the board"),
+    ("PRESENTATION SCREEN", "one person standing beside a wall-mounted TV or screen, pointing at content"),
+    ("OUTDOOR TERRACE", "one or two people working at a table on a sunny office terrace or rooftop"),
+    ("STICKY NOTE WALL", "two people at a wall covered in colorful sticky notes, organizing them"),
+    ("INFORMAL HUDDLE", "two people standing and talking near a kitchen counter or hallway"),
+    ("COFFEE BREAK CHAT", "two people in a casual standing chat near a coffee machine in a break room"),
+    ("OPEN PLAN WIDE", "wide shot of three or four people at separate desks across an open-plan floor"),
+    ("RECEPTION AREA", "one person standing at a front reception desk in a modern office lobby"),
+    ("KITCHEN COUNTER LEAN", "one person leaning on an office kitchen counter reading from a phone"),
+    ("ELEVATOR LOBBY WAIT", "one or two people standing in a bright elevator lobby, one holding a laptop"),
+    ("STAIRWELL PASSING", "one person descending an open office staircase, hand on the rail"),
+    ("DOORWAY CONVERSATION", "two people pausing to talk in a glass office doorway"),
+    ("POINTING AT WALL SCREEN", "one person standing close to a large wall display, pointing at a region of it"),
+    ("CARRYING LAPTOP WALK", "one person walking through the office carrying an open laptop on one arm"),
+    ("WINDOW LEAN PHONE", "one person leaning against a floor-to-ceiling window taking a call on a phone"),
+    ("WHITEBOARD EXPLAIN", "one person mid-gesture explaining to a colleague at a whiteboard"),
+    ("STANDING NOTES TABLET", "one person standing in an open area taking notes on a tablet"),
+    ("HALLWAY QUICK SYNC", "two people stopped in a hallway for a quick standing sync, one gesturing"),
+    ("BREAKROOM STANDING CHAT", "two people standing in a breakroom talking, one holding a notebook"),
+    ("WALK-AND-TALK PAIR", "two people walking side by side through the office deep in conversation"),
+    ("STANDING AT PRINTER", "one person standing at an office multifunction printer collecting pages"),
+    ("LEANING ON DESK PARTITION", "one person standing and leaning on a low desk partition talking to a seated colleague"),
+    ("ATRIUM WALKWAY", "one person crossing a bright multi-storey office atrium walkway"),
+    ("PLANT-LINED CORRIDOR", "one person walking a corridor lined with tall office plants"),
+    ("STANDING TABLET REVIEW", "one person standing near a window reviewing something on a tablet"),
+    ("GESTURING PRESENTER", "one person standing at the head of a room mid-gesture toward a screen"),
+    ("PINBOARD PLANNING", "two people standing at a pinboard rearranging index cards"),
+    ("COAT-BY-DOOR ARRIVAL", "one person arriving, laptop bag on shoulder, near a coat area by the entrance"),
+    ("BALCONY LAPTOP STAND", "one person standing at a rail on an office balcony with a laptop on a ledge"),
+    ("OPEN KITCHEN HUDDLE", "three people standing loosely around an office kitchen island talking"),
+    ("WIDE LOBBY FIGURE", "very wide shot of one small figure crossing a spacious modern office lobby"),
+    ("STANDING BEHIND SEATED", "one person standing behind a seated colleague, both looking at the seated screen"),
+    ("SIDE-LIT WALKWAY", "one person walking a side-lit glass walkway, soft reflections around them"),
+]
+
+SCENE_TYPES = _DESK_SCENES + _GROUP_SCENES + _ACTIVE_SCENES
+
+# Category sets derived from the lists above (guarantees every label is categorized)
+_SCENE_DESK   = {s[0] for s in _DESK_SCENES}
+_SCENE_GROUP  = {s[0] for s in _GROUP_SCENES}
+_SCENE_ACTIVE = {s[0] for s in _ACTIVE_SCENES}
 
 # Explicit cues added to env description so Gemini knows NOT to write a desk scene
 _ACTIVE_CUE = " ← PERSON IS STANDING OR WALKING — do NOT write a seated-at-desk scene"
@@ -153,10 +219,11 @@ _GROUP_CUE  = " ← multiple people at a shared table, NOT individual desks"
 
 def _pick_required_scenes(count: int) -> list:
     """Pick scenes with guaranteed visual diversity.
-    For count=4: 1 desk + 1 group/meeting + 2 active/standing/walking.
-    For count=3: 1 desk + 1 group + 1 active.
+    For count=4: 1 desk + 1 active + 1 group + 1 wildcard (any category).
+    For count=3: 1 desk + 1 active + 1 group.
     For count=2: 1 desk + 1 active.
-    Guarantees at least 50% of scenes are non-desk environments."""
+    Guarantees at least 50% of scenes are non-desk environments, and draws from
+    the full ~100-scene pool so different blogs rarely repeat the same set."""
     desk   = [s for s in SCENE_TYPES if s[0] in _SCENE_DESK]
     group  = [s for s in SCENE_TYPES if s[0] in _SCENE_GROUP]
     active = [s for s in SCENE_TYPES if s[0] in _SCENE_ACTIVE]
@@ -169,9 +236,11 @@ def _pick_required_scenes(count: int) -> list:
         picks.append(random.choice(group))   # 1 meeting/group scene
 
     if count >= 4:
+        # 4th slot: a wildcard from ANY category (the first three already keep it
+        # ≥50% non-desk) — drawn from the full pool so batches vary more.
         used = {s[0] for s in picks}
-        fresh_active = [s for s in active if s[0] not in used]
-        picks.append(random.choice(fresh_active if fresh_active else active))  # 2nd active
+        pool = [s for s in SCENE_TYPES if s[0] not in used]
+        picks.append(random.choice(pool if pool else SCENE_TYPES))
 
     if count >= 5:
         remaining = [s for s in SCENE_TYPES if s[0] not in {p[0] for p in picks}]
