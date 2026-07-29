@@ -972,5 +972,44 @@
       20,
       20
     ]
+  },
+  "acclaim": {
+    "name": "Acclaim",
+    "main": "159:2",
+    "thumb": "159:3",
+    "main_w": 1300,
+    "main_h": 510,
+    "overlay_main": "156:9",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 50,
+    "main_ty": 414,
+    "main_tw": 573,
+    "main_fsz": 30,
+    "main_lh": 34,
+    "main_font_family": "Plus Jakarta Sans",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 407,
+    "thumb_h": 300,
+    "overlay_thumb": "155:2",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 18,
+    "thumb_ty": 117,
+    "thumb_tw": 143,
+    "thumb_fsz": 14,
+    "thumb_lh": 18,
+    "thumb_font_family": "Plus Jakarta Sans",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }
