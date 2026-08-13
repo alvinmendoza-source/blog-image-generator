@@ -2352,25 +2352,34 @@ with st.sidebar:
         st.caption("No templates saved yet — add one below.")
 
     # ── Webflow API key (auto-fills from LOCAL keys file when dropdown changes) ──
-    _default_key = _get_client_key(_selected_slug)
+    # SECURITY: never load the real key into the visible widget — Streamlit's
+    # password input has a built-in eye/reveal toggle we can't disable, so a
+    # pre-filled field would expose the stored key to anyone at the live app.
+    # The field holds only what the user types; the stored key is used under the hood.
+    _stored_key = _get_client_key(_selected_slug)
     _prev_slug = st.session_state.get("_prev_client_slug", "")
     if _selected_slug != _prev_slug:
         st.session_state["_prev_client_slug"] = _selected_slug
-        st.session_state["a_key"] = _default_key
-    elif not st.session_state.get("a_key") and _default_key:
-        st.session_state["a_key"] = _default_key
+        st.session_state["a_key"] = ""  # clear typed field when switching clients
 
     st.markdown("##### 🔑 Webflow API Key")
-    a_api_key = st.text_input(
+    _a_typed_key = st.text_input(
         "Webflow API Key", type="password", label_visibility="collapsed",
-        placeholder="Paste key → 💾 Save", key="a_key",
+        placeholder=("✓ Saved — paste to replace" if _stored_key else "Paste key → 💾 Save"),
+        key="a_key",
     )
+    # Effective key: a freshly typed value wins; otherwise fall back to the stored one.
+    a_api_key = _a_typed_key.strip() or _stored_key
+    if _stored_key and not _a_typed_key.strip():
+        st.caption("🔒 A saved key is in use (hidden). Paste a new key above to replace it.")
     if st.button("💾 Save key for this client", use_container_width=True, key="save_key_btn"):
-        if a_api_key.strip() and _selected_slug:
+        if _a_typed_key.strip() and _selected_slug:
             # Saved to the local-only keys file (never committed). On the live app this
             # persists only for the running container — re-enter after a redeploy.
-            _save_client_key(_selected_slug, a_api_key.strip())
+            _save_client_key(_selected_slug, _a_typed_key.strip())
             st.success(f"Saved locally for **{_client_display_name(_selected_slug)}** ✓")
+        elif not _a_typed_key.strip():
+            st.warning("Paste a key in the field first.")
 
     # ── Add a new client template ──
     _new_tpl_url = st.text_input(
@@ -2406,7 +2415,7 @@ with st.sidebar:
 _live_badges = (
     "<span class='badge live'>● Live</span>"
     "<span class='badge cy'>Kie API</span>"
-    "<span class='badge'>Gemini 2.0</span>"
+    "<span class='badge'>Gemini 2.5</span>"
 ) if KIE_API_KEY else "<span class='badge' style='color:#ff5b5b;border-color:rgba(255,91,91,.4)'>● KIE key missing</span>"
 st.markdown(
     f"<div class='msp-head'><h1>Blog Image Generator</h1><div class='badges'>{_live_badges}</div></div>"
