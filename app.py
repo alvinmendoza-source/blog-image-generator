@@ -3549,7 +3549,7 @@ with tab_batch:
     _all_up = _has_done and all(v.get("uploaded") for v in _res_now.values()
                                 if v.get("status") == "done")
     _active_step = 4 if _all_up else 3 if _has_done else 2 if _any_pick else 1
-    _ux_stepper(["Source", "Pili clients", "Generate", "Review", "Upload"], _active_step)
+    _ux_stepper(["Source", "Pick clients", "Generate", "Review", "Upload"], _active_step)
 
     # ── STEP 1: Data source ──
     _ux_section("1", "Data source", "🔒 read-only to Airtable")
