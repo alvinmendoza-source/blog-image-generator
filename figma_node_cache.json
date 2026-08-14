@@ -1011,5 +1011,44 @@
       255,
       255
     ]
+  },
+  "kelser": {
+    "name": "Kelser",
+    "main": "151:12",
+    "thumb": "151:14",
+    "main_w": 428,
+    "main_h": 250,
+    "overlay_main": "151:6",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 26,
+    "main_ty": 120,
+    "main_tw": 175,
+    "main_fsz": 13,
+    "main_lh": 15,
+    "main_font_family": "Fustat",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 428,
+    "thumb_h": 250,
+    "overlay_thumb": "149:26",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 26,
+    "thumb_ty": 120,
+    "thumb_tw": 175,
+    "thumb_fsz": 13,
+    "thumb_lh": 15,
+    "thumb_font_family": "Fustat",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }

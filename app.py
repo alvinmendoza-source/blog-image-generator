@@ -4,6 +4,7 @@ import time
 import random
 import base64
 import io
+import csv
 import json
 import math
 import hashlib
@@ -2319,6 +2320,91 @@ hr {{ border-color:#2a2a2a; }}
 </style>
 """, unsafe_allow_html=True)
 
+# ── UX design-system v5 (whole-app): stepper, section heads, KPI tiles, cards ──
+st.markdown("""
+<style>
+:root { --cy:#35EDED; --cy2:#20d0d0; --uxline:#2a2a2a; --uxpanel:#1a1a1a;
+        --uxpanel2:#202020; --uxdim:#8a8a8a; --uxfaint:#666;
+        --uxgreen:#3df03d; --uxamber:#f5c451; --uxred:#ff6b6b; }
+/* section header */
+.ux-shead { display:flex; align-items:center; gap:10px; margin:6px 0 12px; }
+.ux-shead .k { background:var(--cy); color:#000; border-radius:7px; width:24px; height:24px;
+    display:inline-flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; }
+.ux-shead h2 { font-size:15px; margin:0; font-weight:700; color:#f2f2f2; }
+.ux-shead .hint { color:var(--uxfaint); font-size:12px; margin-left:auto; }
+/* stepper */
+.ux-stepper { display:flex; gap:8px; margin:2px 0 18px; flex-wrap:wrap; }
+.ux-step { flex:1; min-width:96px; background:var(--uxpanel); border:1px solid var(--uxline);
+    border-radius:10px; padding:9px 12px; }
+.ux-step .n { display:inline-flex; width:20px; height:20px; border-radius:50%; background:var(--uxpanel2);
+    color:var(--uxdim); align-items:center; justify-content:center; font-size:11px; font-weight:700; margin-right:7px; }
+.ux-step .lbl { font-size:12px; font-weight:600; color:var(--uxdim); }
+.ux-step.active { border-color:var(--cy); background:linear-gradient(180deg,rgba(53,237,237,.10),transparent); }
+.ux-step.active .n { background:var(--cy); color:#000; }
+.ux-step.active .lbl { color:#f2f2f2; }
+.ux-step.done .n { background:var(--uxgreen); color:#000; }
+.ux-step.done .lbl { color:#f2f2f2; }
+/* KPI tiles */
+.ux-kpis { display:flex; gap:10px; margin:2px 0 14px; flex-wrap:wrap; }
+.ux-kpi { flex:1; min-width:120px; background:var(--uxpanel); border:1px solid var(--uxline);
+    border-radius:10px; padding:12px 15px; }
+.ux-kpi .v { font-size:24px; font-weight:800; line-height:1; color:#f2f2f2; }
+.ux-kpi .l { font-size:11px; color:var(--uxdim); margin-top:6px; }
+.ux-kpi.cy .v { color:var(--cy); } .ux-kpi.green .v { color:var(--uxgreen); }
+.ux-kpi.amber .v { color:var(--uxamber); } .ux-kpi.red .v { color:var(--uxred); }
+/* source strip / callout */
+.ux-strip { display:flex; align-items:center; gap:14px; background:var(--uxpanel); border:1px solid var(--uxline);
+    border-radius:10px; padding:11px 15px; flex-wrap:wrap; margin-bottom:8px; }
+.ux-strip .ok { color:var(--uxgreen); font-weight:700; font-size:13px; }
+.ux-strip .meta { color:var(--uxdim); font-size:12px; }
+.ux-callout { background:rgba(53,237,237,.06); border:1px solid var(--uxline); border-left:3px solid var(--cy);
+    border-radius:8px; padding:10px 14px; font-size:12px; color:var(--uxdim); margin:12px 0; }
+.ux-callout.amber { border-left-color:var(--uxamber); }
+/* client-card look for bordered containers holding a checkbox */
+[data-testid="stVerticalBlockBorderWrapper"]:has(.ux-cardmark) {
+    background:var(--uxpanel); border-radius:10px; transition:border-color .15s; }
+[data-testid="stVerticalBlockBorderWrapper"]:has(.ux-cardmark):hover { border-color:var(--cy); }
+.ux-cname { font-weight:700; font-size:13px; color:#f2f2f2; }
+.ux-cmeta { font-size:11px; color:var(--uxdim); margin-top:2px; }
+.ux-bdg { display:inline-block; font-size:10px; font-weight:700; border-radius:999px; padding:2px 8px; margin-top:6px; }
+.ux-bdg.ok { background:rgba(61,240,61,.14); color:var(--uxgreen); }
+.ux-bdg.no { background:rgba(255,107,107,.14); color:var(--uxred); }
+</style>
+""", unsafe_allow_html=True)
+
+
+def _ux_section(num, title, hint=""):
+    """Consistent numbered section header (whole-app design system)."""
+    _h = f"<span class='hint'>{hint}</span>" if hint else ""
+    st.markdown(f"<div class='ux-shead'><span class='k'>{num}</span>"
+                f"<h2>{title}</h2>{_h}</div>", unsafe_allow_html=True)
+
+
+def _ux_stepper(steps, active_idx, done_before=True):
+    """Horizontal stepper. steps=list of labels; active_idx=0-based active step."""
+    _html = "<div class='ux-stepper'>"
+    for _i, _lbl in enumerate(steps):
+        if _i < active_idx and done_before:
+            _cls, _n = "done", "✓"
+        elif _i == active_idx:
+            _cls, _n = "active", str(_i + 1)
+        else:
+            _cls, _n = "", str(_i + 1)
+        _html += (f"<div class='ux-step {_cls}'><span class='n'>{_n}</span>"
+                  f"<span class='lbl'>{_lbl}</span></div>")
+    _html += "</div>"
+    st.markdown(_html, unsafe_allow_html=True)
+
+
+def _ux_kpis(tiles):
+    """KPI row. tiles=list of (value, label, color) where color in ''/cy/green/amber/red."""
+    _html = "<div class='ux-kpis'>"
+    for _v, _l, _c in tiles:
+        _html += f"<div class='ux-kpi {_c}'><div class='v'>{_v}</div><div class='l'>{_l}</div></div>"
+    _html += "</div>"
+    st.markdown(_html, unsafe_allow_html=True)
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 # SIDEBAR — all configuration (templates, Webflow key, image model)
 # ════════════════════════════════════════════════════════════════════════════════
@@ -2350,36 +2436,6 @@ with st.sidebar:
                 st.rerun()
     else:
         st.caption("No templates saved yet — add one below.")
-
-    # ── Webflow API key (auto-fills from LOCAL keys file when dropdown changes) ──
-    # SECURITY: never load the real key into the visible widget — Streamlit's
-    # password input has a built-in eye/reveal toggle we can't disable, so a
-    # pre-filled field would expose the stored key to anyone at the live app.
-    # The field holds only what the user types; the stored key is used under the hood.
-    _stored_key = _get_client_key(_selected_slug)
-    _prev_slug = st.session_state.get("_prev_client_slug", "")
-    if _selected_slug != _prev_slug:
-        st.session_state["_prev_client_slug"] = _selected_slug
-        st.session_state["a_key"] = ""  # clear typed field when switching clients
-
-    st.markdown("##### 🔑 Webflow API Key")
-    _a_typed_key = st.text_input(
-        "Webflow API Key", type="password", label_visibility="collapsed",
-        placeholder=("✓ Saved — paste to replace" if _stored_key else "Paste key → 💾 Save"),
-        key="a_key",
-    )
-    # Effective key: a freshly typed value wins; otherwise fall back to the stored one.
-    a_api_key = _a_typed_key.strip() or _stored_key
-    if _stored_key and not _a_typed_key.strip():
-        st.caption("🔒 A saved key is in use (hidden). Paste a new key above to replace it.")
-    if st.button("💾 Save key for this client", use_container_width=True, key="save_key_btn"):
-        if _a_typed_key.strip() and _selected_slug:
-            # Saved to the local-only keys file (never committed). On the live app this
-            # persists only for the running container — re-enter after a redeploy.
-            _save_client_key(_selected_slug, _a_typed_key.strip())
-            st.success(f"Saved locally for **{_client_display_name(_selected_slug)}** ✓")
-        elif not _a_typed_key.strip():
-            st.warning("Paste a key in the field first.")
 
     # ── Add a new client template ──
     _new_tpl_url = st.text_input(
@@ -2425,15 +2481,15 @@ st.markdown(
 if not KIE_API_KEY:
     st.error("🔴 **KIE_API_KEY missing** — add it to .env to enable image generation.")
 
-tab_manual, tab_auto, tab_cover = st.tabs(
-    ["📥  Manual Upload", "🚀  Auto Upload to Webflow", "🖼️  Main + Thumbnail Only"])
+tab_manual, tab_batch = st.tabs(
+    ["📥  Manual Upload", "⚡  Auto Batch (Airtable)"])
 
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 1 — Manual Upload (generate content images only — no compositing)
 # ════════════════════════════════════════════════════════════════════════════════
 with tab_manual:
-    st.subheader("Generate Images")
+    _ux_section("✨", "Generate Images", "one blog · content images only")
     st.caption("Paste a blog URL — the app scans the page, generates matching images, then you download and upload them yourself.")
 
     m_url = st.text_input("Blog URL", placeholder="https://www.example.com/blog/your-post",
@@ -2532,7 +2588,7 @@ with tab_manual:
             _ms.update(label="Alt texts ready ✓", state="complete")
 
         # Step 4: Generate images
-        st.subheader("Generated Images")
+        _ux_section("🖼️", "Generated Images", "download the ones you want")
         gen_prog = st.progress(0, text="Starting image generation...")
         results  = []
         img_seeds = [random.randint(10000, 999999) for _ in slots]
@@ -3188,428 +3244,682 @@ def _render_blog_results(blog_state: dict):
                         st.rerun()
 
 
-with tab_auto:
-    st.subheader("Batch Upload to Webflow")
-    if _selected_slug:
-        st.caption(f"Template: **{_client_display_name(_selected_slug)}**  ·  "
-                   "manage templates & API key in the left sidebar ←")
-    else:
-        st.caption("Add a Figma template in the left sidebar ← to get started.")
-
-    a_urls_raw = st.text_area("Blog URLs — one per line",
-                               placeholder="https://www.rtcmanaged.com/blog/endpoint-security\n"
-                                           "https://www.rtcmanaged.com/blog/cloud-backup\n"
-                                           "https://www.rtcmanaged.com/blog/microsoft-365",
-                               height=130, key="a_urls")
-
-    btn_col1, btn_col2 = st.columns([1, 3])
-    with btn_col1:
-        a_test_btn = st.button("🔌 Test Connection", use_container_width=True, key="a_test_btn")
-    with btn_col2:
-        a_btn = st.button("🚀 Generate All Blogs", type="primary",
-                          use_container_width=True, key="a_btn")
-
-    # ── Test Connection ───────────────────────────────────────────────────────
-    if a_test_btn:
-        if not a_api_key.strip():
-            st.error("Enter the Webflow API Key first.")
-        else:
-            with st.spinner("Testing..."):
-                try:
-                    wf = WebflowClient(a_api_key.strip())
-                    sites = wf.get_sites()
-                    st.success("✅ Connected — sites: "
-                               + ", ".join(s.get("displayName", s["id"]) for s in sites))
-                except Exception as e:
-                    st.error(f"Connection failed: {e}")
-
-    # ── Handle pending regen request ─────────────────────────────────────────
-    batch = st.session_state.get("batch", [])
-    if batch and "regen_req" in st.session_state:
-        req = st.session_state.pop("regen_req")
-        target = next((b for b in batch if b["slug"] == req["slug"]), None)
-        if target:
-            _regen_image(target, req["idx"])
-            st.session_state["batch"] = batch
-            st.rerun()
-
-    if batch and "regen_main_thumb_req" in st.session_state:
-        req = st.session_state.pop("regen_main_thumb_req")
-        target = next((b for b in batch if b["slug"] == req["slug"]), None)
-        if target:
-            _regen_main_thumb(target)
-            st.session_state["batch"] = batch
-            st.rerun()
-
-    # ── Generate all blogs ────────────────────────────────────────────────────
-    if a_btn:
-        if not a_api_key.strip():
-            st.error("Enter the Webflow API key.")
-            st.stop()
-        urls = [u.strip() for u in a_urls_raw.strip().splitlines() if u.strip()]
-        if not urls:
-            st.error("Enter at least one blog URL.")
-            st.stop()
-        # Queue the URLs and process them ONE per rerun (block below). The old
-        # all-in-one run took minutes; a mid-run interruption (websocket timeout
-        # or rerun) silently kept only the blogs finished so far — the cause of
-        # "I pasted 4 links but only 1-2 generated".
-        st.session_state["batch"] = []
-        st.session_state["batch_queue"] = urls
-        st.session_state["batch_total"] = len(urls)
-        st.rerun()
-
-    # Process the NEXT queued blog, then rerun for the following one. Short
-    # per-blog runs survive interruptions and auto-resume from the queue.
-    if st.session_state.get("batch_queue"):
-        _queue = st.session_state["batch_queue"]
-        batch = st.session_state.get("batch", [])
-        _total = st.session_state.get("batch_total", len(_queue) + len(batch))
-        _start = _total - len(_queue)
-        for _qi, raw_url in enumerate([_queue[0]]):   # single-item loop: keeps `continue` valid
-          _bi = _start + _qi
-          url = ("https://" + raw_url) if not raw_url.startswith("http") else raw_url
-          st.info(f"⏳ Processing blog {_bi + 1} of {_total} — keep this tab open; "
-                  "the next blog starts automatically.")
-          try:
-
-            # Resolve the real slug via GET (follows redirects) + canonical tag fallback.
-            # HEAD is unreliable on many Webflow sites; GET + r.url is the ground truth.
-            def _resolve_slug(start_url: str) -> tuple[str, str]:
-                """Return (final_url, slug) using GET redirect chain + <link rel=canonical>.
-                Strips query strings / fragments so the slug is a valid folder name."""
-                def _slug_of(u: str) -> str:
-                    u = re.sub(r"[?#].*$", "", u or "").rstrip("/")
-                    return u.split("/")[-1]
-                _orig = re.sub(r"[?#].*$", "", start_url).rstrip("/")
-                try:
-                    _r = requests.get(
-                        start_url, allow_redirects=True,
-                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-                        timeout=15,
-                    )
-                    # If the public page 404s (draft/unpublished/deleted), Webflow's
-                    # 404 page sets canonical to ".../404" — do NOT trust it. Keep the
-                    # original slug so the draft/CMS fallback can still find the post.
-                    if not _r.ok:
-                        return _orig, _slug_of(_orig)
-                    # 1. Check <link rel="canonical"> — most reliable on Webflow
-                    _soup = BeautifulSoup(_r.content, "html.parser")
-                    _canon = _soup.find("link", rel="canonical")
-                    if _canon and _canon.get("href"):
-                        _cu = re.sub(r"[?#].*$", "", _canon["href"]).rstrip("/")
-                        _cslug = _slug_of(_cu)
-                        if _cslug and _cslug.lower() != "404":   # ignore canonical → /404
-                            return _cu, _cslug
-                    # 2. Fall back to the final URL after redirects
-                    _fu = re.sub(r"[?#].*$", "", _r.url).rstrip("/")
-                    _fslug = _slug_of(_fu)
-                    if _fslug and _fslug.lower() != "404":
-                        return _fu, _fslug
-                    # 3. Last resort: the original URL's own slug
-                    return _orig, _slug_of(_orig)
-                except Exception:
-                    return _orig, _slug_of(_orig)
-
-            final_url, slug = _resolve_slug(url)
-            # Sanitize for Windows folder name — invalid chars (? : * | < > ") would crash mkdir
-            safe_slug = re.sub(r"[^A-Za-z0-9_\-]", "-", slug).strip("-") or "blog"
-            output_dir = Path("generated_images") / safe_slug
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            st.markdown(f"---\n### 📝 Blog {_bi + 1} of {_total}: `{slug}`")
-            orig_slug = url.rstrip("/").split("/")[-1]
-            if slug != orig_slug:
-                st.info(f"↪️ Slug resolved: `{orig_slug}` → `{slug}`")
-
-            with st.status("Connecting to Webflow...", expanded=True) as s:
-                try:
-                    wf, site_id, site_name, collection_id, item_id, was_published = \
-                        do_webflow_connect(a_api_key.strip(), None, "", slug, blog_url=url)
-                    matched_client = _match_client(site_name)
-                    if matched_client:
-                        label_suffix = f"  →  template: **{_client_display_name(matched_client)}**"
-                    else:
-                        label_suffix = f"  →  ⚠️ no template for **{site_name}** — paste Figma link above to add it"
-                    s.update(label=f"Webflow connected ✓{label_suffix}", state="complete")
-                except Exception as e:
-                    s.update(label="Webflow connection failed", state="error")
-                    st.error(str(e))
-                    batch.append({"url": url, "slug": slug, "title": slug,
-                                  "results": [], "image_urls": [], "wf_info": {},
-                                  "uploaded": False, "error": str(e)})
-                    continue
-
-            try:
-                title, image_urls, results, _ = run_workflow(
-                    url, output_dir,
-                    wf_fallback=wf,
-                    collection_id_fallback=collection_id,
-                    item_id_fallback=item_id,
-                    client_slug=matched_client,
-                )
-            except Exception as _wf_err:
-                st.error(f"⛔ Generation failed for `{slug}`: {_wf_err}")
-                batch.append({"url": url, "slug": slug, "title": slug,
-                              "results": [], "image_urls": [], "wf_info": {},
-                              "uploaded": False, "error": str(_wf_err)})
-                st.session_state["batch"] = batch
-                continue
-
-            # ── Composite main image + thumbnail ──────────────────────────────
-            main_b, thumb_b = None, None
-            ok_r = [r for r in results if r["status"] == "ok"]
-            if ok_r:
-                with st.status("Generating cover photo & compositing...", expanded=True) as s:
-                    try:
-                        photo_prompts = [r["prompt"] for r in ok_r if r.get("type") != "infographic"]
-                        cover_bg = _generate_cover_bg(title, photo_prompts if photo_prompts else [title])
-                        m_logo, t_logo = ensure_figma_assets_for_client(matched_client)
-                        m_tpl, t_tpl  = make_tpls(matched_client, m_logo, t_logo)
-                        main_b  = composite_template(cover_bg, title, m_tpl)
-                        thumb_b = composite_template(cover_bg, title, t_tpl)
-                        s.update(label="Main + thumbnail ready ✓", state="complete")
-                    except Exception as _ce:
-                        st.error(f"⛔ Compositing error: {_ce}")
-                        s.update(label="Compositing failed", state="error")
-
-            batch.append({
-                "url": url, "slug": slug, "title": title,
-                "results": results, "image_urls": image_urls,
-                "main_bytes": main_b, "thumb_bytes": thumb_b,
-                "client": matched_client,
-                "wf_info": {"site_id": site_id, "collection_id": collection_id,
-                            "item_id": item_id, "was_published": was_published,
-                            "site_name": site_name},
-                "uploaded": False,
-            })
-            st.session_state["batch"] = batch
-          except Exception as _loop_err:
-            # Catch-all: one bad URL must never halt the rest of the batch
-            st.error(f"⛔ Unexpected error on `{url}` — skipped, continuing batch: {_loop_err}")
-            batch.append({"url": url, "slug": url.rstrip('/').split('/')[-1],
-                          "title": url, "results": [], "image_urls": [],
-                          "wf_info": {}, "uploaded": False, "error": str(_loop_err)})
-            st.session_state["batch"] = batch
-            continue
-
-        # Advance the queue and rerun to process the next blog (or finish).
-        st.session_state["batch"] = batch
-        st.session_state["batch_queue"] = _queue[1:]
-        if st.session_state["batch_queue"]:
-            st.rerun()
-        else:
-            st.session_state.pop("batch_queue", None)
-            st.success(f"✅ All {_total} blogs processed — review below.")
-
-    # ── Review results (grouped per blog) ────────────────────────────────────
-    batch = st.session_state.get("batch", [])
-    if batch:
-        st.divider()
-        st.subheader("Review & Upload")
-
-        for blog_state in batch:
-            label = ("✅ " if blog_state.get("uploaded") else
-                     "❌ " if blog_state.get("error") else "📝 ")
-            with st.expander(f"{label}{blog_state['slug']} — {blog_state.get('title', '')}",
-                             expanded=not blog_state.get("uploaded")):
-                if blog_state.get("error"):
-                    st.error(f"Failed to process: {blog_state['error']}")
-                elif blog_state["results"]:
-                    _render_blog_results(blog_state)
-                else:
-                    st.warning("No images generated.")
-
-        # ── Single Upload All button ──────────────────────────────────────────
-        pending = [b for b in batch if not b.get("uploaded") and not b.get("error") and b["results"]]
-        if pending:
-            st.divider()
-            total_imgs = sum(len([r for r in b["results"] if r["status"] == "ok"]) for b in pending)
-            if st.button(
-                f"🚀 Upload All to Webflow — {len(pending)} blog(s), {total_imgs} image(s)",
-                type="primary", use_container_width=True, key="upload_all_btn"
-            ):
-                if not a_api_key.strip():
-                    st.error("Enter the Webflow API key above.")
-                else:
-                    for blog_state in pending:
-                        slug = blog_state["slug"]
-                        st.markdown(f"#### Uploading `{slug}`...")
-                        with st.status("Connecting to Webflow...", expanded=True) as s:
-                            try:
-                                wf, site_id, site_name, collection_id, item_id, was_published = \
-                                    do_webflow_connect(a_api_key.strip(),
-                                                       None,
-                                                       blog_state.get("client_name", ""), slug,
-                                                       blog_url=blog_state.get("url", ""))
-                                s.update(label="Connected ✓", state="complete")
-                            except Exception as e:
-                                s.update(label="Connection failed", state="error")
-                                st.error(f"`{slug}` — {e}")
-                                continue
-                        ok_results = [r for r in blog_state["results"] if r["status"] == "ok"]
-                        do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
-                                          blog_state["image_urls"], ok_results,
-                                          site_name, blog_state.get("client_name", ""),
-                                          main_bytes=blog_state.get("main_bytes"),
-                                          thumb_bytes=blog_state.get("thumb_bytes"),
-                                          blog_title=blog_state.get("title", ""))
-                        blog_state["uploaded"] = True
-                    st.session_state["batch"] = batch
-                    st.rerun()
-        elif any(b.get("uploaded") for b in batch):
-            st.success("✅ All blogs uploaded to Webflow.")
-
-
 # ════════════════════════════════════════════════════════════════════════════════
-#  TAB 3 — Main + Thumbnail Only (cover composites; no body images / infographics)
+# TAB 2 — Auto Batch (Airtable → Webflow)
+# Reads Blog Keyword + Clients info straight from Airtable (CSV in 1/ is a fallback),
+# lets the user pick clients, generates per client, reviews, uploads to Webflow, then
+# marks ONLY that row's "Image status" = Done in Airtable after a successful upload.
 # ════════════════════════════════════════════════════════════════════════════════
-with tab_cover:
-    st.subheader("Main + Thumbnail Only")
-    if _selected_slug:
-        st.caption(f"Template: **{_client_display_name(_selected_slug)}**  ·  "
-                   "manage templates & API key in the left sidebar ←")
-    else:
-        st.caption("Add a Figma template in the left sidebar ← to get started.")
-    st.caption("Generates ONLY the featured (main) image + thumbnail — no inner-page "
-               "photos or infographics. Same Webflow flow as Auto Upload.")
+BATCH_DATA_DIR = Path("1")
 
-    c_urls_raw = st.text_area("Blog URLs — one per line",
-                              placeholder="https://www.example.com/blog/post-one\n"
-                                          "https://www.example.com/blog/post-two",
-                              height=130, key="c_urls")
-    c_btn = st.button("🖼️ Generate Main + Thumbnail", type="primary",
-                      use_container_width=True, key="c_btn")
 
-    # ── Generate ──────────────────────────────────────────────────────────────
-    if c_btn:
-        if not a_api_key.strip():
-            st.error("Enter the Webflow API key in the sidebar ←")
-            st.stop()
-        c_urls = [u.strip() for u in c_urls_raw.strip().splitlines() if u.strip()]
-        if not c_urls:
-            st.error("Enter at least one blog URL.")
-            st.stop()
+def _batch_norm(s: str) -> str:
+    """Normalise a client name for matching: lowercase, alphanumeric only.
+    'Capstone Works, Inc.' -> 'capstoneworksinc'."""
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
-        cover_batch = []
-        for _ci, raw_url in enumerate(c_urls):
-          url = ("https://" + raw_url) if not raw_url.startswith("http") else raw_url
-          try:
-            final_url, slug = _resolve_blog_slug(url)
-            st.markdown(f"---\n### 📝 Blog {_ci + 1} of {len(c_urls)}: `{slug}`")
-            orig_slug = url.rstrip("/").split("/")[-1]
-            if slug != orig_slug:
-                st.info(f"↪️ Slug resolved: `{orig_slug}` → `{slug}`")
 
-            with st.status("Connecting to Webflow...", expanded=True) as s:
-                try:
-                    wf, site_id, site_name, collection_id, item_id, was_published = \
-                        do_webflow_connect(a_api_key.strip(), None, "", slug, blog_url=url)
-                    matched_client = _match_client(site_name)
-                    _suffix = (f"  →  template: **{_client_display_name(matched_client)}**"
-                               if matched_client
-                               else f"  →  ⚠️ no template for **{site_name}** — add it in the sidebar")
-                    s.update(label=f"Webflow connected ✓{_suffix}", state="complete")
-                except Exception as e:
-                    s.update(label="Webflow connection failed", state="error")
-                    st.error(str(e))
-                    cover_batch.append({"url": url, "slug": slug, "title": slug,
-                                        "main_bytes": None, "thumb_bytes": None,
-                                        "wf_info": {}, "uploaded": False, "error": str(e)})
-                    st.session_state["cover_batch"] = cover_batch
-                    continue
+def _batch_read_csv_rows(text: str) -> list:
+    import csv, io
+    try:
+        return list(csv.DictReader(io.StringIO(text)))
+    except Exception:
+        return []
 
-            title = _fetch_cover_title(url, slug, wf, collection_id, item_id)
-            st.write(f"**Title:** {title}")
 
-            main_b, thumb_b = None, None
-            with st.status("Generating cover photo & compositing...", expanded=True) as s:
-                try:
-                    cover_bg = _generate_cover_bg(title, [title])
-                    m_logo, t_logo = ensure_figma_assets_for_client(matched_client)
-                    m_tpl, t_tpl = make_tpls(matched_client, m_logo, t_logo)
-                    main_b  = composite_template(cover_bg, title, m_tpl)
-                    thumb_b = composite_template(cover_bg, title, t_tpl)
-                    s.update(label="Main + thumbnail ready ✓", state="complete")
-                except Exception as _ce:
-                    st.error(f"⛔ Compositing error: {_ce}")
-                    s.update(label="Compositing failed", state="error")
+def _batch_classify(fieldnames) -> str:
+    """Decide whether a CSV is the Blog Keyword sheet or the Clients info sheet."""
+    fs = {(f or "").strip().lower() for f in (fieldnames or [])}
+    if "webflow_token" in fs or "siteid" in fs:
+        return "clients"
+    if "image status" in fs or "final blog url" in fs or "primary keyword" in fs:
+        return "blog"
+    return "unknown"
 
-            cover_batch.append({
-                "url": url, "slug": slug, "title": title,
-                "main_bytes": main_b, "thumb_bytes": thumb_b,
-                "client": matched_client,
-                "wf_info": {"site_id": site_id, "collection_id": collection_id,
-                            "item_id": item_id, "was_published": was_published,
-                            "site_name": site_name},
-                "uploaded": False,
-            })
-            st.session_state["cover_batch"] = cover_batch
-          except Exception as _loop_err:
-            st.error(f"⛔ Unexpected error on `{url}` — skipped, continuing: {_loop_err}")
-            cover_batch.append({"url": url, "slug": url.rstrip('/').split('/')[-1],
-                                "title": url, "main_bytes": None, "thumb_bytes": None,
-                                "wf_info": {}, "uploaded": False, "error": str(_loop_err)})
-            st.session_state["cover_batch"] = cover_batch
+
+def _batch_autoload():
+    """Auto-detect the two CSVs sitting in the 1/ folder. Returns (blog_rows, clients_rows)."""
+    blog, clients = [], []
+    if not BATCH_DATA_DIR.exists():
+        return blog, clients
+    for p in sorted(BATCH_DATA_DIR.glob("*.csv")):
+        try:
+            rows = _batch_read_csv_rows(p.read_text(encoding="utf-8-sig"))
+        except Exception:
             continue
+        if not rows:
+            continue
+        kind = _batch_classify(rows[0].keys())
+        if kind == "clients" and not clients:
+            clients = rows
+        elif kind == "blog" and not blog:
+            blog = rows
+    return blog, clients
 
-        st.session_state["cover_batch"] = cover_batch
 
-    # ── Review & Upload ─────────────────────────────────────────────────────────
-    cover_batch = st.session_state.get("cover_batch", [])
-    if cover_batch:
-        st.divider()
-        st.subheader("Review & Upload")
-        for bs in cover_batch:
-            label = ("✅ " if bs.get("uploaded") else
-                     "❌ " if bs.get("error") else "🖼️ ")
-            with st.expander(f"{label}{bs['slug']} — {bs.get('title', '')}",
-                             expanded=not bs.get("uploaded")):
-                if bs.get("error"):
-                    st.error(f"Failed to process: {bs['error']}")
-                elif bs.get("main_bytes") or bs.get("thumb_bytes"):
-                    cols = st.columns(2)
-                    if bs.get("main_bytes"):
-                        cols[0].image(bs["main_bytes"], caption="Main image", use_container_width=True)
-                        cols[0].download_button("⬇️ Main", bs["main_bytes"],
-                                                file_name=f"{bs['slug']}_main.png",
-                                                key=f"c_dlm_{bs['slug']}")
-                    if bs.get("thumb_bytes"):
-                        cols[1].image(bs["thumb_bytes"], caption="Thumbnail", use_container_width=True)
-                        cols[1].download_button("⬇️ Thumbnail", bs["thumb_bytes"],
-                                                file_name=f"{bs['slug']}_thumb.png",
-                                                key=f"c_dlt_{bs['slug']}")
-                else:
-                    st.warning("No images generated.")
+# ── Airtable direct read/write (replaces the CSV drop when AIRTABLE_TOKEN is set) ──
+_AT_BASE = "app0baCBwviPDXArm"
+_AT_TBL_BLOG = "tblJ1ZtHYnb9B5BPq"       # Blog Keyword
+_AT_TBL_CLIENTS = "tblaoZfBy5Ts9R59D"    # Clients info
+_AT_BLOG_FIELDS = ["Client name", "Final blog url", "Image status", "Primary keyword",
+                   "Publishing Date", "Scheduled Generation Date", "Month"]
 
-        pending = [b for b in cover_batch if not b.get("uploaded") and not b.get("error")
-                   and (b.get("main_bytes") or b.get("thumb_bytes"))]
-        if pending:
-            st.divider()
-            if st.button(f"🚀 Upload All to Webflow — {len(pending)} blog(s)",
-                         type="primary", use_container_width=True, key="cover_upload_all_btn"):
-                if not a_api_key.strip():
-                    st.error("Enter the Webflow API key in the sidebar ←")
-                else:
-                    for bs in pending:
-                        slug = bs["slug"]
-                        st.markdown(f"#### Uploading `{slug}`...")
-                        with st.status("Connecting to Webflow...", expanded=True) as s:
-                            try:
-                                wf, site_id, site_name, collection_id, item_id, was_published = \
-                                    do_webflow_connect(a_api_key.strip(), None, "", slug,
-                                                       blog_url=bs.get("url", ""))
-                                s.update(label="Connected ✓", state="complete")
-                            except Exception as e:
-                                s.update(label="Connection failed", state="error")
-                                st.error(f"`{slug}` — {e}")
-                                continue
-                        do_webflow_upload_cover(
-                            wf, site_id, collection_id, item_id, was_published,
-                            main_bytes=bs.get("main_bytes"), thumb_bytes=bs.get("thumb_bytes"),
-                            blog_title=bs.get("title", ""), client_name="", site_name=site_name)
-                        bs["uploaded"] = True
-                    st.session_state["cover_batch"] = cover_batch
+
+def _airtable_token() -> str:
+    return (os.getenv("AIRTABLE_TOKEN") or "").strip()
+
+
+def _airtable_fetch(table_id, fields=None):
+    """Read ALL records from a table (paginated). Returns list of {id, fields}."""
+    import urllib.request
+    tok = _airtable_token()
+    out, offset = [], None
+    base_url = f"https://api.airtable.com/v0/{_AT_BASE}/{table_id}"
+    while True:
+        params = [("pageSize", "100")]
+        if offset:
+            params.append(("offset", offset))
+        for f in (fields or []):
+            params.append(("fields[]", f))
+        url = base_url + "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+        data = json.load(urllib.request.urlopen(req, timeout=30))
+        out.extend(data.get("records", []))
+        offset = data.get("offset")
+        if not offset:
+            break
+    return out
+
+
+@st.cache_data(ttl=600, show_spinner="📡 Reading Airtable…")
+def _airtable_load():
+    """Load blogs + clients straight from Airtable, shaped exactly like the CSV rows so
+    all downstream code works unchanged. 'Client name' in Blog Keyword is a linked-record
+    field (returns record ids), so it is resolved back to the client name via Clients info.
+    Returns (blog_rows, clients_rows), or (None, None) if no token / on any error."""
+    if not _airtable_token():
+        return None, None
+    try:
+        clients_rows, id_to_name = [], {}
+        for r in _airtable_fetch(_AT_TBL_CLIENTS):
+            f = {k: (v.strip() if isinstance(v, str) else v)
+                 for k, v in r.get("fields", {}).items()}
+            f["Record ID"] = r["id"]
+            clients_rows.append(f)
+            nm = f.get("Client name")
+            if isinstance(nm, str) and nm:
+                id_to_name[r["id"]] = nm
+
+        blog_rows = []
+        for r in _airtable_fetch(_AT_TBL_BLOG, _AT_BLOG_FIELDS):
+            src = r.get("fields", {})
+            row = {k: (v.strip() if isinstance(v, str) else v) for k, v in src.items()}
+            cn = src.get("Client name")
+            if isinstance(cn, list):  # linked records -> resolve to a name string
+                row["Client name"] = next(
+                    (id_to_name.get(x, "") for x in cn if id_to_name.get(x)), "")
+            row["Record ID"] = r["id"]  # real Airtable record id (used to mark Done)
+            blog_rows.append(row)
+        return blog_rows, clients_rows
+    except Exception:
+        return None, None
+
+
+def _airtable_mark_done(record_id: str):
+    """STRICT WRITE: set ONLY {'Image status': 'Done'} on ONE Blog Keyword record.
+    Never writes any other field, row, table, or value. Returns (ok, error_str)."""
+    import urllib.request
+    if not _airtable_token():
+        return False, "no AIRTABLE_TOKEN"
+    if not record_id or not str(record_id).startswith("rec"):
+        return False, "invalid record id"
+    url = f"https://api.airtable.com/v0/{_AT_BASE}/{_AT_TBL_BLOG}/{record_id}"
+    body = json.dumps({"fields": {"Image status": "Done"}}).encode()
+    req = urllib.request.Request(url, data=body, method="PATCH",
+                                 headers={"Authorization": f"Bearer {_airtable_token()}",
+                                          "Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=30)
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def _batch_clients_index(clients_rows) -> dict:
+    """Map normalised client name -> Clients-info row."""
+    idx = {}
+    for r in clients_rows:
+        nm = _batch_norm(r.get("Client name", ""))
+        if nm:
+            idx[nm] = r
+    return idx
+
+
+def _batch_resolve_creds(client_name: str, clients_idx: dict) -> dict:
+    """Resolve a client's Webflow credentials.
+    Order: Clients info CSV (token+siteId) -> local client_keys.json fallback."""
+    row = clients_idx.get(_batch_norm(client_name))
+    if row:
+        tok = (row.get("webflow_token") or "").strip()
+        site = (row.get("siteId") or "").strip()
+        if tok and site:
+            return {
+                "source": "Clients info", "ok": True, "reason": "",
+                "token": tok, "site_id": site,
+                "collection_id": (row.get("collectionId") or "").strip(),
+                "author_id": (row.get("CMS Item ID of the Author") or "").strip(),
+                "category_id": (row.get("Blog Category Collection ID") or "").strip(),
+            }
+    # Fallback: local, gitignored client_keys.json (e.g. Capstone, which has no Airtable row)
+    slug = _match_client(client_name) or _batch_norm(client_name)
+    key = _get_client_key(slug)
+    if key:
+        return {
+            "source": "local keys", "ok": True,
+            "reason": "from local client_keys.json (no siteId in Airtable — resolved via token)",
+            "token": key, "site_id": "", "collection_id": "",
+            "author_id": "", "category_id": "",
+        }
+    return {"source": "none", "ok": False,
+            "reason": "no webflow_token in Clients info and no local key",
+            "token": "", "site_id": "", "collection_id": "", "author_id": "", "category_id": ""}
+
+
+_BATCH_MONTHS = ["January", "February", "March", "April", "May", "June",
+                 "July", "August", "September", "October", "November", "December"]
+
+
+def _batch_period(row):
+    """Best-effort (year, month) for a blog row, from the most reliable date available:
+    Scheduled Generation Date -> Publishing Date -> free-text Month column. The Month
+    column is unreliable (often no year, or blank on rows that DO have a real date), so
+    the parsed date fields win. year may be None if only a bare month name is found;
+    returns None if nothing parses."""
+    s = (row.get("Scheduled Generation Date") or "").strip()
+    m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if m:
+        y, mo = int(m.group(1)), int(m.group(2))
+        if 1 <= mo <= 12:
+            return (y, mo)
+    s = (row.get("Publishing Date") or "").strip()
+    m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)          # CSV: M/D/YYYY
+    if m:
+        mo, y = int(m.group(1)), int(m.group(3))
+        if 1 <= mo <= 12:
+            return (y, mo)
+    m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)          # Airtable: YYYY-MM-DD
+    if m:
+        y, mo = int(m.group(1)), int(m.group(2))
+        if 1 <= mo <= 12:
+            return (y, mo)
+    s = (row.get("Month") or "").strip().lower()
+    ym = re.search(r"(?:19|20)\d{2}", s)
+    for i, nm in enumerate(_BATCH_MONTHS, 1):
+        if nm.lower() in s:
+            return (int(ym.group(0)) if ym else None, i)
+    return None
+
+
+def _batch_period_label(row) -> str:
+    p = _batch_period(row)
+    if not p:
+        return "— no date —"
+    y, mo = p
+    return f"{_BATCH_MONTHS[mo - 1]} {y}" if y else f"{_BATCH_MONTHS[mo - 1]} (no year)"
+
+
+def _batch_period_sortkey(label: str):
+    for i, nm in enumerate(_BATCH_MONTHS, 1):
+        if label.startswith(nm):
+            ys = re.search(r"(?:19|20)\d{2}", label)
+            return (int(ys.group(0)) if ys else 9999, i)
+    return (99999, 99)
+
+
+def _batch_slug(url: str) -> str:
+    """Last path segment of a blog URL (the CMS slug)."""
+    u = re.sub(r"[?#].*$", "", (url or "").strip()).rstrip("/")
+    return u.split("/")[-1] if u else ""
+
+
+def _batch_token_alive(token: str) -> bool:
+    """Read-only liveness check for a Webflow token (401/revoked -> False)."""
+    if not token:
+        return False
+    try:
+        WebflowClient(token).get_sites()
+        return True
+    except Exception:
+        return False
+
+
+def _batch_redo_inner(entry: dict, i: int):
+    """Regenerate a single inner/content image in-place (same size), re-run QA."""
+    r = entry["results"][i]
+    try:
+        w, h = PILImage.open(io.BytesIO(r["bytes"])).size
+    except Exception:
+        w, h = DEFAULT_WIDTH, DEFAULT_HEIGHT
+    new_prompt = generate_prompt_variation(r.get("prompt", ""), entry.get("title", "")) or r.get("prompt", "")
+    raw = _dispatch_image_gen(new_prompt, i + 1, w, h)
+    is_ok, reason = check_anatomy(raw)
+    opt_bytes, opt_ext = optimize_image(raw, max_kb=200)
+    r["bytes"] = opt_bytes
+    r["ext"] = opt_ext
+    r["prompt"] = new_prompt
+    r["defect_reason"] = "" if is_ok else reason
+    r["status"] = "ok"
+
+
+def _batch_redo_cover(entry: dict):
+    """Regenerate the cover photo and re-composite Main + Thumbnail (they share one cover)."""
+    okr = [r for r in entry.get("results", []) if r.get("status") == "ok"]
+    pp = [r["prompt"] for r in okr if r.get("type") != "infographic"]
+    cover = _generate_cover_bg(entry.get("title", ""), pp or [entry.get("title", "")])
+    ml, tl = ensure_figma_assets_for_client(entry.get("template", ""))
+    mtpl, ttpl = make_tpls(entry.get("template", ""), ml, tl)
+    entry["main_bytes"] = composite_template(cover, entry.get("title", ""), mtpl)
+    entry["thumb_bytes"] = composite_template(cover, entry.get("title", ""), ttpl)
+
+
+def _batch_upload_entry(entry: dict):
+    """Upload one held blog to its client's Webflow (reuses the proven do_webflow_upload).
+    Uploads whatever was generated 1:1 — inner images to the body, plus Main/Thumb.
+    Redo the bad ones BEFORE uploading; there is no per-image approve toggle."""
+    info = entry["wf_info"]
+    wf = WebflowClient(entry.get("token", ""))
+    okr = [r for r in entry.get("results", []) if r.get("status") == "ok"]
+    do_webflow_upload(
+        wf, info["site_id"], info["collection_id"], info["item_id"], info["was_published"],
+        entry.get("image_urls", []), okr, info.get("site_name", ""), entry.get("client", ""),
+        main_bytes=entry.get("main_bytes"),
+        thumb_bytes=entry.get("thumb_bytes"),
+        blog_title=entry.get("title", ""))
+    entry["uploaded"] = True
+
+
+with tab_batch:
+    st.markdown("#### ⚡ Auto Batch — Airtable → Webflow")
+
+    # State-aware stepper
+    _res_now = st.session_state.get("abatch_results", {})
+    _has_done = any(v.get("status") == "done" for v in _res_now.values())
+    _any_pick = any(str(_k).startswith("batch_pick::") and st.session_state.get(_k)
+                    for _k in list(st.session_state.keys()))
+    _all_up = _has_done and all(v.get("uploaded") for v in _res_now.values()
+                                if v.get("status") == "done")
+    _active_step = 4 if _all_up else 3 if _has_done else 2 if _any_pick else 1
+    _ux_stepper(["Source", "Pili clients", "Generate", "Review", "Upload"], _active_step)
+
+    # ── STEP 1: Data source ──
+    _ux_section("1", "Data source", "🔒 read-only to Airtable")
+    # Read straight from Airtable; silently fall back to CSVs in the 1/ folder if the
+    # token is missing or the API is unreachable, so the tab never hard-fails.
+    _at_blog, _at_clients = _airtable_load()
+    if _at_blog is not None:
+        _blog_rows, _clients_rows, _src_from = _at_blog, (_at_clients or []), "Airtable"
+    else:
+        _blog_rows, _clients_rows = _batch_autoload()
+        _src_from = "1/ CSV (fallback)"
+
+    _src_c1, _src_c2 = st.columns([5, 1])
+    with _src_c1:
+        if _blog_rows:
+            _conn = ("✓ Connected to Airtable" if _src_from == "Airtable"
+                     else "⚠️ Airtable not connected — using 1/ CSV fallback")
+            st.markdown(
+                f"<div class='ux-strip'><span class='ok'>{_conn}</span>"
+                f"<span class='meta'>Blog Keyword: <b>{len(_blog_rows)}</b> · "
+                f"Clients info: <b>{len(_clients_rows)}</b> · source: {_src_from}</span></div>",
+                unsafe_allow_html=True)
+    with _src_c2:
+        if st.button("🔄 Refresh", use_container_width=True,
+                     help="Re-read the latest rows from Airtable"):
+            _airtable_load.clear()
+            st.rerun()
+
+    if not _blog_rows:
+        st.error("No data. Set **AIRTABLE_TOKEN** in `.env` (or drop the CSVs in the `1/` "
+                 "folder as a fallback).")
+    else:
+        # Rows that still need images (any month)
+        _review_all = [r for r in _blog_rows
+                       if (r.get("Image status") or "").strip().lower() == "review needed"]
+
+        # ── Month / Year filter — derived from the most reliable DATE field (not the messy
+        #    free-text "Month" column), so ANY month+year that has review-needed rows appears,
+        #    including ones whose "Month" cell is blank (e.g. January 2026). ──
+        _ALL_MONTHS = "— All months/years —"
+        _period_count = {}
+        for r in _review_all:
+            _lbl = _batch_period_label(r)
+            _period_count[_lbl] = _period_count.get(_lbl, 0) + 1
+        _opt_to_label = {_ALL_MONTHS: None}
+        _month_options = [_ALL_MONTHS]
+        for _lbl in sorted(_period_count, key=_batch_period_sortkey):
+            _disp = f"{_lbl}  ({_period_count[_lbl]})"
+            _opt_to_label[_disp] = _lbl
+            _month_options.append(_disp)
+        # Guard: drop a stale selection (e.g. after loading a different CSV) so selectbox won't crash
+        if st.session_state.get("batch_month") not in _month_options:
+            st.session_state.pop("batch_month", None)
+        _month_pick = st.selectbox("📅 Month / Year", _month_options, key="batch_month")
+        _picked_label = _opt_to_label.get(_month_pick)
+        _review = ([r for r in _review_all if _batch_period_label(r) == _picked_label]
+                   if _picked_label else _review_all)
+
+        _groups = {}
+        for r in _review:
+            _cn = (r.get("Client name") or "").strip()
+            if _cn:
+                _groups.setdefault(_cn, []).append(r)
+
+        _clients_idx = _batch_clients_index(_clients_rows)
+        _client_creds = {cn: _batch_resolve_creds(cn, _clients_idx) for cn in _groups}
+        _ready_clients = [cn for cn in _groups if _client_creds[cn]["ok"]]
+
+        if not _review:
+            st.success("No _Review needed_ rows in this CSV/month — nothing to generate. 🎉")
+        else:
+            # ── STEP 2: Pick clients ──
+            _ux_section("2", "Pick batch clients")
+            _ux_kpis([
+                (len(_review), "Blogs · review needed", "cy"),
+                (len(_groups), "Clients", ""),
+                (len(_ready_clients), "✅ Ready", "green"),
+                (len(_groups) - len(_ready_clients), "⚠️ No creds", "amber"),
+            ])
+
+            # Quick actions
+            _qa1, _qa2, _ = st.columns([1.5, 1, 4])
+            with _qa1:
+                if st.button("✓ Select all ready", disabled=not _ready_clients,
+                             use_container_width=True):
+                    for _cn in _ready_clients:
+                        st.session_state[f"batch_pick::{_cn}"] = True
                     st.rerun()
-        elif any(b.get("uploaded") for b in cover_batch):
-            st.success("✅ All main images + thumbnails uploaded to Webflow.")
+            with _qa2:
+                if st.button("✕ Clear", use_container_width=True):
+                    for _cn in _groups:
+                        st.session_state[f"batch_pick::{_cn}"] = False
+                    st.rerun()
+
+            # ── Client cards (checkbox grid) — merges old table + multiselect + queue ──
+            _pick_keys = {}
+            _card_cols = st.columns(3)
+            for _idx, (_cn, _items) in enumerate(_groups.items()):
+                _cr = _client_creds[_cn]
+                _pk = f"batch_pick::{_cn}"
+                _pick_keys[_cn] = _pk
+                with _card_cols[_idx % 3]:
+                    with st.container(border=True):
+                        st.markdown("<span class='ux-cardmark'></span>",
+                                    unsafe_allow_html=True)
+                        if _cr["ok"]:
+                            st.checkbox(f"**{_cn}**", key=_pk)
+                            st.markdown(
+                                f"<div class='ux-cmeta'>{len(_items)} blog · {_cr['source']}</div>"
+                                f"<span class='ux-bdg ok'>✅ ready</span>",
+                                unsafe_allow_html=True)
+                        else:
+                            st.checkbox(f"**{_cn}**", value=False, disabled=True,
+                                        key=_pk + "::disabled")
+                            st.markdown(
+                                f"<div class='ux-cmeta'>{len(_items)} blog</div>"
+                                f"<span class='ux-bdg no'>❌ {_cr['reason']}</span>",
+                                unsafe_allow_html=True)
+            _picked = [cn for cn in _ready_clients
+                       if st.session_state.get(_pick_keys[cn], False)]
+
+            # ── Queue (compact) for the picked clients ──
+            if _picked:
+                _total_blogs = sum(len(_groups[cn]) for cn in _picked)
+                st.markdown(
+                    f"<div class='ux-strip'><span class='ok'>▶ {len(_picked)} client · "
+                    f"{_total_blogs} blog naka-queue</span></div>", unsafe_allow_html=True)
+                with st.expander(f"View queue ({_total_blogs} blogs)"):
+                    for _cn in _picked:
+                        _cr = _client_creds[_cn]
+                        st.markdown(f"**🏢 {_cn}** — {len(_groups[_cn])} blog · creds: `{_cr['source']}`")
+                        for _r in _groups[_cn]:
+                            _url = (_r.get("Final blog url") or "").strip().split()[0] if (_r.get("Final blog url") or "").strip() else ""
+                            _pub = (_r.get("Publishing Date") or "").strip()
+                            _kw = (_r.get("Primary keyword") or "").strip()
+                            _line = f"- {_url or '⚠️ no Final blog url'}"
+                            if _kw:
+                                _line += f"  ·  _{_kw}_"
+                            if _pub:
+                                _line += f"  ·  publish: **{_pub}**"
+                            st.markdown(_line)
+
+                # ── Generate: per-client, resume-safe, NO upload yet ──
+                _store = st.session_state.setdefault("abatch_results", {})
+
+                def _rid(_r):
+                    return ((_r.get("Record ID") or "").strip()
+                            or (_r.get("Final blog url") or "").strip())
+
+                _pending = [(cn, r) for cn in _picked for r in _groups[cn]
+                            if _store.get(_rid(r), {}).get("status") != "done"]
+                _done_already = _total_blogs - len(_pending)
+
+                _ux_section("3", "Generate",
+                            "Main + Thumbnail + inner · auto-QA · no upload")
+                _bc1, _bc2 = st.columns([2, 1])
+                with _bc1:
+                    _go = st.button(f"⚡ Generate selected ({len(_pending)} remaining)",
+                                    type="primary", disabled=not _pending,
+                                    use_container_width=True)
+                with _bc2:
+                    if st.button("🗑️ Clear results", use_container_width=True):
+                        st.session_state["abatch_results"] = {}
+                        st.rerun()
+                if _done_already:
+                    st.caption(f"🔁 Resume-safe: {_done_already}/{_total_blogs} already done — will skip.")
+
+                if _go:
+                    # Pre-flight: read-only token liveness per picked client
+                    _dead = set()
+                    with st.status("Pre-flight: checking tokens…", expanded=True) as _ps:
+                        for _cn in _picked:
+                            if _batch_token_alive(_client_creds[_cn]["token"]):
+                                st.write(f"✅ {_cn}: token OK")
+                            else:
+                                _dead.add(_cn)
+                                st.write(f"❌ {_cn}: dead/invalid token (401) — skipping")
+                        _ps.update(label="Pre-flight done ✓", state="complete")
+
+                    _prog = st.progress(0.0, text="Preparing…")
+                    for _i, (_cn, _r) in enumerate(_pending):
+                        _rec = _rid(_r)
+                        _url = ((_r.get("Final blog url") or "").strip().split() or [""])[0]
+                        _creds = _client_creds[_cn]
+                        _prog.progress(_i / max(len(_pending), 1),
+                                       text=f"{_cn} — {_i + 1}/{len(_pending)}")
+
+                        if _cn in _dead:
+                            _store[_rec] = {"client": _cn, "url": _url, "status": "failed",
+                                            "error": "dead/invalid Webflow token (401)"}
+                            st.session_state["abatch_results"] = _store
+                            continue
+                        if not _url:
+                            _store[_rec] = {"client": _cn, "url": "", "status": "failed",
+                                            "error": "no Final blog url"}
+                            st.session_state["abatch_results"] = _store
+                            continue
+
+                        _slug = _batch_slug(_url)
+                        _safe = re.sub(r"[^A-Za-z0-9_\-]", "-", _slug).strip("-") or "blog"
+                        _odir = Path("generated_images") / _safe
+                        _odir.mkdir(parents=True, exist_ok=True)
+                        st.markdown(f"---\n#### 🏢 {_cn} · `{_slug}`")
+
+                        try:
+                            with st.status("Connecting to Webflow…", expanded=False) as _cs:
+                                wf, site_id, site_name, collection_id, item_id, was_pub = \
+                                    do_webflow_connect(_creds["token"], None, _cn, _slug, blog_url=_url)
+                                _matched = _match_client(site_name)
+                                _cs.update(label=f"Connected ✓ → {site_name}", state="complete")
+
+                            _title, _img_urls, _results, _ = run_workflow(
+                                _url, _odir, wf_fallback=wf,
+                                collection_id_fallback=collection_id,
+                                item_id_fallback=item_id, client_slug=_matched)
+
+                            _main_b, _thumb_b = None, None
+                            _okr = [r for r in _results if r["status"] == "ok"]
+                            if _okr:
+                                with st.status("Cover + main/thumbnail…", expanded=False) as _cs2:
+                                    try:
+                                        _pp = [r["prompt"] for r in _okr if r.get("type") != "infographic"]
+                                        _cover = _generate_cover_bg(_title, _pp or [_title])
+                                        _ml, _tl = ensure_figma_assets_for_client(_matched)
+                                        _mtpl, _ttpl = make_tpls(_matched, _ml, _tl)
+                                        _main_b = composite_template(_cover, _title, _mtpl)
+                                        _thumb_b = composite_template(_cover, _title, _ttpl)
+                                        _cs2.update(label="Main + thumbnail ✓", state="complete")
+                                    except Exception as _ce:
+                                        _cs2.update(label=f"Compositing failed: {_ce}", state="error")
+
+                            _store[_rec] = {
+                                "client": _cn, "url": _url, "slug": _slug, "title": _title,
+                                "results": _results, "image_urls": _img_urls,
+                                "main_bytes": _main_b, "thumb_bytes": _thumb_b,
+                                "template": _matched, "token": _creds["token"],
+                                "wf_info": {"site_id": site_id, "collection_id": collection_id,
+                                            "item_id": item_id, "was_published": was_pub,
+                                            "site_name": site_name},
+                                "record": {_k: _r.get(_k, "") for _k in
+                                           ("Record ID", "Client name", "Final blog url",
+                                            "Primary keyword", "Publishing Date")},
+                                "status": "done", "error": "",
+                            }
+                        except Exception as _ge:
+                            _store[_rec] = {"client": _cn, "url": _url, "slug": _slug,
+                                            "status": "failed", "error": str(_ge)}
+                        st.session_state["abatch_results"] = _store
+
+                    _prog.progress(1.0, text="Done!")
+                    _ok = sum(1 for v in _store.values() if v.get("status") == "done")
+                    _fail = sum(1 for v in _store.values() if v.get("status") == "failed")
+                    st.success(f"✅ Generation done — {_ok} done · {_fail} failed. "
+                               "Ready for review below. **Nothing uploaded yet.**")
+            else:
+                st.info("Pick at least one client above to see the queue.")
+
+            # ══ Review: contact-sheet (Redo) → upload ══
+            _store_disp = st.session_state.get("abatch_results", {})
+            if _store_disp:
+                _dn = sum(1 for v in _store_disp.values() if v.get("status") == "done")
+                _fl = sum(1 for v in _store_disp.values() if v.get("status") == "failed")
+                _upc = sum(1 for v in _store_disp.values() if v.get("uploaded"))
+                _ux_section("4", "Review",
+                            f"{_dn} done · {_fl} failed · {_upc} uploaded")
+                _ux_kpis([
+                    (_dn, "✅ Generated", "green"),
+                    (_fl, "❌ Failed", "red" if _fl else ""),
+                    (_upc, "⬆️ Uploaded", "cy"),
+                ])
+                st.caption("Redo the bad ones BEFORE uploading. Everything shown here "
+                           "(Main + Thumb + inner) uploads 1:1 to Webflow when you click "
+                           "**⬆️ Upload** below. 🚩 = flagged by auto-QA.")
+
+                _by_client = {}
+                for _rid_k, _v in _store_disp.items():
+                    _by_client.setdefault(_v.get("client", "?"), []).append((_rid_k, _v))
+
+                for _cn2, _pairs in _by_client.items():
+                    st.markdown(f"#### 🏢 {_cn2}")
+                    for _rk, _v in _pairs:
+                        if _v.get("status") != "done":
+                            st.markdown(f"- ❌ `{_v.get('slug') or _v.get('url','')}` — {_v.get('error','')}")
+                            continue
+                        _okimgs = [(_ii, r) for _ii, r in enumerate(_v.get("results", []))
+                                   if r.get("status") == "ok"]
+                        _flags = sum(1 for _ii, r in _okimgs if r.get("defect_reason"))
+                        _hdr = (f"**📄 `{_v.get('slug','')}`** — {(_v.get('title','') or '')[:55]}"
+                                f" · Main + Thumb + {len(_okimgs)} inner")
+                        if _flags:
+                            _hdr += f" · <span style='color:#f5c451'>🚩 {_flags} flagged</span>"
+                        if _v.get("uploaded"):
+                            _hdr += " · <span style='color:#39d98a'>✅ uploaded</span>"
+                        st.markdown(_hdr, unsafe_allow_html=True)
+
+                        _tiles = []
+                        if _v.get("main_bytes"):
+                            _tiles.append(("MAIN", _v["main_bytes"], "inner_no", -1, False))
+                        if _v.get("thumb_bytes"):
+                            _tiles.append(("THUMB", _v["thumb_bytes"], "inner_no", -2, False))
+                        for _ii, r in _okimgs:
+                            _tiles.append((f"INNER {_ii + 1}", r.get("bytes"), "inner", _ii,
+                                           bool(r.get("defect_reason"))))
+                        if not _v.get("main_bytes") and not _v.get("thumb_bytes"):
+                            st.caption("⚠️ No Main/Thumb — this client likely has no template.")
+
+                        _locked = _v.get("uploaded", False)
+                        _cols = st.columns(min(len(_tiles), 6)) if _tiles else []
+                        for _ti, (_cap, _b, _kind, _iidx, _flagged) in enumerate(_tiles):
+                            with _cols[_ti % len(_cols)]:
+                                if _b:
+                                    st.image(_b, caption=(f"🚩 {_cap}" if _flagged else _cap),
+                                             use_container_width=True)
+                                # Controls sit directly under the tile they act on.
+                                if _kind == "inner" and not _locked:
+                                    if st.button("🔄 Redo", key=f"redo_{_rk}_in_{_iidx}",
+                                                 use_container_width=True):
+                                        with st.spinner(f"Redo {_cap}…"):
+                                            _batch_redo_inner(_v, _iidx)
+                                        st.session_state["abatch_results"][_rk] = _v
+                                        st.rerun()
+                                elif _iidx == -1 and not _locked:  # MAIN tile
+                                    if st.button("🔄 Redo Main+Thumb", key=f"redo_{_rk}_cover",
+                                                 use_container_width=True,
+                                                 disabled=not _v.get("template")):
+                                        with st.spinner("Redo cover…"):
+                                            _batch_redo_cover(_v)
+                                        st.session_state["abatch_results"][_rk] = _v
+                                        st.rerun()
+                        st.divider()
+
+                # ── Upload approved to Webflow ──
+                _pending_up = [(_rk, _v) for _rk, _v in _store_disp.items()
+                               if _v.get("status") == "done" and not _v.get("uploaded")]
+                _ux_section("5", "Upload to Webflow",
+                            "live client site · auto-marks Airtable 'Done'")
+                if not _pending_up:
+                    st.info("Nothing left to upload.")
+                else:
+                    if st.button(f"⬆️ Upload {len(_pending_up)} blogs to Webflow",
+                                 type="primary", use_container_width=True):
+                        _uprog = st.progress(0.0)
+                        for _ui, (_rk, _v) in enumerate(_pending_up):
+                            _uprog.progress(_ui / max(len(_pending_up), 1),
+                                            text=f"Uploading {_v.get('slug','')}…")
+                            try:
+                                with st.status(f"⬆️ {_v.get('client','')} · {_v.get('slug','')}",
+                                               expanded=False) as _us:
+                                    _batch_upload_entry(_v)
+                                    # STRICT: after a SUCCESSFUL upload, mark ONLY this row's
+                                    # "Image status" = "Done" in Airtable. Nothing else is touched.
+                                    _recid = (_v.get("record", {}) or {}).get("Record ID", "")
+                                    _md_ok, _md_err = _airtable_mark_done(_recid)
+                                    _v["airtable_done"] = _md_ok
+                                    _v["airtable_done_error"] = "" if _md_ok else _md_err
+                                    _done_lbl = f"Uploaded ✓ {_v.get('slug','')}"
+                                    _done_lbl += " · Airtable Done ✓" if _md_ok else " · Airtable Done ✗"
+                                    _us.update(label=_done_lbl, state="complete")
+                                _v["upload_error"] = ""
+                            except Exception as _ue:
+                                _v["upload_error"] = str(_ue)
+                                st.error(f"⛔ {_v.get('slug','')}: {_ue}")
+                            st.session_state["abatch_results"][_rk] = _v
+                        _airtable_load.clear()  # refresh so the marked-Done rows drop out
+                        _uprog.progress(1.0, text="Done!")
+                        _md_fail = [_v.get("slug", "") for _rk, _v in _pending_up
+                                    if _v.get("airtable_done") is False and not _v.get("upload_error")]
+                        if _md_fail:
+                            st.warning("✅ Uploaded, but couldn't mark Done in Airtable for: "
+                                       + ", ".join(_md_fail) + " — mark them manually.")
+                        else:
+                            st.success("✅ Upload done · marked Done in Airtable.")
+                        st.rerun()

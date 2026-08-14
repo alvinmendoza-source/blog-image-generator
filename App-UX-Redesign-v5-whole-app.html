@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="fil">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog Image Generator — Whole-App UX v5</title>
+<style>
+  :root{
+    --bg:#0d0d0d; --panel:#141414; --panel2:#1a1a1a; --panel3:#202020; --line:#2a2a2a;
+    --txt:#f2f2f2; --dim:#8a8a8a; --faint:#666;
+    --cy:#35EDED; --cy2:#20d0d0; --green:#3df03d; --amber:#f5c451; --red:#ff6b6b;
+    --r:12px; font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);line-height:1.5}
+  .app{display:flex;min-height:100vh}
+
+  /* ── Sidebar ── */
+  .side{width:250px;flex:none;background:var(--panel);border-right:1px solid var(--line);padding:18px 16px}
+  .brand{display:flex;align-items:center;gap:10px;padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .brand .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--cy),#0aa)}
+  .brand b{font-size:15px}
+  .side h5{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:18px 0 8px;font-weight:700}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12px;color:var(--dim);margin-bottom:8px}
+  .field.retire{border-style:dashed;opacity:.6;position:relative}
+  .field.retire .rt{position:absolute;top:-8px;right:8px;background:var(--amber);color:#000;font-size:9px;font-weight:800;border-radius:6px;padding:1px 6px}
+  .side .btnfull{width:100%;background:var(--panel3);border:1px solid var(--cy);color:var(--cy);border-radius:8px;padding:9px;font-size:12px;font-weight:700;cursor:pointer}
+
+  /* ── Main ── */
+  .main{flex:1;padding:26px 34px 80px;max-width:1180px}
+  .head{display:flex;align-items:center;justify-content:space-between;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .head h1{font-size:24px;font-weight:800;letter-spacing:-.02em;margin:0}
+  .badges{display:flex;gap:8px}
+  .badge{font-size:11px;padding:4px 11px;border-radius:20px;background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+  .badge.live{color:var(--green);border-color:rgba(60,240,60,.3)}
+  .badge.cy{color:var(--cy);border-color:rgba(53,237,237,.3)}
+  .subline{color:var(--dim);font-size:13px;margin:14px 0 18px}
+
+  /* ── Tab bar ── */
+  .tabbar{display:flex;gap:4px;border-bottom:2px solid var(--panel2);margin-bottom:8px;flex-wrap:wrap}
+  .tab{padding:9px 16px;font-size:13px;font-weight:600;color:var(--dim);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer}
+  .tab.active{color:var(--cy);border-bottom-color:var(--cy)}
+  .tab.retire{color:var(--faint)} .tab.retire .rt{font-size:9px;background:var(--amber);color:#000;border-radius:5px;padding:0 5px;margin-left:5px;font-weight:800}
+
+  /* Panel that frames one "tab view" in this mockup */
+  .tabview{border:1px solid var(--line);border-radius:14px;padding:22px;margin:16px 0 26px;background:var(--panel)}
+  .tabview>.vlabel{display:inline-block;background:var(--cy);color:#000;font-size:11px;font-weight:800;border-radius:6px;padding:2px 10px;margin-bottom:16px}
+
+  /* shared: section heads */
+  .shead{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+  .shead .k{background:var(--cy);color:#000;border-radius:7px;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}
+  .shead h2{font-size:15px;margin:0;font-weight:700}
+  .shead .hint{color:var(--faint);font-size:12px;margin-left:auto}
+
+  /* stepper */
+  .stepper{display:flex;gap:8px;margin:0 0 20px;flex-wrap:wrap}
+  .step{flex:1;min-width:96px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .step .n{display:inline-flex;width:20px;height:20px;border-radius:50%;background:var(--panel3);color:var(--dim);align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-right:7px}
+  .step .lbl{font-size:12px;font-weight:600;color:var(--dim)}
+  .step.active{border-color:var(--cy);background:linear-gradient(180deg,rgba(53,237,237,.1),transparent)}
+  .step.active .n{background:var(--cy);color:#000} .step.active .lbl{color:var(--txt)}
+  .step.done .n{background:var(--green);color:#000} .step.done .lbl{color:var(--txt)}
+
+  /* kpi */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 16px}
+  .kpi{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+  .kpi .v{font-size:24px;font-weight:800;line-height:1} .kpi .l{font-size:11px;color:var(--dim);margin-top:6px}
+  .kpi.green .v{color:var(--green)} .kpi.amber .v{color:var(--amber)} .kpi.cy .v{color:var(--cy)}
+
+  /* source strip */
+  .srcstrip{display:flex;align-items:center;gap:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 15px;flex-wrap:wrap}
+  .srcstrip .ok{color:var(--green);font-weight:700;font-size:13px}
+  .srcstrip .meta{color:var(--dim);font-size:12px}
+  .srcstrip .right{margin-left:auto;display:flex;gap:10px;align-items:center}
+  .fauxsel{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 11px;font-size:12px;font-weight:600}
+  .linkbtn{color:var(--cy);font-size:12px;cursor:pointer;background:none;border:none;font-weight:600}
+
+  /* client cards */
+  .toolbar{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 11px;font-size:12px;font-weight:600;color:var(--dim);cursor:pointer;margin-left:8px}
+  .cgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .ccard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;transition:.15s}
+  .ccard:hover{border-color:var(--cy)}
+  .ccard.sel{border-color:var(--cy);background:linear-gradient(180deg,rgba(53,237,237,.12),transparent)}
+  .ccard.disabled{opacity:.45}
+  .cb{width:19px;height:19px;border-radius:6px;border:2px solid var(--faint);flex:none;margin-top:2px;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+  .ccard.sel .cb{background:var(--cy);border-color:var(--cy);color:#000}
+  .cname{font-weight:700;font-size:13px} .cmeta{font-size:11px;color:var(--dim);margin-top:3px}
+  .bdg{display:inline-block;font-size:10px;font-weight:700;border-radius:999px;padding:2px 8px;margin-top:7px}
+  .bdg.ok{background:rgba(61,240,61,.14);color:var(--green)} .bdg.no{background:rgba(255,107,107,.14);color:var(--red)}
+
+  /* buttons */
+  .btn{background:var(--cy);color:#000;border:none;border-radius:9px;padding:10px 20px;font-size:14px;font-weight:800;cursor:pointer}
+  .btn:hover{background:var(--cy2)}
+  .btn.ghost{background:var(--panel2);color:var(--cy);border:1px solid var(--cy)}
+  .btn.big{padding:12px 24px;font-size:15px}
+  .btnrow{display:flex;gap:12px;align-items:center;margin-top:14px}
+  .note{color:var(--faint);font-size:12px}
+
+  /* input rows (manual/auto tabs) */
+  .inp{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px 14px;color:var(--dim);font-size:13px}
+  .inp.area{min-height:74px}
+
+  /* image tiles */
+  .tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:9px}
+  .tiles.g4{grid-template-columns:repeat(4,1fr)} .tiles.g3{grid-template-columns:repeat(3,1fr)}
+  .tile{display:flex;flex-direction:column;gap:5px}
+  .tile .img{aspect-ratio:16/10;background:linear-gradient(135deg,#1e2a2a,#16211f);border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:11px;position:relative}
+  .tile.flag .img{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
+  .tile .cap{font-size:11px;color:var(--dim);text-align:center;font-weight:600}
+  .tile .flagdot{position:absolute;top:5px;left:5px}
+  .miniredo{background:var(--panel);border:1px solid var(--line);color:var(--cy);border-radius:7px;padding:6px;font-size:11px;font-weight:700;cursor:pointer;width:100%}
+  .miniredo.cover{color:var(--amber);border-color:rgba(245,196,81,.4)}
+  .minidl{background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:7px;padding:6px;font-size:11px;font-weight:700;cursor:pointer;width:100%}
+
+  .blogcard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0 0 12px}
+  .bloghead{display:flex;align-items:center;gap:10px;margin:0 0 11px;flex-wrap:wrap;font-size:13px}
+  .bloghead code{background:var(--panel);padding:2px 8px;border-radius:6px;color:var(--green);font-size:12px}
+  .flagchip{background:rgba(245,196,81,.16);color:var(--amber);font-size:11px;font-weight:700;border-radius:999px;padding:2px 10px}
+
+  .uploadbar{display:flex;align-items:center;gap:16px;background:linear-gradient(90deg,rgba(53,237,237,.12),transparent);border:1px solid var(--cy);border-radius:11px;padding:15px 18px}
+  .uploadbar .u{color:var(--dim);font-size:12px}
+  .callout{background:rgba(53,237,237,.06);border:1px solid var(--line);border-left:3px solid var(--cy);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--dim);margin-top:12px}
+
+  .divlbl{font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin:34px 0 10px;border-bottom:1px solid var(--line);padding-bottom:8px}
+  @media(max-width:900px){.side{display:none}.kpis{grid-template-columns:repeat(2,1fr)}.cgrid{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ══ SIDEBAR ══ -->
+  <aside class="side">
+    <div class="brand"><span class="mark"></span><b>MSP Launchpad</b></div>
+    <h5>🎨 Figma Templates</h5>
+    <div class="field">28 templates loaded</div>
+    <button class="btnfull">➕ Add template (paste Figma link)</button>
+    <h5>🔑 Webflow API Key</h5>
+    <div class="field retire"><span class="rt">TO RETIRE</span>Saved ••••••••1a2b</div>
+    <h5>🤖 Image Model</h5>
+    <div class="field">KIE · Gemini 2.5 QA</div>
+  </aside>
+
+  <!-- ══ MAIN ══ -->
+  <main class="main">
+    <div class="head">
+      <h1>Blog Image Generator</h1>
+      <div class="badges">
+        <span class="badge live">● LIVE</span>
+        <span class="badge cy">KIE</span>
+        <span class="badge cy">Gemini 2.5</span>
+      </div>
+    </div>
+    <p class="subline">Turn any Webflow blog post into on-brand, MSP-themed visuals — automatically.</p>
+
+    <!-- Tab bar (shared, cyan) -->
+    <div class="tabbar">
+      <div class="tab">Manual</div>
+      <div class="tab retire">Auto Upload <span class="rt">RETIRE</span></div>
+      <div class="tab">Main + Thumbnail</div>
+      <div class="tab active">⚡ Auto Batch</div>
+    </div>
+
+    <p class="note" style="margin:14px 0 0">Ipinapakita sa ibaba ang <b>lahat ng 4 tab</b> sa iisang bagong design language (cyan brand). Ganito magiging pare-pareho ang hitsura at galaw ng buong app.</p>
+
+    <!-- ─────────── TAB 4: AUTO BATCH ─────────── -->
+    <div class="divlbl">Tab ④ · ⚡ Auto Batch (Airtable → Webflow) — ang bago</div>
+    <div class="tabview">
+      <span class="vlabel">AUTO BATCH</span>
+      <div class="stepper">
+        <div class="step done"><span class="n">✓</span><span class="lbl">Source</span></div>
+        <div class="step active"><span class="n">2</span><span class="lbl">Pili clients</span></div>
+        <div class="step"><span class="n">3</span><span class="lbl">Generate</span></div>
+        <div class="step"><span class="n">4</span><span class="lbl">Review</span></div>
+        <div class="step"><span class="n">5</span><span class="lbl">Upload</span></div>
+      </div>
+
+      <div class="shead"><span class="k">1</span><h2>Data source</h2><span class="hint">🔒 read-only sa Airtable</span></div>
+      <div class="srcstrip">
+        <span class="ok">✓ Na-load mula sa <code>1/</code> folder</span>
+        <span class="meta">Blog Keyword: <b>57</b> · Clients info: <b>53</b></span>
+        <div class="right"><span class="fauxsel">📅 Aug 2026 (30) ▾</span><button class="linkbtn">↔ Palitan CSV</button></div>
+      </div>
+
+      <div class="shead" style="margin-top:20px"><span class="k">2</span><h2>Pumili ng batch clients</h2></div>
+      <div class="kpis">
+        <div class="kpi cy"><div class="v">30</div><div class="l">Blog · review needed</div></div>
+        <div class="kpi"><div class="v">12</div><div class="l">Clients</div></div>
+        <div class="kpi green"><div class="v">10</div><div class="l">✅ Ready</div></div>
+        <div class="kpi amber"><div class="v">2</div><div class="l">⚠️ Walang creds</div></div>
+      </div>
+      <div class="toolbar"><span class="note">Tick ang gustong i-generate:</span>
+        <span class="chip">✓ Piliin lahat ready</span><span class="chip">✕ Clear</span></div>
+      <div class="cgrid">
+        <div class="ccard sel"><div class="cb">✓</div><div><div class="cname">AboutIT</div><div class="cmeta">4 blog · Clients info</div><span class="bdg ok">✅ ready</span></div></div>
+        <div class="ccard sel"><div class="cb">✓</div><div><div class="cname">Capstone</div><div class="cmeta">3 blog · Clients info</div><span class="bdg ok">✅ ready</span></div></div>
+        <div class="ccard"><div class="cb"></div><div><div class="cname">Techlocity</div><div class="cmeta">5 blog · Clients info</div><span class="bdg ok">✅ ready</span></div></div>
+        <div class="ccard disabled"><div class="cb"></div><div><div class="cname">AccuTech IT</div><div class="cmeta">2 blog · walang template</div><span class="bdg no">❌ walang template</span></div></div>
+      </div>
+
+      <div class="shead" style="margin-top:20px"><span class="k">3</span><h2>Generate</h2><span class="hint">Main + Thumb + inner · auto-QA · resume-safe</span></div>
+      <div class="btnrow"><button class="btn big">⚡ Generate 7 blog</button><button class="btn ghost">🗑️ Clear</button><span class="note">🔁 0/7 tapos na</span></div>
+
+      <div class="shead" style="margin-top:20px"><span class="k">4</span><h2>Review</h2><span class="hint">i-Redo ang pangit · 🚩 = flagged ng auto-QA</span></div>
+      <div style="font-weight:700;font-size:13px;margin:0 0 8px">🏢 AboutIT</div>
+      <div class="blogcard">
+        <div class="bloghead">📄 <code>ransomware-protection</code>
+          <span style="color:var(--dim)">Main + Thumb + 4 inner</span><span class="flagchip">🚩 1 flagged</span></div>
+        <div class="tiles">
+          <div class="tile"><div class="img">MAIN</div><div class="cap">MAIN</div><button class="miniredo cover">🔄 Redo Main+Thumb</button></div>
+          <div class="tile"><div class="img">THUMB</div><div class="cap">THUMB</div></div>
+          <div class="tile"><div class="img">INNER 1</div><div class="cap">INNER 1</div><button class="miniredo">🔄 Redo</button></div>
+          <div class="tile flag"><div class="img"><span class="flagdot">🚩</span>INNER 2</div><div class="cap">🚩 INNER 2</div><button class="miniredo">🔄 Redo</button></div>
+          <div class="tile"><div class="img">INNER 3</div><div class="cap">INNER 3</div><button class="miniredo">🔄 Redo</button></div>
+          <div class="tile"><div class="img">INNER 4</div><div class="cap">INNER 4</div><button class="miniredo">🔄 Redo</button></div>
+        </div>
+      </div>
+
+      <div class="shead" style="margin-top:20px"><span class="k">5</span><h2>Upload sa Webflow</h2></div>
+      <div class="uploadbar"><div><div style="font-weight:700;font-size:15px">Handa nang i-upload: 7 blog</div>
+        <div class="u">Main + Thumb + inner 1:1 · ipa-publish</div></div>
+        <div style="margin-left:auto"><button class="btn big">⬆️ Upload 7 blog</button></div></div>
+    </div>
+
+    <!-- ─────────── TAB 1: MANUAL ─────────── -->
+    <div class="divlbl">Tab ① · Manual — generate images mula sa isang blog (download lang)</div>
+    <div class="tabview">
+      <span class="vlabel">MANUAL</span>
+      <div class="shead"><span class="k">1</span><h2>Blog source</h2><span class="hint">isang URL</span></div>
+      <input class="inp" value="https://client.com/blog/ransomware-protection" style="margin-bottom:14px">
+      <div class="btnrow" style="margin-top:0"><button class="btn">✨ Generate images</button><span class="note">Content images lang — walang Main/Thumb compositing dito.</span></div>
+      <div class="shead" style="margin-top:22px"><span class="k">2</span><h2>Generated images</h2><span class="hint">i-download ang gusto</span></div>
+      <div class="tiles g4">
+        <div class="tile"><div class="img">IMG 1</div><div class="cap">Image 1</div><button class="minidl">⬇ Download</button></div>
+        <div class="tile flag"><div class="img"><span class="flagdot">🚩</span>IMG 2</div><div class="cap">🚩 Image 2</div><button class="minidl">⬇ Download</button></div>
+        <div class="tile"><div class="img">IMG 3</div><div class="cap">Image 3</div><button class="minidl">⬇ Download</button></div>
+        <div class="tile"><div class="img">IMG 4</div><div class="cap">Image 4</div><button class="minidl">⬇ Download</button></div>
+      </div>
+    </div>
+
+    <!-- ─────────── TAB 2: AUTO UPLOAD (retire) ─────────── -->
+    <div class="divlbl">Tab ② · Auto Upload — <span style="color:var(--amber)">tatanggalin</span> kapag proven na ang Auto Batch</div>
+    <div class="tabview" style="opacity:.65">
+      <span class="vlabel" style="background:var(--amber)">AUTO UPLOAD · RETIRE</span>
+      <div class="callout" style="border-left-color:var(--amber);margin-top:0;margin-bottom:16px">
+        ⚠️ Ang tab na ito (manual Webflow API entry) at ang sidebar Webflow Key field ay <b>tatanggalin</b> kapag napatunayan na ang Auto Batch — creds galing na sa Airtable/CSV, walang manual API.</div>
+      <div class="shead"><span class="k">1</span><h2>Paste blog URLs</h2></div>
+      <textarea class="inp area">https://client.com/blog/a
+https://client.com/blog/b</textarea>
+      <div class="btnrow"><button class="btn">✨ Generate + Review</button></div>
+    </div>
+
+    <!-- ─────────── TAB 3: MAIN + THUMBNAIL ─────────── -->
+    <div class="divlbl">Tab ③ · Main + Thumbnail Only — cover/main/thumb lang</div>
+    <div class="tabview">
+      <span class="vlabel">MAIN + THUMBNAIL</span>
+      <div class="shead"><span class="k">1</span><h2>Blog source</h2></div>
+      <input class="inp" value="https://client.com/blog/cloud-backup-guide" style="margin-bottom:14px">
+      <div class="btnrow" style="margin-top:0"><button class="btn">🖼️ Generate Main + Thumbnail</button></div>
+      <div class="shead" style="margin-top:22px"><span class="k">2</span><h2>Review</h2></div>
+      <div class="tiles g3" style="max-width:560px">
+        <div class="tile"><div class="img">MAIN</div><div class="cap">MAIN</div><button class="miniredo cover">🔄 Redo</button></div>
+        <div class="tile"><div class="img">THUMB</div><div class="cap">THUMB</div><button class="miniredo cover">🔄 Redo</button></div>
+        <div class="tile"><div class="img" style="border-style:dashed">⬆️</div><div class="cap">Upload</div><button class="minidl" style="color:var(--cy);border-color:var(--cy)">⬆️ Upload</button></div>
+      </div>
+    </div>
+
+    <p class="note" style="text-align:center;margin-top:30px">Mockup lang ito — hindi tumatakbo. Sabihin kung: (a) whole-app nga ba o Auto Batch muna, (b) ok ba ang cyan brand + stepper + cards, (c) may gusto ka pang baguhin. Saka ko ilalapat sa <code>app.py</code>.</p>
+  </main>
+</div>
+</body>
+</html>
