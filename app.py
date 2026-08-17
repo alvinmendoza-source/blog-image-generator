@@ -1299,7 +1299,8 @@ class WebflowClient:
         collections = self.get_collections(site_id)
         # Collections to SKIP — these contain "blog" but are not the posts collection
         skip_if = ["categor", "tag", "author", "team", "member",
-                   "testimon", "career", "industry", "service", "case"]
+                   "testimon", "career", "industry", "service", "case",
+                   "newsletter"]  # "Newsletters" else matches "news" in pass 2 below
 
         def _is_skip(col):
             name = col.get("displayName", "").lower()
@@ -2690,7 +2691,7 @@ with tab_manual:
 # TAB 2 — Auto Upload to Webflow
 # ════════════════════════════════════════════════════════════════════════════════
 def do_webflow_connect(api_key: str, manual_site_id: str, client_name: str, slug: str,
-                       blog_url: str = ""):
+                       blog_url: str = "", known_collection_id: str = ""):
     """Connect to Webflow and find the blog post. Returns (wf, site_id, site_name,
     collection_id, item_id, was_published) or raises on failure."""
     wf = WebflowClient(api_key)
@@ -2732,7 +2733,20 @@ def do_webflow_connect(api_key: str, manual_site_id: str, client_name: str, slug
             st.write(f"**Locale:** {_ltag.upper()} "
                      f"({'secondary — CMS targets this language' if _is_secondary else 'primary'})")
 
-    collection = wf.find_blog_collection(site_id)
+    # Prefer the explicit collectionId from Airtable/Clients info. The auto-detector
+    # can mis-fire — e.g. it grabbed Zhero's "Newsletters" collection via the "news"
+    # keyword, so blog slugs were searched in the wrong collection and never found.
+    collection = None
+    if known_collection_id:
+        try:
+            cols = wf.get_collections(site_id)
+            collection = next((c for c in cols if c.get("id") == known_collection_id), None)
+        except Exception:
+            collection = None
+        if not collection:
+            collection = {"id": known_collection_id, "displayName": known_collection_id}
+    if not collection:
+        collection = wf.find_blog_collection(site_id)
     if not collection:
         raise ValueError("No blog collection found.")
     collection_id = collection["id"]
@@ -3757,7 +3771,8 @@ with tab_batch:
                         try:
                             with st.status("Connecting to Webflow…", expanded=False) as _cs:
                                 wf, site_id, site_name, collection_id, item_id, was_pub = \
-                                    do_webflow_connect(_creds["token"], None, _cn, _slug, blog_url=_url)
+                                    do_webflow_connect(_creds["token"], None, _cn, _slug, blog_url=_url,
+                                                       known_collection_id=_creds.get("collection_id") or "")
                                 _matched = _match_client(site_name)
                                 _cs.update(label=f"Connected ✓ → {site_name}", state="complete")
 
