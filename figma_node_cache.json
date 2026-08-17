@@ -1050,5 +1050,83 @@
       255,
       255
     ]
+  },
+  "netcotech": {
+    "name": "Netcotech",
+    "main": "170:12",
+    "thumb": "170:13",
+    "main_w": 871,
+    "main_h": 521,
+    "overlay_main": "170:2",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 39,
+    "main_ty": 233,
+    "main_tw": 323,
+    "main_fsz": 26,
+    "main_lh": 31,
+    "main_font_family": "Satoshi",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 418,
+    "thumb_h": 250,
+    "overlay_thumb": "170:3",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 21,
+    "thumb_ty": 111,
+    "thumb_tw": 156,
+    "thumb_fsz": 12,
+    "thumb_lh": 16,
+    "thumb_font_family": "Satoshi",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
+  },
+  "accutech": {
+    "name": "Accutech",
+    "main": "168:18",
+    "thumb": "168:17",
+    "main_w": 1188,
+    "main_h": 500,
+    "overlay_main": "167:4",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 50,
+    "main_ty": 187,
+    "main_tw": 334,
+    "main_fsz": 28,
+    "main_lh": 33,
+    "main_font_family": "Plus Jakarta Sans",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      30,
+      31,
+      35
+    ],
+    "thumb_w": 1188,
+    "thumb_h": 500,
+    "overlay_thumb": "168:6",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 46,
+    "thumb_ty": 187,
+    "thumb_tw": 334,
+    "thumb_fsz": 28,
+    "thumb_lh": 33,
+    "thumb_font_family": "Plus Jakarta Sans",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      30,
+      31,
+      35
+    ]
   }
 }
