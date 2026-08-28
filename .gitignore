@@ -7,6 +7,9 @@ client_keys.json
 
 # Auto-downloaded overlay PNGs (re-downloaded from Figma on first use)
 template_assets/*.png
+# ...except Techlocity, committed so live branding survives Figma token expiry
+!template_assets/logo_panel_main_techlocity.png
+!template_assets/logo_panel_thumb_techlocity.png
 
 # Generated output — not needed in repo
 generated_images/
