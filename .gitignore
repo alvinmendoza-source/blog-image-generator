@@ -5,11 +5,11 @@ clients.json
 client_keys.json
 1/
 
-# Auto-downloaded overlay PNGs (re-downloaded from Figma on first use)
+# Auto-downloaded overlay PNGs — re-downloaded from Figma on first use.
+# BUT commit the branded panels so LIVE branding survives Figma token expiry
+# (live can't re-download once the token expires; empty repo => bare output).
 template_assets/*.png
-# ...except Techlocity, committed so live branding survives Figma token expiry
-!template_assets/logo_panel_main_techlocity.png
-!template_assets/logo_panel_thumb_techlocity.png
+!template_assets/logo_panel_*.png
 
 # Generated output — not needed in repo
 generated_images/
