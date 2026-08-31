@@ -1128,5 +1128,45 @@
       31,
       35
     ]
+  },
+  "ane": {
+    "name": "ANE",
+    "file_key": "f7Y5Ni2gfmF5CXFCRnA9BS",
+    "main": "2003:15",
+    "thumb": "2003:16",
+    "main_w": 1320,
+    "main_h": 500,
+    "overlay_main": "2002:3",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 79,
+    "main_ty": 205,
+    "main_tw": 344,
+    "main_fsz": 32,
+    "main_lh": 39,
+    "main_font_family": "Outfit",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 412,
+    "thumb_h": 300,
+    "overlay_thumb": "2002:2",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 17,
+    "thumb_ty": 138,
+    "thumb_tw": 148,
+    "thumb_fsz": 13,
+    "thumb_lh": 17,
+    "thumb_font_family": "Outfit",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }

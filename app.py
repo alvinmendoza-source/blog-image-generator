@@ -1526,6 +1526,14 @@ def _parse_tpl(node, prefix, entry):
         entry[f"overlay_{prefix}"]   = overlay_node["id"]
         entry[f"overlay_{prefix}_x"] = int(obb.get("x", fx) - fx)
         entry[f"overlay_{prefix}_y"] = int(obb.get("y", fy) - fy)
+        # Full-canvas design ("template" covering ~the whole frame): trust the overlay's
+        # own size as the canvas. The Main/thumbnail GROUP bbox is the union of ALL
+        # children and can be inflated by a stray/overflowing element, which would leave
+        # a bare photo strip beyond the design (the overlay can't mask past its own edge).
+        ow, oh = obb.get("width", fw), obb.get("height", fh)
+        if ow >= fw * 0.9 and oh >= fh * 0.9:
+            entry[f"{prefix}_w"] = int(round(ow))
+            entry[f"{prefix}_h"] = int(round(oh))
     else:
         entry[f"overlay_{prefix}"]   = None
         entry[f"overlay_{prefix}_x"] = 0
@@ -1574,10 +1582,16 @@ def _add_client_from_figma_url(figma_url: str) -> tuple:
         return False, "No node-id found. In Figma: right-click the client frame → Copy link, then paste that URL here.", ""
 
     node_id = f"{match.group(1)}:{match.group(2)}"
+
+    # Accept a link from ANY Figma file — pull the file key out of the URL instead of
+    # assuming the default template file. Falls back to FIGMA_FILE_KEY if the URL has none.
+    fk_match = re.search(r'figma\.com/(?:design|file)/([A-Za-z0-9]+)', figma_url)
+    file_key = fk_match.group(1) if fk_match else FIGMA_FILE_KEY
+
     hdrs = {"X-Figma-Token": token}
     try:
         r = requests.get(
-            f"https://api.figma.com/v1/files/{FIGMA_FILE_KEY}/nodes?ids={node_id}&depth=3",
+            f"https://api.figma.com/v1/files/{file_key}/nodes?ids={node_id}&depth=3",
             headers=hdrs, timeout=20,
         )
         if r.status_code == 429:
@@ -1586,9 +1600,17 @@ def _add_client_from_figma_url(figma_url: str) -> tuple:
         if not r.ok:
             return False, f"Figma API error {r.status_code}: {r.text[:120]}", ""
 
-        frame_doc = r.json().get("nodes", {}).get(node_id, {}).get("document", {})
+        # Figma returns {"nodes": {"<id>": null}} (value None, key present) when the node
+        # isn't in THIS file — so use `or {}` at each hop, not .get(..., {}) defaults.
+        nodes     = r.json().get("nodes") or {}
+        node_wrap = nodes.get(node_id) or {}
+        frame_doc = node_wrap.get("document") or {}
         if not frame_doc:
-            return False, "Frame not found. Make sure you copied the link of a top-level client frame.", ""
+            return False, (
+                f"Frame `{node_id}` not found in Figma file `{file_key}`.\n\n"
+                "Double-check you right-clicked the **client frame** (not an inner "
+                "layer) → **Copy link**, and pasted the full URL here."
+            ), ""
 
         frame_name = frame_doc["name"]
         slug       = re.sub(r"[^a-z0-9]+", "-", frame_name.lower()).strip("-")
@@ -1613,6 +1635,7 @@ def _add_client_from_figma_url(figma_url: str) -> tuple:
 
         entry = {
             "name":  frame_name,
+            "file_key": file_key,        # which Figma file this client's nodes live in
             "main":  main_node["id"]  if main_node  else None,
             "thumb": thumb_node["id"] if thumb_node else None,
         }
@@ -1874,8 +1897,9 @@ def ensure_figma_assets_for_client(client_name: str) -> tuple:
     # the overlay nodes detected (e.g. the thumbnail overlay). Skip + warn instead.
     if node_map:
         try:
+            client_file_key = entry.get("file_key") or FIGMA_FILE_KEY
             img_r = requests.get(
-                f"https://api.figma.com/v1/images/{FIGMA_FILE_KEY}",
+                f"https://api.figma.com/v1/images/{client_file_key}",
                 headers={"X-Figma-Token": FIGMA_TOKEN},
                 params={"ids": ",".join(node_map), "format": "png", "scale": "1"},
                 timeout=30,
@@ -1990,13 +2014,30 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
     """Composite: bg photo (cover-cropped) + logo overlay + wrapped title text → PNG bytes."""
     try:
         bg_img = PILImage.open(io.BytesIO(bg_bytes)).convert("RGB")
-        canvas = _cover_crop(bg_img, tpl["w"], tpl["h"])
+        ox, oy = tpl.get("ox", 0), tpl.get("oy", 0)
         logo_path = tpl["logo"]
+        logo = logo_alpha = None
+        canvas = None
         if logo_path.exists() and logo_path.stat().st_size > 1000:
             logo = PILImage.open(logo_path).convert("RGBA")
-            logo_rgb   = logo.convert("RGB")
             logo_alpha = logo.split()[3]
-            canvas.paste(logo_rgb, (tpl.get("ox", 0), tpl.get("oy", 0)), mask=logo_alpha)
+            lw, lh = logo.size
+            # Full-canvas overlay = a design that frames the photo inside an inset window
+            # (e.g. a rounded card). Fit the photo to that TRANSPARENT WINDOW at its
+            # natural scale instead of cover-cropping to the whole canvas — the window is
+            # much smaller than the canvas, so canvas-cropping would zoom the subject.
+            # Panel-style overlays (a small side panel) skip this and keep full-bleed.
+            if lw >= tpl["w"] * 0.9 and lh >= tpl["h"] * 0.9:
+                window = logo_alpha.point(lambda v: 255 if v < 128 else 0).getbbox()
+                if window:
+                    wl, wt, wr, wb = window
+                    photo = _cover_crop(bg_img, wr - wl, wb - wt)
+                    canvas = PILImage.new("RGB", (tpl["w"], tpl["h"]), (17, 17, 17))
+                    canvas.paste(photo, (wl + ox, wt + oy))
+        if canvas is None:
+            canvas = _cover_crop(bg_img, tpl["w"], tpl["h"])
+        if logo is not None:
+            canvas.paste(logo.convert("RGB"), (ox, oy), mask=logo_alpha)
         draw = ImageDraw.Draw(canvas)
         try:
             font_path        = tpl.get("font", INTER_FONT_PATH)

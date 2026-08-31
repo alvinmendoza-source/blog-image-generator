@@ -19,6 +19,14 @@ app_backup.py
 generator.py
 test_scrape.py
 
+# One-off Figma overlay download helpers (read token from .env — keep out of repo)
+_dl_overlays.py
+_dl_overlays2.py
+
+# Local run artifacts / backups
+*.log
+*.bak_ig
+
 # Python cache
 __pycache__/
 *.pyc
