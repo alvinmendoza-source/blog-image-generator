@@ -51,7 +51,7 @@ ASSIGNED ENVIRONMENTS — use in order, one per image:
 {required_envs}
 
 Each bullet must start exactly like: • [LABEL] who + activity + detail
-Example: • [MEETING TABLE] Two IT managers seated at a conference table reviewing a printed network diagram, one pointing to a section on the page.
+Example: • [MEETING TABLE] Two IT managers seated at a conference table reviewing a printed network diagram together, hands resting on the table.
 
 ⚠️ Never skip or rename the label. The image generator will produce the WRONG location without it.
 
@@ -146,7 +146,7 @@ _GROUP_SCENES = [  # several people together at a table / shared screen
     ("SIDE-BY-SIDE PAIR", "two people seated side by side reviewing something on one shared screen"),
     ("BOARDROOM WIDE", "wide shot of five people spaced around a long boardroom table, one leaning in"),
     ("LAPTOP PAIR REVIEW", "two people leaning together over a single open laptop at a table"),
-    ("THREE AT ONE MONITOR", "three people clustered around one desktop monitor, one pointing at it"),
+    ("THREE AT ONE MONITOR", "three people clustered around one desktop monitor, leaning in to discuss what's on screen"),
     ("CROSS-TABLE DISCUSSION", "two people facing each other across a small table, papers between them"),
     ("PAPER REVIEW PAIR", "two people at a table comparing two printed documents side by side"),
     ("HUDDLE ROOM BENCH", "three people on a bench seat along a huddle-room wall facing a small screen"),
@@ -159,7 +159,7 @@ _GROUP_SCENES = [  # several people together at a table / shared screen
     ("PAIR AT STANDING TABLE", "two people standing at a high poseur table with a laptop between them"),
     ("NOTE-TAKER AND SPEAKER", "two people at a table, one speaking while the other takes notes on a laptop"),
     ("SEMICIRCLE BRIEFING", "four people seated in a loose semicircle facing one colleague briefing them"),
-    ("SHARED SCREEN POINT", "two seated people looking at a monitor as one points to a section of it"),
+    ("SHARED SCREEN LOOK", "two seated people looking at a monitor together, discussing what's on screen"),
     ("CLIENT-STYLE MEETING", "two people on one side of a table facing a third across it, handshake-neutral"),
     ("BREAKOUT TABLE FIVE", "five people around a breakout table mid-discussion, papers and a laptop out"),
     ("PAIR REVIEWING TABLET", "two people seated close, both looking down at one tablet held between them"),
@@ -172,7 +172,7 @@ _ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a 
     ("STANDING DESK", "one person standing at a height-adjustable standing desk looking at their screen"),
     ("WALKING CORRIDOR", "one or two people walking mid-stride through a bright office corridor"),
     ("WHITEBOARD SESSION", "one or two people at a whiteboard with markers, no readable text on the board"),
-    ("PRESENTATION SCREEN", "one person standing beside a wall-mounted TV or screen, pointing at content"),
+    ("PRESENTATION SCREEN", "one person standing beside a wall-mounted TV or screen, presenting with a relaxed open-hand gesture"),
     ("OUTDOOR TERRACE", "one or two people working at a table on a sunny office terrace or rooftop"),
     ("STICKY NOTE WALL", "two people at a wall covered in colorful sticky notes, organizing them"),
     ("INFORMAL HUDDLE", "two people standing and talking near a kitchen counter or hallway"),
@@ -183,7 +183,7 @@ _ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a 
     ("ELEVATOR LOBBY WAIT", "one or two people standing in a bright elevator lobby, one holding a laptop"),
     ("STAIRWELL PASSING", "one person descending an open office staircase, hand on the rail"),
     ("DOORWAY CONVERSATION", "two people pausing to talk in a glass office doorway"),
-    ("POINTING AT WALL SCREEN", "one person standing close to a large wall display, pointing at a region of it"),
+    ("AT WALL DISPLAY", "one person standing near a large wall display, talking through it with an open hand"),
     ("CARRYING LAPTOP WALK", "one person walking through the office carrying an open laptop on one arm"),
     ("WINDOW LEAN PHONE", "one person leaning against a floor-to-ceiling window taking a call on a phone"),
     ("WHITEBOARD EXPLAIN", "one person mid-gesture explaining to a colleague at a whiteboard"),
@@ -196,7 +196,7 @@ _ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a 
     ("ATRIUM WALKWAY", "one person crossing a bright multi-storey office atrium walkway"),
     ("PLANT-LINED CORRIDOR", "one person walking a corridor lined with tall office plants"),
     ("STANDING TABLET REVIEW", "one person standing near a window reviewing something on a tablet"),
-    ("GESTURING PRESENTER", "one person standing at the head of a room mid-gesture toward a screen"),
+    ("OPEN-HAND PRESENTER", "one person standing at the head of a room mid-gesture with an open hand while presenting"),
     ("PINBOARD PLANNING", "two people standing at a pinboard rearranging index cards"),
     ("COAT-BY-DOOR ARRIVAL", "one person arriving, laptop bag on shoulder, near a coat area by the entrance"),
     ("BALCONY LAPTOP STAND", "one person standing at a rail on an office balcony with a laptop on a ledge"),
@@ -286,6 +286,7 @@ _QUALITY_BLOCK = (
     # human realism
     "subtle facial asymmetry, natural skin texture, visible pores, "
     "believable posture, candid body language, "
+    "natural relaxed hand positions, hands resting on the desk, keyboard, or at their sides, "
     # expression — each person has a genuine, understated smile (never forced/toothy)
     "each person has a subtle warm natural smile, relaxed friendly approachable expression, "
     "looking pleasant and content while working, "
@@ -339,6 +340,11 @@ NEGATIVE_PROMPT = (
     "overly dramatic pose, stock photo pose, staged pose, "
     "stock photo, getty images, shutterstock, posed, staged, commercial photography, "
     "professional photography pose, artistic photography, award winning, "
+    # repetitive "pointing at the computer" cliché — the #1 pose to avoid
+    "pointing at screen, pointing at the monitor, pointing at computer, pointing at laptop, "
+    "finger pointing at screen, index finger extended toward monitor, pointing gesture at display, "
+    "hand pointing at the screen, arm outstretched toward monitor, everyone pointing at the screen, "
+    "pointing at a display, jabbing finger at monitor, "
     # misc
     "watermark, text overlay, logo, oversaturated, oversharpened, extreme HDR, fake depth, "
     # clothing — no branded/company items
@@ -361,6 +367,7 @@ KIE_QUALITY_SUFFIX = (
     "white Caucasian American office workers, "
     # expression — genuine understated smile so people never look flat/unfriendly
     "each person has a subtle warm natural smile, relaxed friendly approachable expression, looking pleasant and content, "
+    "natural relaxed varied hand positions, hands resting on the desk, keyboard, or at their sides, "
     "no food on desk, no drinks on desk, no water bottle, no coffee cup, no snacks, clean professional workspace, "
     # monitors/screens must not show readable text — the model tends to paint the blog
     # title onto displays, which then looks cut off. Keep screens active-looking but only
@@ -2523,8 +2530,8 @@ st.markdown(
 if not KIE_API_KEY:
     st.error("🔴 **KIE_API_KEY missing** — add it to .env to enable image generation.")
 
-tab_manual, tab_batch = st.tabs(
-    ["📥  Manual Upload", "⚡  Auto Batch (Airtable)"])
+tab_manual, tab_revise, tab_batch = st.tabs(
+    ["📥  Manual Upload", "🔗  Generate from Link", "⚡  Batch Generate (Airtable)"])
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -2726,6 +2733,286 @@ with tab_manual:
 
         ok = sum(1 for r in results if r["status"] == "ok")
         st.success(f"Done! {ok}/{len(results)} images ready — download each one and upload to your blog.")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB — Generate from Link
+# Paste a published blog URL → generate the FULL branded deliverable (inner content
+# images + branded Main + Thumbnail), for a new post or a revision. The client is
+# auto-detected from the URL's domain; override it with the dropdown if needed.
+# Optional 1-click upload to Webflow lives in the second tab_revise block below.
+# ════════════════════════════════════════════════════════════════════════════════
+def _revise_detect_client(url: str) -> str:
+    """Best-effort client slug from a blog URL — matches the domain against the
+    template cache (e.g. version2llc.com → 'version2'). Returns '' if no match."""
+    from urllib.parse import urlparse
+    host = urlparse(url if url.startswith("http") else "https://" + url).netloc.lower()
+    host = host.split(":")[0].removeprefix("www.")
+    for cand in (host, re.sub(r"\.[a-z]{2,}$", "", host), host.split(".")[0]):
+        m = _match_client(cand)
+        if m:
+            return m
+    return ""
+
+
+def _revise_build_branded(title: str, ok_results: list, client_slug: str) -> tuple:
+    """Generate a cover photo and composite branded Main + Thumbnail for a client.
+    Returns (main_bytes, thumb_bytes) — either may be None if compositing fails."""
+    prompts = [r["prompt"] for r in ok_results if r.get("prompt")] or [title]
+    cover = _generate_cover_bg(title, prompts)
+    ml, tl = ensure_figma_assets_for_client(client_slug)
+    mtpl, ttpl = make_tpls(client_slug, ml, tl)
+    return (composite_template(cover, title, mtpl),
+            composite_template(cover, title, ttpl))
+
+
+with tab_revise:
+    _ux_section("🔗", "Generate from Link", "one blog · branded Main + Thumbnail + inner images")
+    st.caption(
+        "Paste a **published blog link** and the app detects the client, then generates the "
+        "branded **Main**, **Thumbnail**, and inner images — for a brand-new post or a "
+        "revision. Download them, or **upload straight to Webflow** at the bottom "
+        "(no need to open Webflow).")
+
+    rv_url = st.text_input(
+        "Blog URL", placeholder="https://www.version2llc.com/blog/your-post", key="rv_url")
+
+    # Client override — defaults to auto-detect from the URL's domain.
+    _rv_cache = _load_node_cache()
+    _rv_slugs = sorted(_rv_cache.keys())
+    _rv_labels = ["🔍 Auto-detect from URL"] + [_client_display_name(s) for s in _rv_slugs]
+    _rv_choice = st.selectbox(
+        "Client (branding template)", _rv_labels, index=0, key="rv_client_choice",
+        help="Auto-detect uses the link's domain. Pick a client here to override.")
+    _rv_override = "" if _rv_choice == _rv_labels[0] else _rv_slugs[_rv_labels.index(_rv_choice) - 1]
+
+    rv_btn = st.button("Generate Images", type="primary",
+                       use_container_width=True, key="rv_btn")
+
+    # ── Handle per-image redo (inner images) ──────────────────────────────────
+    if st.session_state.get("rv_redo_idx") is not None and "rv_results" in st.session_state:
+        redo_i    = st.session_state.pop("rv_redo_idx")
+        redo_seed = st.session_state.pop("rv_redo_seed", random.randint(10000, 999999))
+        with st.spinner(f"Regenerating image {redo_i}..."):
+            try:
+                cur = st.session_state["rv_results"][redo_i - 1]
+                new_desc = generate_prompt_variation(
+                    cur.get("prompt", ""), st.session_state.get("rv_title", ""))
+                raw = _dispatch_image_gen(new_desc, redo_i, DEFAULT_WIDTH, DEFAULT_HEIGHT,
+                                          seed=redo_seed)
+                opt_bytes, ext = optimize_image(raw, max_kb=200)
+                st.session_state["rv_results"][redo_i - 1] = {
+                    "index": redo_i, "bytes": opt_bytes, "ext": ext,
+                    "size_kb": round(len(opt_bytes) / 1024, 1),
+                    "alt": cur.get("alt", ""), "prompt": new_desc,
+                    "status": "ok", "defect_reason": "",
+                }
+            except Exception as e:
+                st.error(f"Redo failed: {e}")
+
+    # ── Handle cover regeneration (re-composite Main + Thumbnail) ──────────────
+    if st.session_state.pop("rv_redo_cover", False) and "rv_results" in st.session_state:
+        _rv_cl = st.session_state.get("rv_client", "")
+        if _rv_cl:
+            with st.spinner("Regenerating cover + Main/Thumbnail..."):
+                try:
+                    okr = [r for r in st.session_state["rv_results"] if r["status"] == "ok"]
+                    mb, tb = _revise_build_branded(
+                        st.session_state.get("rv_title", ""), okr, _rv_cl)
+                    st.session_state["rv_main_bytes"]  = mb
+                    st.session_state["rv_thumb_bytes"] = tb
+                except Exception as e:
+                    st.error(f"Cover regeneration failed: {e}")
+
+    # ── Full generation on button click ───────────────────────────────────────
+    if rv_btn:
+        if not rv_url.strip():
+            st.error("Please enter a blog URL.")
+            st.stop()
+        for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
+                  "rv_client", "rv_main_bytes", "rv_thumb_bytes"]:
+            st.session_state.pop(k, None)
+
+        url = ("https://" + rv_url) if not rv_url.startswith("http") else rv_url
+
+        # Resolve client: manual override wins, else auto-detect from domain.
+        client_slug = _rv_override or _revise_detect_client(url)
+        if client_slug:
+            st.info(f"🏢 Client: **{_client_display_name(client_slug)}** "
+                    f"{'(you selected)' if _rv_override else '(auto-detected from link)'}")
+        else:
+            st.warning(
+                "⚠️ Couldn't detect the client from this link — I'll still generate the "
+                "inner images, but **Main + Thumbnail need a client**. Pick one from the "
+                "dropdown above and regenerate to get the branded pair.")
+
+        # Step 1: Fetch blog (public scrape)
+        with st.status("Fetching blog page...", expanded=True) as s:
+            try:
+                title, content, image_urls = fetch_blog(url)
+                count = len(image_urls) or 4
+                st.write(f"**Title:** {title}")
+                st.write(f"**Images detected on page:** {len(image_urls)} → generating **{count}**")
+                s.update(label="Blog fetched ✓", state="complete")
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code == 404:
+                    s.update(label="Page not found (404)", state="error")
+                    st.error(
+                        "**Page not found (404).** The post may be a **draft / unpublished** "
+                        "in Webflow. Publish it first, or use the **Batch Generate tab** (it can "
+                        "read drafts with the client's Webflow key).")
+                else:
+                    s.update(label="Failed to fetch blog", state="error")
+                    st.error(f"HTTP error: {e}")
+                st.stop()
+            except Exception as e:
+                s.update(label="Failed to fetch blog", state="error")
+                st.error(f"Could not load the page: {e}")
+                st.stop()
+
+        # Step 2: Plan slots + alt texts
+        with st.status(f"Planning {count} image slots...", expanded=True) as _s:
+            try:
+                slots = _plan_image_slots(title, content, count)
+                _s.update(label=f"Slots planned ✓ — {count} photo{'s' if count != 1 else ''}",
+                          state="complete")
+            except Exception as e:
+                _s.update(label="Slot planning failed", state="error")
+                st.error(str(e))
+                st.stop()
+
+        with st.status("Generating alt texts...", expanded=True) as _s:
+            alt_texts = []
+            for i, sl in enumerate(slots, 1):
+                alt_texts.append(generate_alt_text_for(sl.get("description", ""), title, index=i))
+                time.sleep(1)
+            _s.update(label="Alt texts ready ✓", state="complete")
+
+        # Step 3: Generate inner images
+        _ux_section("🖼️", "Inner Images", "content images for the blog body")
+        gen_prog = st.progress(0, text="Starting image generation...")
+        results  = []
+        img_seeds = [random.randint(10000, 999999) for _ in slots]
+        for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
+            gen_prog.progress(i / len(slots), text=f"Generating image {i} of {len(slots)}...")
+            prompt = sl.get("description", "")
+            last_err, final_bytes, final_ext = None, None, "jpg"
+            base_seed = img_seeds[i - 1]
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                try:
+                    raw = _dispatch_image_gen(prompt, i, DEFAULT_WIDTH, DEFAULT_HEIGHT,
+                                              seed=base_seed + attempt * 1000)
+                    is_ok, reason = check_anatomy(raw)
+                    if not is_ok and attempt < MAX_ATTEMPTS:
+                        st.warning(f"⚠️ Image {i} — defect ({reason}), regenerating...")
+                        continue
+                    final_bytes, final_ext = optimize_image(raw, max_kb=200)
+                    if not is_ok:
+                        st.warning(f"⚠️ Image {i} — kept after {MAX_ATTEMPTS} attempts ({reason})")
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < MAX_ATTEMPTS:
+                        st.warning(f"⚠️ Image {i} failed ({e}), retrying...")
+                        time.sleep(2)
+            results.append({
+                "index": i, "bytes": final_bytes, "ext": final_ext,
+                "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
+                "alt": alt, "prompt": prompt,
+                "status": "ok" if final_bytes else f"failed: {last_err}",
+                "defect_reason": "",
+            })
+        gen_prog.empty()
+
+        # Step 4: Branded Main + Thumbnail (only if a client is known)
+        main_bytes, thumb_bytes = None, None
+        okr = [r for r in results if r["status"] == "ok"]
+        if client_slug and okr:
+            with st.status("Generating cover + branded Main/Thumbnail...", expanded=True) as _s:
+                try:
+                    main_bytes, thumb_bytes = _revise_build_branded(title, okr, client_slug)
+                    _s.update(label="Main + Thumbnail ✓", state="complete")
+                except Exception as e:
+                    _s.update(label=f"Compositing failed: {e}", state="error")
+
+        st.session_state["rv_results"]     = results
+        st.session_state["rv_slots"]       = slots
+        st.session_state["rv_alt_texts"]   = alt_texts
+        st.session_state["rv_title"]       = title
+        st.session_state["rv_client"]      = client_slug
+        st.session_state["rv_main_bytes"]  = main_bytes
+        st.session_state["rv_thumb_bytes"] = thumb_bytes
+        st.session_state["rv_url_final"]   = url
+        st.session_state["rv_slug"]        = url.rstrip("/").split("/")[-1]
+        st.session_state["rv_image_urls"]  = image_urls
+        st.session_state.pop("rv_uploaded", None)
+
+    # ── Display results ────────────────────────────────────────────────────────
+    if "rv_results" in st.session_state:
+        _rv_title = st.session_state.get("rv_title", "")
+        _rv_cl    = st.session_state.get("rv_client", "")
+
+        # Branded Main + Thumbnail
+        _mb = st.session_state.get("rv_main_bytes")
+        _tb = st.session_state.get("rv_thumb_bytes")
+        if _mb or _tb:
+            _ux_section("🎨", "Branded Cover", f"{_client_display_name(_rv_cl)} · Main + Thumbnail")
+            bc1, bc2 = st.columns(2)
+            for _col, _label, _bytes, _fname in [
+                (bc1, "Main", _mb, "main.png"), (bc2, "Thumbnail", _tb, "thumbnail.png")]:
+                with _col:
+                    if _bytes:
+                        st.image(_bytes, caption=_label, use_container_width=True)
+                        st.download_button(f"⬇ Download {_label}", data=_bytes,
+                                           file_name=_fname, mime="image/png",
+                                           key=f"rv_dl_{_label}", use_container_width=True)
+                    else:
+                        st.info(f"{_label} not generated.")
+            if st.button("🔄 Regenerate cover (new Main + Thumbnail)", key="rv_redo_cover_btn",
+                         use_container_width=True):
+                st.session_state["rv_redo_cover"] = True
+                st.rerun()
+        elif _rv_cl:
+            st.info("Branded Main/Thumbnail weren't generated — try **Regenerate Images** again.")
+
+        # Inner images
+        _ux_section("🖼️", "Inner Images", "download the ones you want")
+        results = st.session_state["rv_results"]
+        for rowi in range(0, len(results), 4):
+            cols = st.columns(4)
+            for ci, result in enumerate(results[rowi:rowi + 4]):
+                with cols[ci]:
+                    i = result["index"]
+                    if result["bytes"]:
+                        fname = f"image_{i:02d}.{result['ext']}"
+                        st.image(result["bytes"],
+                                 caption=f"{fname} — {result['size_kb']} KB",
+                                 use_container_width=True)
+                        st.text_area(f"Alt text #{i}", value=result["alt"],
+                                     height=70, key=f"rv_alt_{i}")
+                        dl_c, redo_c = st.columns([3, 1])
+                        with dl_c:
+                            st.download_button(
+                                label=f"⬇ Download {fname}", data=result["bytes"],
+                                file_name=fname,
+                                mime=MIME_MAP.get(result["ext"], "image/jpeg"),
+                                key=f"rv_dl_{i}", use_container_width=True)
+                        with redo_c:
+                            if st.button("🔄", key=f"rv_redo_{i}", use_container_width=True,
+                                         help="Regenerate this image"):
+                                st.session_state["rv_redo_idx"]  = i
+                                st.session_state["rv_redo_seed"] = random.randint(10000, 999999)
+                                st.rerun()
+                    else:
+                        st.error(f"Image {i} failed: {result['status']}")
+                        if st.button("🔄 Retry", key=f"rv_retry_{i}", use_container_width=True):
+                            st.session_state["rv_redo_idx"]  = i
+                            st.session_state["rv_redo_seed"] = random.randint(10000, 999999)
+                            st.rerun()
+
+        ok = sum(1 for r in results if r["status"] == "ok")
+        st.success(f"Done! {ok}/{len(results)} inner images ready"
+                   + (" · Main + Thumbnail above." if (_mb or _tb) else "."))
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -3300,7 +3587,7 @@ def _render_blog_results(blog_state: dict):
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 2 — Auto Batch (Airtable → Webflow)
+# TAB 3 — Batch Generate (Airtable → Webflow)
 # Reads Blog Keyword + Clients info straight from Airtable (CSV in 1/ is a fallback),
 # lets the user pick clients, generates per client, reviews, uploads to Webflow, then
 # marks ONLY that row's "Image status" = Done in Airtable after a successful upload.
@@ -3593,8 +3880,116 @@ def _batch_upload_entry(entry: dict):
     entry["uploaded"] = True
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# Revise from Link — Upload section (SECOND tab_revise block; placed here, after
+# do_webflow_connect / do_webflow_upload AND the Airtable helpers are defined, so it
+# can call them. Streamlit lets you write to the same tab from multiple `with` blocks —
+# this renders at the bottom of the Revise tab, under the generated images.)
+# ════════════════════════════════════════════════════════════════════════════════
+def _revise_resolve_creds(client_slug: str) -> dict | None:
+    """Pull a client's Webflow creds (token + collectionId) straight from the Airtable
+    'Clients info' table — the same source the Batch Generate tab uses — so the user never
+    has to paste a key. Matches the template slug to the Airtable client name via
+    _match_client. Returns the creds dict (only when a usable token was found), else None."""
+    if not client_slug:
+        return None
+    try:
+        _, clients_rows = _airtable_load()
+    except Exception:
+        clients_rows = None
+    if not clients_rows:
+        return None
+    idx = _batch_clients_index(clients_rows)
+    for row in clients_rows:
+        nm = row.get("Client name", "")
+        if isinstance(nm, str) and nm and _match_client(nm) == client_slug:
+            creds = _batch_resolve_creds(nm, idx)
+            if creds.get("ok") and creds.get("token"):
+                creds["client_name"] = nm
+                return creds
+    return None
+
+
+with tab_revise:
+    if st.session_state.get("rv_results"):
+        _rv_okr = [r for r in st.session_state["rv_results"] if r["status"] == "ok"]
+        _rv_has_cover = bool(st.session_state.get("rv_main_bytes") or st.session_state.get("rv_thumb_bytes"))
+        if _rv_okr or _rv_has_cover:
+            st.divider()
+            _ux_section("⬆️", "Upload to Webflow",
+                        "push these straight to the blog — no need to open Webflow")
+
+            _rv_up_slug     = st.session_state.get("rv_client", "")
+            _rv_client_disp = _client_display_name(_rv_up_slug) if _rv_up_slug else ""
+
+            # ── Credential resolution (priority order) ──────────────────────────
+            #   1) Airtable "Clients info" (token + collectionId) — zero manual entry
+            #   2) local client_keys.json / WEBFLOW_API_KEY env — offline fallback
+            #   3) manual paste (only when nothing above is available)
+            _rv_creds     = _revise_resolve_creds(_rv_up_slug)
+            _rv_key       = ""
+            _rv_coll      = ""
+            _rv_typed_key = ""
+
+            if _rv_creds:
+                _rv_key  = _rv_creds["token"]
+                _rv_coll = _rv_creds.get("collection_id", "")
+                st.success(f"🔑 Using **{_rv_creds['client_name']}**'s Webflow key from "
+                           f"**Airtable** (Clients info) — no key needed.")
+            else:
+                _rv_saved_key = _get_client_key(_rv_up_slug) if _rv_up_slug else os.getenv("WEBFLOW_API_KEY", "")
+                if _rv_saved_key:
+                    _rv_key = _rv_saved_key
+                    _who = f" for {_rv_client_disp}" if _rv_client_disp else ""
+                    st.caption(f"🔑 No Airtable key found — using the **saved local key**{_who}. "
+                               f"Leave the box blank to use it.")
+                else:
+                    st.caption("No key in Airtable for this client. Paste the Webflow API key "
+                               "once — it's stored locally (gitignored) and reused next time. "
+                               "Tip: set `AIRTABLE_TOKEN` in .env to pull keys automatically.")
+                # Never pre-fill the field with the real key (avoids the eye-toggle leak).
+                _rv_typed_key = st.text_input(
+                    "Webflow API key", type="password", value="",
+                    placeholder="Paste key (or leave blank to use the saved one)",
+                    key="rv_wf_key")
+                if _rv_typed_key.strip():
+                    _rv_key = _rv_typed_key.strip()
+
+            if st.session_state.get("rv_uploaded"):
+                st.success("✅ Already uploaded to Webflow. Regenerate the blog to upload again.")
+            elif st.button("⬆️ Upload to Webflow now", type="primary",
+                           use_container_width=True, key="rv_upload_btn"):
+                if not _rv_key:
+                    st.error("No Webflow key available — set `AIRTABLE_TOKEN` in .env or paste a key above.")
+                else:
+                    # Remember a freshly typed key locally for next time (fallback path only).
+                    if (not _rv_creds) and _rv_typed_key.strip() and _rv_up_slug:
+                        _save_client_key(_rv_up_slug, _rv_typed_key.strip())
+                    try:
+                        with st.status("Connecting to Webflow…", expanded=True) as _cs:
+                            # Pass the Airtable collectionId (when known) so we don't rely on
+                            # keyword auto-detection — that mis-fired for Zhero's "Newsletters".
+                            wf, site_id, site_name, collection_id, item_id, was_pub = \
+                                do_webflow_connect(
+                                    _rv_key, None, _rv_client_disp,
+                                    st.session_state.get("rv_slug", ""),
+                                    blog_url=st.session_state.get("rv_url_final", ""),
+                                    known_collection_id=_rv_coll)
+                            _cs.update(label=f"Connected ✓ → {site_name}", state="complete")
+                        do_webflow_upload(
+                            wf, site_id, collection_id, item_id, was_pub,
+                            st.session_state.get("rv_image_urls", []), _rv_okr,
+                            site_name, _rv_client_disp or site_name,
+                            main_bytes=st.session_state.get("rv_main_bytes"),
+                            thumb_bytes=st.session_state.get("rv_thumb_bytes"),
+                            blog_title=st.session_state.get("rv_title", ""))
+                        st.session_state["rv_uploaded"] = True
+                    except Exception as e:
+                        st.error(f"Upload failed: {e}")
+
+
 with tab_batch:
-    st.markdown("#### ⚡ Auto Batch — Airtable → Webflow")
+    st.markdown("#### ⚡ Batch Generate — Airtable → Webflow")
 
     # State-aware stepper
     _res_now = st.session_state.get("abatch_results", {})
