@@ -76,6 +76,10 @@ Each image must show a DIFFERENT activity — same topic, different angle of the
 - White American or British Caucasian only
 - Eyes on screen/desk/colleague — NEVER at the camera
 - Natural posture: slight slouch, shifted weight — not perfectly upright
+- HANDS & GESTURES (avoid the scripted look):
+    · A person who is ALONE in the scene (no colleague present) must NEVER point at, present toward, or gesture at a screen, monitor, paper, notepad, or the desk — with nobody to talk to, that always looks staged. Their hands simply DO the task: typing, using the mouse, holding a document up to read it, writing, or resting naturally.
+    · Pointing, presenting, or an open-hand "explaining" gesture is allowed ONLY when another person is in the same scene as the listener — the gesture must be directed at that person, not at a screen.
+    · NEVER point a finger at a screen or monitor in ANY scene, alone or in a group — it always looks scripted.
 - Plain business casual: navy polo, grey fleece, chinos, plain t-shirt — NO logos or company names
 
 ━━ RULE 4 — ENVIRONMENT DETAILS ━━
@@ -108,7 +112,7 @@ _DESK_SCENES = [   # one person seated at an individual computer/desk
     ("LAPTOP HANDS CLOSE-UP", "tight close-up of one person's hands on a laptop keyboard, their face softly blurred behind"),
     ("OVER-SHOULDER MONITOR", "over-the-shoulder framing of one person studying a dark dashboard on a monitor"),
     ("STICKY-NOTE DESK", "one person at a desk edged with sticky notes, adding a note to one of them"),
-    ("HEADSET SUPPORT DESK", "one person in a headset at a support desk mid-conversation, gesturing with one hand"),
+    ("HEADSET SUPPORT DESK", "one person in a headset at a support desk mid-call, one hand on the mouse and a notepad open in front of them"),
     ("EVENING DESK LAMP", "one person at a desk lit mostly by a warm desk lamp in a dim after-hours office"),
     ("NOTEBOOK AND SCREEN", "one person splitting attention between a paper notebook and a monitor"),
     ("CORNER CUBICLE WIDE", "wide framing of one person seated in a corner cubicle with the office visible beyond"),
@@ -172,7 +176,7 @@ _ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a 
     ("STANDING DESK", "one person standing at a height-adjustable standing desk looking at their screen"),
     ("WALKING CORRIDOR", "one or two people walking mid-stride through a bright office corridor"),
     ("WHITEBOARD SESSION", "one or two people at a whiteboard with markers, no readable text on the board"),
-    ("PRESENTATION SCREEN", "one person standing beside a wall-mounted TV or screen, presenting with a relaxed open-hand gesture"),
+    ("PRESENTATION SCREEN", "one person standing beside a wall-mounted TV or screen presenting to two or three seated colleagues, a relaxed open-hand gesture directed at the group"),
     ("OUTDOOR TERRACE", "one or two people working at a table on a sunny office terrace or rooftop"),
     ("STICKY NOTE WALL", "two people at a wall covered in colorful sticky notes, organizing them"),
     ("INFORMAL HUDDLE", "two people standing and talking near a kitchen counter or hallway"),
@@ -183,7 +187,7 @@ _ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a 
     ("ELEVATOR LOBBY WAIT", "one or two people standing in a bright elevator lobby, one holding a laptop"),
     ("STAIRWELL PASSING", "one person descending an open office staircase, hand on the rail"),
     ("DOORWAY CONVERSATION", "two people pausing to talk in a glass office doorway"),
-    ("AT WALL DISPLAY", "one person standing near a large wall display, talking through it with an open hand"),
+    ("AT WALL DISPLAY", "one person standing in front of a large wall display studying it closely, hands at their sides or arms loosely folded"),
     ("CARRYING LAPTOP WALK", "one person walking through the office carrying an open laptop on one arm"),
     ("WINDOW LEAN PHONE", "one person leaning against a floor-to-ceiling window taking a call on a phone"),
     ("WHITEBOARD EXPLAIN", "one person mid-gesture explaining to a colleague at a whiteboard"),
@@ -196,7 +200,7 @@ _ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a 
     ("ATRIUM WALKWAY", "one person crossing a bright multi-storey office atrium walkway"),
     ("PLANT-LINED CORRIDOR", "one person walking a corridor lined with tall office plants"),
     ("STANDING TABLET REVIEW", "one person standing near a window reviewing something on a tablet"),
-    ("OPEN-HAND PRESENTER", "one person standing at the head of a room mid-gesture with an open hand while presenting"),
+    ("OPEN-HAND PRESENTER", "one person at the head of a room presenting to several seated colleagues, a single relaxed open-hand gesture directed toward the group"),
     ("PINBOARD PLANNING", "two people standing at a pinboard rearranging index cards"),
     ("COAT-BY-DOOR ARRIVAL", "one person arriving, laptop bag on shoulder, near a coat area by the entrance"),
     ("BALCONY LAPTOP STAND", "one person standing at a rail on an office balcony with a laptop on a ledge"),
@@ -345,6 +349,10 @@ NEGATIVE_PROMPT = (
     "finger pointing at screen, index finger extended toward monitor, pointing gesture at display, "
     "hand pointing at the screen, arm outstretched toward monitor, everyone pointing at the screen, "
     "pointing at a display, jabbing finger at monitor, "
+    # solo person doing a presenting/pointing gesture with no one to talk to — looks scripted
+    "lone person presenting, solo person presenting, presenting to an empty room, presenting to no audience, "
+    "gesturing at nothing, gesturing with no audience, one person pointing at paper, pointing at the desk, "
+    "pointing at a notepad, pointing at documents alone, single person mid-presentation gesture, staged presenting pose, "
     # misc
     "watermark, text overlay, logo, oversaturated, oversharpened, extreme HDR, fake depth, "
     # clothing — no branded/company items
@@ -997,6 +1005,7 @@ def generate_prompt_variation(original_prompt: str, title: str) -> str:
         "Not 'working at a computer' — describe the exact thing the person is doing.\n\n"
         "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
         "Eyes on screen/desk/colleague — NEVER at the camera. "
+        "HANDS: if the person is alone, they NEVER point at or present toward a screen, paper, or desk — their hands just do the task; a pointing or presenting gesture is only allowed when a colleague is present as the listener, and never aimed at a screen. "
         "Plain business casual — NO logos or company names on clothing.\n\n"
         "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
         "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
@@ -1028,6 +1037,7 @@ def _generate_cover_scene(title: str) -> str:
         "Describe the exact task — not 'working at a computer.'\n\n"
         "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
         "Eyes on screen/desk/colleague — NEVER at the camera. "
+        "HANDS: if the person is alone, they NEVER point at or present toward a screen, paper, or desk — their hands just do the task; a pointing or presenting gesture is only allowed when a colleague is present as the listener, and never aimed at a screen. "
         "Plain business casual — NO logos or company names on clothing.\n\n"
         "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
         "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
