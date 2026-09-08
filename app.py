@@ -3890,6 +3890,102 @@ def _batch_upload_entry(entry: dict):
     entry["uploaded"] = True
 
 
+# ── Batch state persistence (survives a Streamlit reboot) ───────────────────────
+# The Auto Batch store lives in st.session_state (RAM only). On the free-tier host a
+# long multi-client run can trip a resource/time limit and reboot the app mid-batch,
+# wiping RAM — so "resume-safe" never actually resumed and only ~1 client ever
+# finished. These helpers mirror the store to disk (image bytes → files, everything
+# else → a bytes-free JSON manifest) so a reboot rehydrates and generation continues
+# from where it stopped instead of restarting.
+_BATCH_STATE_FILE = Path("generated_images") / "_batch_state.json"
+
+
+def _batch_odir(slug: str) -> Path:
+    """The per-blog output directory (same convention the generate loop uses)."""
+    safe = re.sub(r"[^A-Za-z0-9_\-]", "-", slug or "blog").strip("-") or "blog"
+    d = Path("generated_images") / safe
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _write_entry_images(entry: dict) -> None:
+    """Write an entry's Main/Thumb/inner bytes to disk and stamp *_path onto the entry
+    (in place) so the manifest can reference files instead of holding bytes in RAM.
+    Guarded per-field, so it's a no-op for a 'failed' entry that has no bytes."""
+    odir = _batch_odir(entry.get("slug", ""))
+    if entry.get("main_bytes"):
+        p = odir / "_main.png"
+        p.write_bytes(entry["main_bytes"])
+        entry["main_path"] = str(p)
+    if entry.get("thumb_bytes"):
+        p = odir / "_thumb.png"
+        p.write_bytes(entry["thumb_bytes"])
+        entry["thumb_path"] = str(p)
+    for r in entry.get("results", []):
+        if r.get("bytes"):
+            ext = r.get("ext", "jpg")
+            p = odir / f"inner_{int(r.get('index', 0)):02d}.{ext}"
+            p.write_bytes(r["bytes"])
+            r["path"] = str(p)
+
+
+def _strip_bytes(entry: dict) -> dict:
+    """A JSON-safe copy of an entry: raw bytes dropped, *_path references kept."""
+    e = {k: v for k, v in entry.items()
+         if k not in ("main_bytes", "thumb_bytes", "results")}
+    e["results"] = [{k: v for k, v in r.items() if k != "bytes"}
+                    for r in entry.get("results", [])]
+    return e
+
+
+def _batch_state_save(store: dict) -> None:
+    """Persist a bytes-free manifest of the batch store. Best-effort: never raises, so
+    a disk hiccup can't break generation."""
+    try:
+        _BATCH_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        out = {rid: _strip_bytes(v) for rid, v in store.items()}
+        _BATCH_STATE_FILE.write_text(json.dumps(out), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _batch_state_load() -> dict:
+    """Rehydrate the batch store from the on-disk manifest (paths → bytes). Empty dict
+    if there is nothing saved or the manifest is unreadable."""
+    try:
+        if not _BATCH_STATE_FILE.exists():
+            return {}
+        raw = json.loads(_BATCH_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    def _rd(p):
+        try:
+            return Path(p).read_bytes() if p and Path(p).exists() else None
+        except Exception:
+            return None
+
+    store = {}
+    for rid, e in raw.items():
+        entry = {k: v for k, v in e.items()
+                 if k not in ("main_path", "thumb_path", "results")}
+        entry["main_bytes"] = _rd(e.get("main_path"))
+        entry["thumb_bytes"] = _rd(e.get("thumb_path"))
+        entry["results"] = [{**{k: v for k, v in r.items() if k != "path"},
+                             "bytes": _rd(r.get("path"))}
+                            for r in e.get("results", [])]
+        store[rid] = entry
+    return store
+
+
+def _batch_state_clear() -> None:
+    """Delete the on-disk batch manifest (used by the 'Clear results' button)."""
+    try:
+        _BATCH_STATE_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 # Revise from Link — Upload section (SECOND tab_revise block; placed here, after
 # do_webflow_connect / do_webflow_upload AND the Airtable helpers are defined, so it
@@ -4000,6 +4096,19 @@ with tab_revise:
 
 with tab_batch:
     st.markdown("#### ⚡ Batch Generate — Airtable → Webflow")
+
+    # Rehydrate the batch store from disk ONCE per session. If the free-tier host
+    # rebooted mid-batch, session_state is empty but the on-disk manifest survives —
+    # so already-generated clients reappear and generation resumes instead of
+    # restarting from scratch (the old "only one client generates" symptom).
+    if "abatch_results" not in st.session_state:
+        _rehydrated = _batch_state_load()
+        st.session_state["abatch_results"] = _rehydrated
+        if _rehydrated:
+            _rh_done = sum(1 for v in _rehydrated.values() if v.get("status") == "done")
+            st.info(f"🔁 Restored {_rh_done} already-generated blog(s) from the last "
+                    "batch — pick the same clients and click Generate to continue the "
+                    "rest, or review/upload below.")
 
     # State-aware stepper
     _res_now = st.session_state.get("abatch_results", {})
@@ -4173,6 +4282,7 @@ with tab_batch:
                 with _bc2:
                     if st.button("🗑️ Clear results", use_container_width=True):
                         st.session_state["abatch_results"] = {}
+                        _batch_state_clear()
                         st.rerun()
                 if _done_already:
                     st.caption(f"🔁 Resume-safe: {_done_already}/{_total_blogs} already done — will skip.")
@@ -4259,6 +4369,13 @@ with tab_batch:
                             _store[_rec] = {"client": _cn, "url": _url, "slug": _slug,
                                             "status": "failed", "error": str(_ge)}
                         st.session_state["abatch_results"] = _store
+                        # Mirror THIS blog to disk right away so a mid-batch reboot
+                        # keeps every finished blog (resume, not restart).
+                        try:
+                            _write_entry_images(_store[_rec])
+                            _batch_state_save(_store)
+                        except Exception:
+                            pass
 
                     _prog.progress(1.0, text="Done!")
                     _ok = sum(1 for v in _store.values() if v.get("status") == "done")
@@ -4331,6 +4448,11 @@ with tab_batch:
                                         with st.spinner(f"Redo {_cap}…"):
                                             _batch_redo_inner(_v, _iidx)
                                         st.session_state["abatch_results"][_rk] = _v
+                                        try:
+                                            _write_entry_images(_v)
+                                            _batch_state_save(st.session_state["abatch_results"])
+                                        except Exception:
+                                            pass
                                         st.rerun()
                                 elif _iidx == -1 and not _locked:  # MAIN tile
                                     if st.button("🔄 Redo Main+Thumb", key=f"redo_{_rk}_cover",
@@ -4339,6 +4461,11 @@ with tab_batch:
                                         with st.spinner("Redo cover…"):
                                             _batch_redo_cover(_v)
                                         st.session_state["abatch_results"][_rk] = _v
+                                        try:
+                                            _write_entry_images(_v)
+                                            _batch_state_save(st.session_state["abatch_results"])
+                                        except Exception:
+                                            pass
                                         st.rerun()
                         st.divider()
 
@@ -4374,6 +4501,8 @@ with tab_batch:
                                 _v["upload_error"] = str(_ue)
                                 st.error(f"⛔ {_v.get('slug','')}: {_ue}")
                             st.session_state["abatch_results"][_rk] = _v
+                        # Persist upload state so a reboot won't re-upload these blogs.
+                        _batch_state_save(st.session_state["abatch_results"])
                         _airtable_load.clear()  # refresh so the marked-Done rows drop out
                         _uprog.progress(1.0, text="Done!")
                         _md_fail = [_v.get("slug", "") for _rk, _v in _pending_up
