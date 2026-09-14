@@ -3950,32 +3950,65 @@ def _batch_state_save(store: dict) -> None:
 
 
 def _batch_state_load() -> dict:
-    """Rehydrate the batch store from the on-disk manifest (paths → bytes). Empty dict
-    if there is nothing saved or the manifest is unreadable."""
+    """Rehydrate the batch store from the on-disk manifest. LAZY: keeps the *_path
+    references only and does NOT pull image bytes into RAM — bytes are loaded on demand
+    (per entry) by _batch_hydrate_entry when a blog is actually previewed, redone, or
+    uploaded. Loading every blog's bytes up front is exactly what used to spike RAM on
+    the free-tier host and reboot a multi-client batch. Empty dict if nothing saved."""
     try:
         if not _BATCH_STATE_FILE.exists():
             return {}
-        raw = json.loads(_BATCH_STATE_FILE.read_text(encoding="utf-8"))
+        return json.loads(_BATCH_STATE_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
-    def _rd(p):
-        try:
-            return Path(p).read_bytes() if p and Path(p).exists() else None
-        except Exception:
-            return None
 
-    store = {}
-    for rid, e in raw.items():
-        entry = {k: v for k, v in e.items()
-                 if k not in ("main_path", "thumb_path", "results")}
-        entry["main_bytes"] = _rd(e.get("main_path"))
-        entry["thumb_bytes"] = _rd(e.get("thumb_path"))
-        entry["results"] = [{**{k: v for k, v in r.items() if k != "path"},
-                             "bytes": _rd(r.get("path"))}
-                            for r in e.get("results", [])]
-        store[rid] = entry
-    return store
+def _read_img_path(p):
+    """Read image bytes from a path, or None if missing/unreadable."""
+    try:
+        return Path(p).read_bytes() if p and Path(p).exists() else None
+    except Exception:
+        return None
+
+
+def _batch_hydrate_entry(entry: dict) -> dict:
+    """Load one entry's Main/Thumb/inner bytes back into RAM FROM DISK (using the *_path
+    refs stamped by _write_entry_images) if they aren't already present. Called right
+    before the few operations that truly need bytes — preview, redo, upload — so only
+    ONE blog's bytes live in RAM at a time instead of every finished blog's."""
+    if not entry.get("main_bytes") and entry.get("main_path"):
+        entry["main_bytes"] = _read_img_path(entry["main_path"])
+    if not entry.get("thumb_bytes") and entry.get("thumb_path"):
+        entry["thumb_bytes"] = _read_img_path(entry["thumb_path"])
+    for r in entry.get("results", []):
+        if not r.get("bytes") and r.get("path"):
+            r["bytes"] = _read_img_path(r["path"])
+    return entry
+
+
+def _drop_entry_bytes(entry: dict) -> None:
+    """Release an entry's raw image bytes from RAM once they're safely on disk (path
+    stamped). Peak RAM then stays ≈ one client instead of growing with every finished
+    client — the real reason a 4-client batch used to reboot after ~1 client. Only drops
+    a field whose *_path exists, so an unsaved image is never lost."""
+    if entry.get("main_path"):
+        entry.pop("main_bytes", None)
+    if entry.get("thumb_path"):
+        entry.pop("thumb_bytes", None)
+    for r in entry.get("results", []):
+        if r.get("path"):
+            r.pop("bytes", None)
+
+
+def _batch_disp_src(byts, path):
+    """A Streamlit-displayable image source without forcing bytes into RAM: in-memory
+    bytes if already present, else the on-disk file path (st.image reads it directly),
+    else None so the tile is skipped."""
+    if byts:
+        return byts
+    if path and Path(path).exists():
+        return str(path)
+    return None
 
 
 def _batch_state_clear() -> None:
@@ -4370,12 +4403,17 @@ with tab_batch:
                                             "status": "failed", "error": str(_ge)}
                         st.session_state["abatch_results"] = _store
                         # Mirror THIS blog to disk right away so a mid-batch reboot
-                        # keeps every finished blog (resume, not restart).
+                        # keeps every finished blog (resume, not restart)…
                         try:
                             _write_entry_images(_store[_rec])
                             _batch_state_save(_store)
                         except Exception:
                             pass
+                        # …then release its bytes from RAM. Without this, every finished
+                        # client's Main/Thumb/inner bytes pile up in session_state until
+                        # the free-tier host OOMs and reboots after ~1 client. Bytes are
+                        # reloaded from disk on demand for preview/redo/upload.
+                        _drop_entry_bytes(_store[_rec])
 
                     _prog.progress(1.0, text="Done!")
                     _ok = sum(1 for v in _store.values() if v.get("status") == "done")
@@ -4423,15 +4461,20 @@ with tab_batch:
                             _hdr += " · <span style='color:#39d98a'>✅ uploaded</span>"
                         st.markdown(_hdr, unsafe_allow_html=True)
 
+                        # Preview straight from disk (path) when bytes were released —
+                        # st.image reads a file path directly, so review costs ~no RAM.
+                        _main_src = _batch_disp_src(_v.get("main_bytes"), _v.get("main_path"))
+                        _thumb_src = _batch_disp_src(_v.get("thumb_bytes"), _v.get("thumb_path"))
                         _tiles = []
-                        if _v.get("main_bytes"):
-                            _tiles.append(("MAIN", _v["main_bytes"], "inner_no", -1, False))
-                        if _v.get("thumb_bytes"):
-                            _tiles.append(("THUMB", _v["thumb_bytes"], "inner_no", -2, False))
+                        if _main_src:
+                            _tiles.append(("MAIN", _main_src, "inner_no", -1, False))
+                        if _thumb_src:
+                            _tiles.append(("THUMB", _thumb_src, "inner_no", -2, False))
                         for _ii, r in _okimgs:
-                            _tiles.append((f"INNER {_ii + 1}", r.get("bytes"), "inner", _ii,
-                                           bool(r.get("defect_reason"))))
-                        if not _v.get("main_bytes") and not _v.get("thumb_bytes"):
+                            _tiles.append((f"INNER {_ii + 1}",
+                                           _batch_disp_src(r.get("bytes"), r.get("path")),
+                                           "inner", _ii, bool(r.get("defect_reason"))))
+                        if not _main_src and not _thumb_src:
                             st.caption("⚠️ No Main/Thumb — this client likely has no template.")
 
                         _locked = _v.get("uploaded", False)
@@ -4446,6 +4489,7 @@ with tab_batch:
                                     if st.button("🔄 Redo", key=f"redo_{_rk}_in_{_iidx}",
                                                  use_container_width=True):
                                         with st.spinner(f"Redo {_cap}…"):
+                                            _batch_hydrate_entry(_v)  # need real bytes for size
                                             _batch_redo_inner(_v, _iidx)
                                         st.session_state["abatch_results"][_rk] = _v
                                         try:
@@ -4453,6 +4497,7 @@ with tab_batch:
                                             _batch_state_save(st.session_state["abatch_results"])
                                         except Exception:
                                             pass
+                                        _drop_entry_bytes(_v)  # keep RAM low again
                                         st.rerun()
                                 elif _iidx == -1 and not _locked:  # MAIN tile
                                     if st.button("🔄 Redo Main+Thumb", key=f"redo_{_rk}_cover",
@@ -4466,6 +4511,7 @@ with tab_batch:
                                             _batch_state_save(st.session_state["abatch_results"])
                                         except Exception:
                                             pass
+                                        _drop_entry_bytes(_v)  # keep RAM low again
                                         st.rerun()
                         st.divider()
 
@@ -4486,6 +4532,7 @@ with tab_batch:
                             try:
                                 with st.status(f"⬆️ {_v.get('client','')} · {_v.get('slug','')}",
                                                expanded=False) as _us:
+                                    _batch_hydrate_entry(_v)  # load bytes from disk to upload
                                     _batch_upload_entry(_v)
                                     # STRICT: after a SUCCESSFUL upload, mark ONLY this row's
                                     # "Image status" = "Done" in Airtable. Nothing else is touched.
@@ -4500,6 +4547,7 @@ with tab_batch:
                             except Exception as _ue:
                                 _v["upload_error"] = str(_ue)
                                 st.error(f"⛔ {_v.get('slug','')}: {_ue}")
+                            _drop_entry_bytes(_v)  # release before the next blog
                             st.session_state["abatch_results"][_rk] = _v
                         # Persist upload state so a reboot won't re-upload these blogs.
                         _batch_state_save(st.session_state["abatch_results"])

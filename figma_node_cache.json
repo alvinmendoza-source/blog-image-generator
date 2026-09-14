@@ -1168,5 +1168,45 @@
       255,
       255
     ]
+  },
+  "systemtech": {
+    "name": "Systemtech",
+    "file_key": "qMMRF3RX3tkUt64hWA5KHT",
+    "main": "135:13",
+    "thumb": "135:14",
+    "main_w": 1920,
+    "main_h": 1080,
+    "overlay_main": "135:2",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 58,
+    "main_ty": 814,
+    "main_tw": 920,
+    "main_fsz": 65,
+    "main_lh": 78,
+    "main_font_family": "Satoshi",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      20,
+      20,
+      20
+    ],
+    "thumb_w": 1920,
+    "thumb_h": 1080,
+    "overlay_thumb": "135:11",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 58,
+    "thumb_ty": 814,
+    "thumb_tw": 920,
+    "thumb_fsz": 65,
+    "thumb_lh": 78,
+    "thumb_font_family": "Satoshi",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      20,
+      20,
+      20
+    ]
   }
 }
