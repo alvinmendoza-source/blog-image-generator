@@ -4315,22 +4315,59 @@ with tab_batch:
                 with _bc2:
                     if st.button("🗑️ Clear results", use_container_width=True):
                         st.session_state["abatch_results"] = {}
+                        for _k in ("abatch_run", "abatch_resumes", "abatch_dead"):
+                            st.session_state.pop(_k, None)
                         _batch_state_clear()
                         st.rerun()
                 if _done_already:
                     st.caption(f"🔁 Resume-safe: {_done_already}/{_total_blogs} already done — will skip.")
 
+                # ── Robust run driver ──────────────────────────────────────────
+                # A mid-loop rerun (Streamlit file-watcher / a transient reload) used
+                # to drop the one-shot _go flag and silently stop the batch after
+                # 1–2 clients — no error, just "kulang". Latch the run in session_state
+                # so it AUTO-CONTINUES from the disk-persisted store until every picked
+                # client is done. Capped so a client that keeps crashing the run can't
+                # loop forever. (A full process death wipes session_state → falls back
+                # to the manual disk-resume re-click, which still works.)
                 if _go:
-                    # Pre-flight: read-only token liveness per picked client
-                    _dead = set()
-                    with st.status("Pre-flight: checking tokens…", expanded=True) as _ps:
-                        for _cn in _picked:
-                            if _batch_token_alive(_client_creds[_cn]["token"]):
-                                st.write(f"✅ {_cn}: token OK")
-                            else:
-                                _dead.add(_cn)
-                                st.write(f"❌ {_cn}: dead/invalid token (401) — skipping")
-                        _ps.update(label="Pre-flight done ✓", state="complete")
+                    st.session_state["abatch_run"] = True
+                    st.session_state["abatch_resumes"] = 0
+                    st.session_state.pop("abatch_dead", None)  # force a fresh pre-flight
+
+                _running = bool(st.session_state.get("abatch_run"))
+                if _running and not _pending:            # nothing left → finished
+                    st.session_state["abatch_run"] = False
+                    _running = False
+                if _running:
+                    _resumes = int(st.session_state.get("abatch_resumes", 0))
+                    if _resumes > max(len(_pending), 1) * 3 + 3:   # safety cap
+                        st.session_state["abatch_run"] = False
+                        _running = False
+                        st.warning("⚠️ Auto-resume stopped after too many restarts — "
+                                   "click Generate to continue the remaining clients.")
+
+                if _running:
+                    st.session_state["abatch_resumes"] = \
+                        int(st.session_state.get("abatch_resumes", 0)) + 1
+                    if int(st.session_state["abatch_resumes"]) > 1:
+                        st.info(f"🔁 Auto-resuming batch — {len(_pending)} client-blog(s) left.")
+
+                    # Pre-flight: read-only token liveness (computed ONCE per batch, then
+                    # cached in session_state so an auto-resume doesn't re-hit Webflow).
+                    if "abatch_dead" in st.session_state:
+                        _dead = st.session_state["abatch_dead"]
+                    else:
+                        _dead = set()
+                        with st.status("Pre-flight: checking tokens…", expanded=True) as _ps:
+                            for _cn in _picked:
+                                if _batch_token_alive(_client_creds[_cn]["token"]):
+                                    st.write(f"✅ {_cn}: token OK")
+                                else:
+                                    _dead.add(_cn)
+                                    st.write(f"❌ {_cn}: dead/invalid token (401) — skipping")
+                            _ps.update(label="Pre-flight done ✓", state="complete")
+                        st.session_state["abatch_dead"] = _dead
 
                     _prog = st.progress(0.0, text="Preparing…")
                     for _i, (_cn, _r) in enumerate(_pending):
@@ -4416,6 +4453,10 @@ with tab_batch:
                         _drop_entry_bytes(_store[_rec])
 
                     _prog.progress(1.0, text="Done!")
+                    # Reached the end without interruption → batch complete; unlatch so
+                    # later reruns (Review/Redo/Upload) don't re-trigger generation.
+                    st.session_state["abatch_run"] = False
+                    st.session_state.pop("abatch_dead", None)
                     _ok = sum(1 for v in _store.values() if v.get("status") == "done")
                     _fail = sum(1 for v in _store.values() if v.get("status") == "failed")
                     st.success(f"✅ Generation done — {_ok} done · {_fail} failed. "
