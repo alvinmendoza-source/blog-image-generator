@@ -4686,9 +4686,21 @@ with tab_batch:
                            "(Main + Thumb + inner) uploads 1:1 to Webflow when you click "
                            "**⬆️ Upload** below. 🚩 = flagged by auto-QA.")
 
+                # Uploaded blogs are finished — hide them from Review so the list only
+                # shows what still needs attention. They stay in the store (so they are
+                # never re-uploaded and survive a reboot) and are cleared with the
+                # "🗑️ Clear results" button above.
                 _by_client = {}
                 for _rid_k, _v in _store_disp.items():
+                    if _v.get("uploaded"):
+                        continue
                     _by_client.setdefault(_v.get("client", "?"), []).append((_rid_k, _v))
+
+                if _upc:
+                    st.caption(f"✅ {_upc} already uploaded — done and hidden from the list below.")
+                if not _by_client:
+                    st.success("🎉 All uploaded — nothing left to review. Use "
+                               "**🗑️ Clear results** above to start a new batch.")
 
                 for _cn2, _pairs in _by_client.items():
                     st.markdown(f"#### 🏢 {_cn2}")
