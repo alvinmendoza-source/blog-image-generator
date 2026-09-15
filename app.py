@@ -4500,6 +4500,8 @@ with tab_batch:
                             _hdr += f" · <span style='color:#f5c451'>🚩 {_flags} flagged</span>"
                         if _v.get("uploaded"):
                             _hdr += " · <span style='color:#39d98a'>✅ uploaded</span>"
+                        if _v.get("excluded"):
+                            _hdr += " · <span style='color:#ff8b98'>🚫 excluded — won't upload</span>"
                         st.markdown(_hdr, unsafe_allow_html=True)
 
                         # Preview straight from disk (path) when bytes were released —
@@ -4554,13 +4556,44 @@ with tab_batch:
                                             pass
                                         _drop_entry_bytes(_v)  # keep RAM low again
                                         st.rerun()
+
+                        # ── Cancel / include toggle ──────────────────────────────
+                        # Exclude this generated blog from the batch upload WITHOUT
+                        # deleting its files or re-generating (e.g. a bad title on one
+                        # client while the others are fine). Reversible; the flag rides
+                        # in the store and is persisted to disk so a reboot keeps it.
+                        if not _locked:
+                            if _v.get("excluded"):
+                                st.warning("🚫 Excluded — hindi isasama sa upload.")
+                                if st.button("↩️ Undo — isama ulit sa upload",
+                                             key=f"uncancel_{_rk}", use_container_width=True):
+                                    _v["excluded"] = False
+                                    st.session_state["abatch_results"][_rk] = _v
+                                    _batch_state_save(st.session_state["abatch_results"])
+                                    st.rerun()
+                            else:
+                                if st.button("🚫 Cancel — huwag i-upload ang blog na ito",
+                                             key=f"cancel_{_rk}", use_container_width=True):
+                                    _v["excluded"] = True
+                                    st.session_state["abatch_results"][_rk] = _v
+                                    _batch_state_save(st.session_state["abatch_results"])
+                                    st.rerun()
                         st.divider()
 
                 # ── Upload approved to Webflow ──
+                # Cancelled (excluded) blogs are held out of the upload set, so they are
+                # never sent to Webflow and never marked "Done" in Airtable.
                 _pending_up = [(_rk, _v) for _rk, _v in _store_disp.items()
-                               if _v.get("status") == "done" and not _v.get("uploaded")]
+                               if _v.get("status") == "done" and not _v.get("uploaded")
+                               and not _v.get("excluded")]
+                _excluded_n = sum(1 for _v in _store_disp.values()
+                                  if _v.get("status") == "done" and _v.get("excluded")
+                                  and not _v.get("uploaded"))
                 _ux_section("5", "Upload to Webflow",
                             "live client site · auto-marks Airtable 'Done'")
+                if _excluded_n:
+                    st.caption(f"🚫 {_excluded_n} cancelled — hindi kasama sa upload "
+                               f"(nasa disk pa rin; i-Undo sa taas para ibalik).")
                 if not _pending_up:
                     st.info("Nothing left to upload.")
                 else:
