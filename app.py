@@ -4846,12 +4846,21 @@ with tab_batch:
 # TAB 4 — Create Template (code-drawn branded template generator, no Figma)
 # ════════════════════════════════════════════════════════════════════════════════
 with tab_template:
-    st.markdown("#### 🎨 Create Template — new branded template (code-drawn · no Figma)")
-    st.caption("Pick a client + brand + size → generate designs → choose one → saved straight into the "
-               "app (overlay + coords) and works immediately in Auto Batch / Generate from Link.")
+    st.markdown("#### 🎨 Create Template")
+    st.caption("Make a branded template for a client — pick the client, generate a few design "
+               "options, and save the one you like. It's ready to use everywhere in the app. "
+               "No design skills or Figma needed.")
+
+    # progress stepper: 1 client → 2 design → 3 save
+    _ct_step = 0
+    if st.session_state.get("ct_specs"):
+        _ct_step = 1
+    if st.session_state.get("ct_pick"):
+        _ct_step = 2
+    _ux_stepper(["Client & brand", "Pick a design", "Save"], _ct_step)
 
     # ── STEP 1: Client & Brand ──
-    _ux_section("1", "Client & Brand", "pick from Airtable or add new")
+    _ux_section("1", "Who is this template for?", "client & brand")
     try:
         _ct_blog, _ct_clients = _airtable_load()
     except Exception:
@@ -4861,26 +4870,38 @@ with tab_template:
     if not _ct_names:
         _ct_names = [_client_display_name(s) for s in _load_node_cache_clients()]
 
-    _ct_mode = st.radio("Client source", ["Existing (Airtable)", "➕ New client (manual)"],
+    _ct_mode = st.radio("Client", ["Existing client", "➕ Add new client"],
                         horizontal=True, key="ct_mode")
     if _ct_mode.startswith("Existing") and _ct_names:
         _ct_name = st.selectbox("Select client (type to search)", _ct_names, key="ct_sel")
+        st.caption("Choose “➕ Add new client” above if they're not in the list yet.")
     else:
         _ct_name = st.text_input("Client name", key="ct_name_manual",
                                  placeholder="e.g. ANE Technologies")
     _ct_slug = re.sub(r"[^a-z0-9]+", "-", (_ct_name or "").lower()).strip("-")
     if _ct_slug and _ct_slug in _load_node_cache():
-        st.info(f"ℹ️ `{_ct_slug}` already has a template — saving will replace it.")
+        st.info(f"ℹ️ **{_ct_name}** already has a template — saving will replace it.")
 
     _cc1, _cc2 = st.columns([1, 2])
     _ct_brand = _cc1.color_picker("Brand color", "#0D2140", key="ct_brand")
+    _cc1.caption("The client's main color.")
     _ct_logo_file = _cc2.file_uploader("Logo (transparent PNG)", type=["png"], key="ct_logo")
+    _cc2.caption("A see-through (transparent) PNG works best. No logo yet? You can still "
+                 "generate — the name is drawn as text for now.")
 
-    _s1, _s2, _s3, _s4 = st.columns(4)
-    _ct_mw = int(_s1.number_input("Main W", 200, 4000, 1200, key="ct_mw"))
-    _ct_mh = int(_s2.number_input("Main H", 200, 4000, 600, key="ct_mh"))
-    _ct_tw = int(_s3.number_input("Thumb W", 200, 4000, 600, key="ct_tw"))
-    _ct_th = int(_s4.number_input("Thumb H", 200, 4000, 600, key="ct_th"))
+    _ct_size_mode = st.selectbox(
+        "Template size",
+        ["Standard — recommended (1200×600 main · 546×362 thumbnail)", "Custom size…"],
+        key="ct_size_mode")
+    if _ct_size_mode.startswith("Standard"):
+        _ct_mw, _ct_mh, _ct_tw, _ct_th = 1200, 600, 546, 362
+        st.caption("✓ Most templates use Standard — you'll rarely need to change this.")
+    else:
+        _s1, _s2, _s3, _s4 = st.columns(4)
+        _ct_mw = int(_s1.number_input("Main width", 200, 4000, 1200, key="ct_mw"))
+        _ct_mh = int(_s2.number_input("Main height", 200, 4000, 600, key="ct_mh"))
+        _ct_tw = int(_s3.number_input("Thumbnail width", 200, 4000, 546, key="ct_tw"))
+        _ct_th = int(_s4.number_input("Thumbnail height", 200, 4000, 362, key="ct_th"))
 
     _ct_logo_img = None
     if _ct_logo_file is not None:
@@ -4893,10 +4914,10 @@ with tab_template:
     # ALWAYS hybrid: every batch (including the first) generates 3 designs with AI abstract
     # backgrounds under the REAL code-drawn logo + title (exact size, no fake logos). Each
     # Redo = 3 brand-new designs, dedup'd on layout family vs the previous batch.
-    _ux_section("2", "Generate designs", "3 hybrid-AI designs · Redo makes 3 brand-new ones")
+    _ux_section("2", "Pick a design", "choose one of the options")
     _ct_sample_title = "Business Email Compromise (BEC): Attack Risks & Email Security Tips"
-    st.caption("10 layout families · logo + title only. Every batch is hybrid-AI: an AI "
-               "background under the real logo + title. ~25s per design (~1 min per batch).")
+    st.caption("Click Generate — in about a minute you'll get 3 design options, each with your "
+               "logo and brand color. Don't like them? Get 3 brand-new ones.")
 
     def _ct_fresh_batch():
         _avoid = {s["style"] for s in (st.session_state.get("ct_specs") or [])}
@@ -4930,7 +4951,7 @@ with tab_template:
         st.session_state["ct_pick"] = None
         st.session_state["ct_pick_bg"] = None
 
-    if st.button("✨ Generate designs (~1 min)", type="primary", key="ct_gen",
+    if st.button("✨ Generate 3 designs (~1 min)", type="primary", key="ct_gen",
                  disabled=not _ct_slug, use_container_width=True):
         _ct_generate_batch("hybrid")
 
@@ -4939,51 +4960,64 @@ with tab_template:
         _photo = st.session_state.get("ct_photo") or _ct_sample_photo_bytes()
         _specs = st.session_state["ct_specs"]
         _bgs = st.session_state.get("ct_ai_bgs") or [None] * len(_specs)
-        st.caption("🤖 Hybrid-AI batch — AI background + real code-drawn logo/title.")
+        st.caption("Each option shows the **Main** banner and its **Thumbnail** — so you see "
+                   "both before choosing.")
         _cols = st.columns(3)
         for _i, _spec in enumerate(_specs):
             with _cols[_i % 3]:
                 _bg = _bgs[_i] if _i < len(_bgs) else None
+                # Main preview (banner size)
                 try:
                     _prev_img = _ct_preview(_spec, _ct_mw, _ct_mh, _brand,
                                             _ct_logo_img, _photo, _ct_sample_title, _ct_name, _i,
                                             ai_bg=_bg)
                     if _prev_img:
-                        st.image(_prev_img, use_container_width=True)
+                        st.image(_prev_img, use_container_width=True,
+                                 caption=f"Main · {_ct_mw}×{_ct_mh}")
                     else:
                         st.warning("preview failed")
                 except Exception as _e:
                     st.warning(f"preview error: {_e}")
-                st.caption(_ct_spec_label(_spec) + ("  · 🤖 AI bg" if _bg is not None else ""))
-                if st.button("✅ Use this", key=f"ct_use_{_i}", use_container_width=True):
+                # Thumbnail preview (same design at the thumbnail size)
+                try:
+                    _thumb_img = _ct_preview(_spec, _ct_tw, _ct_th, _brand,
+                                             _ct_logo_img, _photo, _ct_sample_title, _ct_name, _i,
+                                             ai_bg=_bg)
+                    if _thumb_img:
+                        _tcol, _ = st.columns([2, 1])
+                        _tcol.image(_thumb_img, use_container_width=True,
+                                    caption=f"Thumbnail · {_ct_tw}×{_ct_th}")
+                except Exception:
+                    pass
+                st.caption(_ct_spec_label(_spec))
+                if st.button("✅ Use this one", key=f"ct_use_{_i}", use_container_width=True):
                     st.session_state["ct_pick"] = _spec
                     st.session_state["ct_pick_bg"] = _bg
                     st.rerun()
 
-        if st.button("🔄 Redo — 3 new designs (~1 min)", key="ct_redo",
+        if st.button("🔄 Show 3 new designs (~1 min)", key="ct_redo",
                      use_container_width=True):
             _ct_generate_batch("hybrid")
             st.rerun()
 
     # ── STEP 3: Save ──
     if st.session_state.get("ct_pick"):
-        _ux_section("3", "Save template", "plug-and-play in every tab")
-        st.markdown(f"Selected: **{_ct_spec_label(st.session_state['ct_pick'])}** "
-                    f"for **{_ct_name}** (slug: `{_ct_slug}`)")
-        if st.button("💾 Save & register template", type="primary", key="ct_save",
+        _ux_section("3", "Save it", "ready to use")
+        st.markdown(f"You picked the **{_ct_spec_label(st.session_state['ct_pick'])}** design "
+                    f"for **{_ct_name}**.")
+        if st.button("💾 Save template", type="primary", key="ct_save",
                      disabled=not _ct_slug, use_container_width=True):
             try:
                 _mp, _tp = _ct_save_template(_ct_slug, _ct_name, _ct_brand,
                                              st.session_state["ct_pick"],
                                              (_ct_mw, _ct_mh), (_ct_tw, _ct_th), _ct_logo_img,
                                              ai_bg=st.session_state.get("ct_pick_bg"))
-                st.success(f"✅ Saved the template for **{_ct_name}** — it works right away "
-                           "in Auto Batch and Generate from Link.")
-                st.caption(f"📄 {_mp.name} · {_tp.name} · entry in figma_node_cache.json ({_ct_slug})")
+                st.success(f"✅ Saved! This template for **{_ct_name}** is ready — it works "
+                           "automatically in Batch Generate and Generate from Link.")
                 if not _ct_logo_img:
-                    st.warning("⚠️ No logo uploaded — a text logo was used. Upload a "
+                    st.warning("⚠️ No logo uploaded — the name was drawn as text. Upload a "
                                "transparent PNG for the real logo.")
-                st.info("💡 To work on the LIVE app, the new overlay PNGs + "
-                        "figma_node_cache.json must be committed — just say the word to push.")
+                st.caption("🔧 Admin: to keep this template on the live site permanently, the new "
+                           "files must be published — just say the word to push.")
             except Exception as _e:
                 st.error(f"Save failed: {_e}")
