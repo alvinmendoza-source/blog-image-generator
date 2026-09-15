@@ -4564,15 +4564,15 @@ with tab_batch:
                         # in the store and is persisted to disk so a reboot keeps it.
                         if not _locked:
                             if _v.get("excluded"):
-                                st.warning("🚫 Excluded — hindi isasama sa upload.")
-                                if st.button("↩️ Undo — isama ulit sa upload",
+                                st.warning("🚫 Excluded — will be skipped on upload.")
+                                if st.button("↩️ Undo — include in upload again",
                                              key=f"uncancel_{_rk}", use_container_width=True):
                                     _v["excluded"] = False
                                     st.session_state["abatch_results"][_rk] = _v
                                     _batch_state_save(st.session_state["abatch_results"])
                                     st.rerun()
                             else:
-                                if st.button("🚫 Cancel — huwag i-upload ang blog na ito",
+                                if st.button("🚫 Cancel — don't upload this blog",
                                              key=f"cancel_{_rk}", use_container_width=True):
                                     _v["excluded"] = True
                                     st.session_state["abatch_results"][_rk] = _v
@@ -4592,8 +4592,8 @@ with tab_batch:
                 _ux_section("5", "Upload to Webflow",
                             "live client site · auto-marks Airtable 'Done'")
                 if _excluded_n:
-                    st.caption(f"🚫 {_excluded_n} cancelled — hindi kasama sa upload "
-                               f"(nasa disk pa rin; i-Undo sa taas para ibalik).")
+                    st.caption(f"🚫 {_excluded_n} cancelled — excluded from upload "
+                               f"(files kept on disk; use Undo above to restore).")
                 if not _pending_up:
                     st.info("Nothing left to upload.")
                 else:
