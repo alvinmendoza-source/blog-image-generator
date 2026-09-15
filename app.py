@@ -2103,6 +2103,411 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
         return None
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# CREATE TEMPLATE — code-drawn branded template generator (NO Figma).
+# Produces a FULL-CANVAS overlay PNG: an OPAQUE brand panel + logo + accents, with a
+# TRANSPARENT window where the blog photo shows through. Saved to the same paths a
+# Figma template uses (template_assets/logo_panel_{main,thumb}_<slug>.png) plus a
+# figma_node_cache.json entry with the text-box coords — so make_tpls() +
+# composite_template() consume it UNCHANGED, exactly like a Figma-parsed template.
+# ════════════════════════════════════════════════════════════════════════════════
+# A design is a randomized PARAMETRIC spec with SIX genuinely different layout STYLES
+# (not variations of one) — so "Generate other designs" yields real variety. Every style
+# still keeps the approved house feel: brand-coloured, logo + title only, clean/corporate,
+# white text on a dark surface. Original layouts — not copies of any Figma template.
+# Layout families — ALL keep text/logo on the LEFT (house style: 32/32 approved
+# Figma templates start text in the left half). Inspired by the approved designs,
+# not copied: solid panels, strong scrims, clear photo/text separation.
+_CT_STYLES = ["panel_split", "panel_vsplit", "panel_diag",
+              "band_bottom", "band_top", "corner_block",
+              "scrim_left", "scrim_bottom", "sidebar", "l_shape"]
+_CT_STYLE_LABELS = {
+    "panel_split":  "Panel + rounded photo",
+    "panel_vsplit": "Vertical split",
+    "panel_diag":   "Diagonal split",
+    "band_bottom":  "Bottom band",
+    "band_top":     "Top band",
+    "corner_block": "Photo + corner block",
+    "scrim_left":   "Photo + left scrim",
+    "scrim_bottom": "Photo + bottom scrim",
+    "sidebar":      "Sidebar column",
+    "l_shape":      "L-shape frame",
+}
+# Title vertical band — two real clusters in the approved set: mid (~0.40–0.53)
+# and low (~0.62–0.82). None sit in the top third.
+# Title vertical position for the full-height PANEL styles (the band/scrim/corner styles
+# set their own ty). Kept in the Figma mid cluster (approved templates: mid titles sit
+# ~0.37–0.52, logo above with a comfortable ~0.27H gap) so panels never leave a big empty
+# gap between a top logo and a too-low title. Low-title variety comes from the band/scrim
+# layouts, not from pushing a panel title to the bottom (which looks empty up top).
+_CT_TITLE_POS = [0.38, 0.42, 0.46, 0.50]
+
+
+def _ct_random_spec(rng=None):
+    r = rng or random
+    return {
+        "style":      r.choice(_CT_STYLES),
+        "pw":         round(r.uniform(0.38, 0.48), 3),
+        "radius":     r.choice([0.0, 0.03, 0.05, 0.07]),
+        "title_pos":  r.choice(_CT_TITLE_POS),        # panel/scrim styles honour this
+        "grad":       r.choice([0.55, 0.65, 0.72, 0.82, 0.9]),
+        "logo_scale": round(r.uniform(0.9, 1.1), 2),
+    }
+
+
+def _ct_spec_label(s):
+    base = _CT_STYLE_LABELS.get(s.get("style"), "Design")
+    style = str(s.get("style", ""))
+    if style.startswith("panel") or style.startswith("scrim") or style == "sidebar":
+        tp = s.get("title_pos", 0.5)
+        pos = "title high" if tp < 0.48 else ("title low" if tp > 0.62 else "title mid")
+        return f"{base} · {pos}"
+    return base
+
+
+def _ct_title_band(tp):
+    return "hi" if tp < 0.48 else ("lo" if tp > 0.62 else "mid")
+
+
+def _ct_distinct_specs(n=3, tries=400):
+    """Return n visibly-different specs. Dedup FIRST on layout family (so no two options
+    share a style while the pool lasts), then — for larger n — on (style, title-band) so
+    look-alikes are avoided. Secondary axes still randomize for freshness between redos."""
+    out, styles, combos = [], set(), set()
+    for _ in range(tries):
+        s = _ct_random_spec()
+        # while we still have unused families, insist on a fresh family
+        if len(styles) < len(_CT_STYLES) and s["style"] in styles:
+            continue
+        key = (s["style"], _ct_title_band(s["title_pos"]))
+        if key in combos:
+            continue
+        combos.add(key)
+        styles.add(s["style"])
+        out.append(s)
+        if len(out) >= n:
+            break
+    while len(out) < n:                       # exhausted the distinct space — just fill
+        out.append(_ct_random_spec())
+    return out
+
+
+def _ct_hex_to_rgb(h):
+    h = (h or "").lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    try:
+        return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    except Exception:
+        return (13, 33, 58)
+
+
+def _ct_darken(rgb, f=0.7):
+    return tuple(max(0, int(c * f)) for c in rgb)
+
+
+def _ct_lum(rgb):
+    return 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+
+
+def _ct_text_color(brand):
+    return (245, 247, 250) if _ct_lum(brand) < 140 else (20, 22, 26)
+
+
+def _ct_font(sz):
+    try:
+        f = ImageFont.truetype(str(INTER_FONT_PATH), sz)
+        try:
+            f.set_variation_by_name("Bold")
+        except Exception:
+            pass
+        return f
+    except Exception:
+        return ImageFont.load_default()
+
+
+def _ct_vgrad(w, h, c1, c2):
+    base = PILImage.new("RGB", (w, h), c1)
+    top = PILImage.new("RGB", (w, h), c2)
+    m = PILImage.new("L", (w, h))
+    for y in range(h):
+        m.paste(int(255 * y / h), (0, y, w, y + 1))
+    base.paste(top, (0, 0), m)
+    return base
+
+
+def _ct_scrim_mask(W, H, axis, a0, a1, f0, f1):
+    """An 'L' alpha mask that ramps a0->a1 between fractional positions f0->f1 along
+    'h' (left→right) or 'v' (top→bottom). Used for photo-scrim layouts so text sits on
+    near-solid brand while the far side reveals the photo — clean separation, no clutter."""
+    m = PILImage.new("L", (W, H), a0)
+    md = ImageDraw.Draw(m)
+    if axis == "h":
+        x0, x1 = int(W * f0), int(W * f1)
+        md.rectangle([0, 0, x0, H], fill=a0)
+        md.rectangle([x1, 0, W, H], fill=a1)
+        span = max(1, x1 - x0)
+        for x in range(x0, x1):
+            md.line([(x, 0), (x, H)], fill=int(a0 + (a1 - a0) * (x - x0) / span))
+    else:
+        y0, y1 = int(H * f0), int(H * f1)
+        md.rectangle([0, 0, W, y0], fill=a0)
+        md.rectangle([0, y1, W, H], fill=a1)
+        span = max(1, y1 - y0)
+        for y in range(y0, y1):
+            md.line([(0, y), (W, y)], fill=int(a0 + (a1 - a0) * (y - y0) / span))
+    return m
+
+
+def _ct_place_logo(ov, logo_img, x, y, max_w, max_h):
+    """Alpha-composite a client logo (RGBA), scaled to fit a box, top-left at (x, y)."""
+    if logo_img is None:
+        return
+    lg = logo_img.convert("RGBA")
+    lw, lh = lg.size
+    s = min(max_w / lw, max_h / lh)
+    lg = lg.resize((max(1, int(lw * s)), max(1, int(lh * s))), PILImage.LANCZOS)
+    ov.alpha_composite(lg, (int(x), int(y)))
+
+
+def _ct_overlay(spec, W, H, brand, logo_img, name="Brand", ai_bg=None):
+    """Build a full-canvas overlay (opaque brand surface + logo, transparent/scrim photo
+    window) for one of TEN layout families, and return (overlay_rgba,
+    coords={tx,ty,tw,fsz,lh,color}). Brand-coloured, LOGO + TITLE ONLY — no accent lines
+    or extra graphics (design changes only, per user).
+
+    HYBRID: when `ai_bg` (a PIL image) is given, the brand SURFACE is filled with the
+    AI-generated abstract background instead of a flat brand gradient. Everything else —
+    the layout mask (photo window), the real code-drawn logo, and the runtime-drawn title
+    — is identical, so the saved template still carries the REAL logo at the EXACT size."""
+    navy = brand
+    navy2 = _ct_darken(brand, spec.get("grad", 0.72))
+    tcol = _ct_text_color(brand)
+    inset = round(W * 0.045)
+    mm = round(min(W, H) * 0.06)
+    style = spec.get("style", "panel_split")
+    rad = round(min(W, H) * spec.get("radius", 0.03))
+    lscale = spec.get("logo_scale", 1.0)
+
+    if ai_bg is not None:
+        try:
+            grad = _cover_crop(ai_bg.convert("RGB"), W, H)
+        except Exception:
+            grad = _ct_vgrad(W, H, navy, navy2)
+    else:
+        grad = _ct_vgrad(W, H, navy, navy2)
+    mask = PILImage.new("L", (W, H), 255)        # opaque; punch photo window to 0
+    md = ImageDraw.Draw(mask)
+    logo_xy = (inset, round(H * 0.14))           # top margin like the Figma templates (not glued to the edge)
+    logo_h = round(H * 0.13 * lscale)            # big logo, matching the Figma templates
+    fsz = max(14, round(H * 0.05))
+    lh = round(fsz * 1.22)
+    tx = inset
+    ty = round(H * spec.get("title_pos", 0.50))
+    tw = round(W * 0.36)
+
+    if style == "panel_split":
+        pw = round(W * spec.get("pw", 0.44))
+        box = [pw, mm, W - mm, H - mm]
+        (md.rounded_rectangle(box, radius=rad, fill=0) if rad > 0 else md.rectangle(box, fill=0))
+        tw = max(60, pw - inset - round(W * 0.03))
+    elif style == "panel_vsplit":
+        pw = round(W * 0.40)
+        md.rectangle([pw, 0, W, H], fill=0)                 # hard brand|photo edge (no accent line)
+        tw = max(60, pw - inset - round(W * 0.03))
+    elif style == "panel_diag":
+        pw = round(W * 0.42); slant = round(W * 0.07)
+        md.polygon([(pw + slant, 0), (W, 0), (W, H), (pw - slant, H)], fill=0)
+        tw = max(60, pw - inset - round(W * 0.03))
+    elif style == "band_bottom":
+        bh = round(H * 0.36)
+        md.rectangle([0, 0, W, H - bh], fill=0)             # photo on top
+        logo_h = round(H * 0.11 * lscale)
+        logo_xy = (inset, H - bh + round(H * 0.055))
+        ty = logo_xy[1] + logo_h + round(H * 0.03); tw = round(W * 0.60)
+    elif style == "band_top":
+        bh = round(H * 0.34)
+        md.rectangle([0, bh, W, H], fill=0)                 # photo below
+        logo_h = round(H * 0.11 * lscale)
+        logo_xy = (inset, round(H * 0.06))
+        ty = logo_xy[1] + logo_h + round(H * 0.03); tw = round(W * 0.60)
+    elif style == "corner_block":  # photo full-bleed + a solid rounded brand block bottom-left
+        mask = PILImage.new("L", (W, H), 0)                 # transparent (photo) everywhere
+        md = ImageDraw.Draw(mask)
+        bw, bh = round(W * 0.46), round(H * 0.44)
+        bx0, by0 = inset, H - bh - inset
+        md.rounded_rectangle([bx0, by0, bx0 + bw, by0 + bh],
+                             radius=round(min(W, H) * 0.03), fill=255)
+        logo_h = round(H * 0.11 * lscale)
+        logo_xy = (bx0 + round(W * 0.03), by0 + round(H * 0.06))
+        tx = bx0 + round(W * 0.03)
+        ty = logo_xy[1] + logo_h + round(H * 0.03); tw = bw - round(W * 0.06)
+    elif style == "scrim_left":    # full photo, strong left→right brand scrim, text mid-left
+        mask = _ct_scrim_mask(W, H, "h", 255, 0, 0.34, 0.64)
+        tw = round(W * 0.30)
+    elif style == "scrim_bottom":  # full photo, strong bottom brand scrim, text low-left
+        mask = _ct_scrim_mask(W, H, "v", 0, 255, 0.42, 0.66)
+        logo_h = round(H * 0.11 * lscale)
+        ty = round(H * max(0.70, spec.get("title_pos", 0.74)))
+        logo_xy = (inset, ty - logo_h - round(H * 0.03))
+        tw = round(W * 0.58)
+    elif style == "sidebar":       # narrow solid brand column left, photo fills the right
+        cw = round(W * 0.34)
+        md.rectangle([cw, 0, W, H], fill=0)
+        tw = max(60, cw - inset - round(W * 0.03))
+    elif style == "l_shape":       # brand left column + bottom band (L), photo in the top-right notch
+        cw, bh = round(W * 0.34), round(H * 0.36)
+        md.rectangle([cw, 0, W, H - bh], fill=0)            # photo = top-right rectangle only
+        logo_h = round(H * 0.11 * lscale)
+        # Cluster logo + title TOGETHER in the bottom band (was: logo top-left + title in
+        # the band = disconnected). The left column stays a clean brand accent beside the photo.
+        logo_xy = (inset, H - bh + round(H * 0.06))
+        ty = logo_xy[1] + logo_h + round(H * 0.035); tx = inset; tw = round(W * 0.62)
+    else:                          # safe fallback → simple left panel
+        pw = round(W * 0.44)
+        md.rectangle([pw, 0, W, H], fill=0)
+        tw = max(60, pw - inset - round(W * 0.03))
+
+    ov = grad.convert("RGBA")
+    ov.putalpha(mask)
+    d = ImageDraw.Draw(ov)
+
+    # logo width = the column it sits in (l_shape logo is in the narrow left column, not
+    # the wide title band), capped generously so logos read BIG like the Figma templates.
+    _logo_col = (round(W * 0.34) - inset - round(W * 0.03)) if style == "l_shape" else tw
+    logo_maxw = max(round(W * 0.18), min(round(W * 0.42), _logo_col))
+    if logo_img is not None:
+        _ct_place_logo(ov, logo_img, logo_xy[0], logo_xy[1], logo_maxw, logo_h)
+    else:                                        # text-logo fallback: fit big, but not past the column
+        _txt = (name or "Brand")[:22]
+        _fs = max(14, round(logo_h * 0.9)); _f = _ct_font(_fs)
+        while _fs > 14 and d.textlength(_txt, font=_f) > logo_maxw:
+            _fs -= 2; _f = _ct_font(_fs)
+        d.text(logo_xy, _txt, font=_f, fill=tcol + (255,), stroke_width=1, stroke_fill=tcol + (255,))
+
+    coords = dict(tx=tx, ty=ty, tw=tw, fsz=fsz, lh=lh, color=list(tcol))
+    return ov, coords
+
+
+def _ct_preview(spec, W, H, brand, logo_img, photo_bytes, title, name, idx=0, ai_bg=None):
+    """Render a real preview by REUSING composite_template (so preview == final output).
+    Pass `ai_bg` for a HYBRID design (AI background under the code-drawn logo/title)."""
+    ov, c = _ct_overlay(spec, W, H, brand, logo_img, name, ai_bg=ai_bg)
+    tmp = ASSETS_DIR / f"_ct_preview_{idx}.png"
+    ov.save(tmp)
+    tpl = {"w": W, "h": H, "logo": tmp, "ox": 0, "oy": 0,
+           "tx": c["tx"], "ty": c["ty"], "tw": c["tw"], "fsz": c["fsz"], "lh": c["lh"],
+           "font": INTER_FONT_PATH, "font_weight": 700, "font_style_name": "Bold",
+           "font_color": tuple(c["color"])}
+    return composite_template(photo_bytes, title, tpl)
+
+
+def _ct_sample_photo_bytes():
+    """A raw office photo (bytes) to preview a design on. Falls back to a flat panel."""
+    import glob as _g
+    import random as _r
+    cands = _g.glob("generated_images/*/image_01.*") or _g.glob("generated_images/*/image_0*.*")
+    if cands:
+        try:
+            return Path(_r.choice(cands)).read_bytes()
+        except Exception:
+            pass
+    ph = PILImage.new("RGB", (1500, 844), (96, 116, 140))
+    b = io.BytesIO(); ph.save(b, "PNG"); return b.getvalue()
+
+
+# Abstract background motifs cycled for HYBRID designs so each AI background looks
+# genuinely different from the last (variety was the whole point of adding AI).
+_CT_AI_MOTIFS = [
+    "smooth geometric polygons with subtle diagonal light rays",
+    "flowing soft waves and a gentle gradient mesh",
+    "a fine dotted grid with thin connecting lines, subtle tech-network motif",
+    "layered translucent shapes with soft depth and gentle bokeh",
+    "a clean isometric grid with a soft glow",
+    "abstract low-poly facets with soft shading",
+]
+
+
+def _ct_ai_bg(brand_hex, style_hint=None):
+    """Generate ONE abstract branded background via Kie GPT Image 2. The prompt forbids
+    text/logo/people, so the AI can never inject a fake brand — the real logo + title are
+    still drawn by code on top. Returns a PIL RGB image, or None on ANY failure (the caller
+    then falls back to the flat code-drawn surface for that slot). Pure (no st.* calls)."""
+    if not KIE_API_KEY:
+        return None
+    import random as _r
+    motif = style_hint or _r.choice(_CT_AI_MOTIFS)
+    prompt = (f"Abstract modern corporate background in the brand color {brand_hex}, "
+              f"{motif}, clean professional technology aesthetic, minimal, high quality, "
+              f"no text, no words, no letters, no logo, no people, no faces, no charts")
+    headers = {"Authorization": f"Bearer {KIE_API_KEY}", "Content-Type": "application/json"}
+    payload = {"model": "gpt-image-2-text-to-image",
+               "input": {"prompt": prompt, "aspect_ratio": "16:9",
+                         "resolution": "2K", "quality": "high"}}
+    try:
+        r = requests.post(f"{KIE_BASE}/jobs/createTask", headers=headers, json=payload, timeout=60)
+        if not r.ok:
+            return None
+        tid = (r.json().get("data") or {}).get("taskId")
+        if not tid:
+            return None
+        for _ in range(50):
+            time.sleep(3)
+            try:
+                poll = requests.get(f"{KIE_BASE}/jobs/recordInfo", headers=headers,
+                                    params={"taskId": tid}, timeout=30)
+                data = poll.json().get("data") or {}
+            except Exception:
+                continue
+            state = data.get("state", "")
+            if state == "success":
+                urls = json.loads(data.get("resultJson") or "{}").get("resultUrls", [])
+                if not urls:
+                    return None
+                raw = requests.get(urls[0], timeout=60).content
+                return PILImage.open(io.BytesIO(raw)).convert("RGB")
+            if state == "fail":
+                return None
+        return None
+    except Exception:
+        return None
+
+
+def _ct_save_template(slug, name, brand_hex, spec, main_wh, thumb_wh, logo_img, ai_bg=None):
+    """Render + save main/thumb overlays and register the template in figma_node_cache.json.
+    Returns (main_path, thumb_path). Pass `ai_bg` to bake a HYBRID (AI background) design;
+    the same AI image is cover-cropped to both the main and thumb sizes so they match."""
+    brand = _ct_hex_to_rgb(brand_hex)
+    mov, mc = _ct_overlay(spec, main_wh[0], main_wh[1], brand, logo_img, name, ai_bg=ai_bg)
+    tov, tc = _ct_overlay(spec, thumb_wh[0], thumb_wh[1], brand, logo_img, name, ai_bg=ai_bg)
+    main_path = ASSETS_DIR / f"logo_panel_main_{slug}.png"
+    thumb_path = ASSETS_DIR / f"logo_panel_thumb_{slug}.png"
+    mov.save(main_path)
+    tov.save(thumb_path)
+
+    cache = _load_node_cache()
+    entry = dict(cache.get(slug, {}))
+    entry.update({
+        "name": name, "engine": "hybrid" if ai_bg is not None else "codedrawn",
+        "spec": spec, "preset": _ct_spec_label(spec),
+        "brand_color": list(brand),
+        "main_w": main_wh[0], "main_h": main_wh[1],
+        "thumb_w": thumb_wh[0], "thumb_h": thumb_wh[1],
+        "overlay_main_x": 0, "overlay_main_y": 0,
+        "overlay_thumb_x": 0, "overlay_thumb_y": 0,
+        "main_tx": mc["tx"], "main_ty": mc["ty"], "main_tw": mc["tw"],
+        "main_fsz": mc["fsz"], "main_lh": mc["lh"],
+        "thumb_tx": tc["tx"], "thumb_ty": tc["ty"], "thumb_tw": tc["tw"],
+        "thumb_fsz": tc["fsz"], "thumb_lh": tc["lh"],
+        "main_font_family": "Inter", "main_font_style": "Bold",
+        "thumb_font_family": "Inter", "thumb_font_style": "Bold",
+        "main_font_color": mc["color"], "thumb_font_color": tc["color"],
+    })
+    cache[slug] = entry
+    _save_node_cache(cache)
+    return main_path, thumb_path
+
+
 # ── Shared workflow ────────────────────────────────────────────────────────────
 
 def run_workflow(url: str, output_dir: Path,
@@ -2540,8 +2945,9 @@ st.markdown(
 if not KIE_API_KEY:
     st.error("🔴 **KIE_API_KEY missing** — add it to .env to enable image generation.")
 
-tab_manual, tab_revise, tab_batch = st.tabs(
-    ["📥  Manual Upload", "🔗  Generate from Link", "⚡  Batch Generate (Airtable)"])
+tab_manual, tab_revise, tab_batch, tab_template = st.tabs(
+    ["📥  Manual Upload", "🔗  Generate from Link", "⚡  Batch Generate (Airtable)",
+     "🎨  Create Template"])
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -4635,3 +5041,150 @@ with tab_batch:
                         else:
                             st.success("✅ Upload done · marked Done in Airtable.")
                         st.rerun()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 4 — Create Template (code-drawn branded template generator, no Figma)
+# ════════════════════════════════════════════════════════════════════════════════
+with tab_template:
+    st.markdown("#### 🎨 Create Template — new branded template (code-drawn · no Figma)")
+    st.caption("Pick a client + brand + size → generate designs → choose one → saved straight into the "
+               "app (overlay + coords) and works immediately in Auto Batch / Generate from Link.")
+
+    # ── STEP 1: Client & Brand ──
+    _ux_section("1", "Client & Brand", "pick from Airtable or add new")
+    try:
+        _ct_blog, _ct_clients = _airtable_load()
+    except Exception:
+        _ct_clients = None
+    _ct_names = sorted({(r.get("Client name") or "").strip()
+                        for r in (_ct_clients or []) if (r.get("Client name") or "").strip()})
+    if not _ct_names:
+        _ct_names = [_client_display_name(s) for s in _load_node_cache_clients()]
+
+    _ct_mode = st.radio("Client source", ["Existing (Airtable)", "➕ New client (manual)"],
+                        horizontal=True, key="ct_mode")
+    if _ct_mode.startswith("Existing") and _ct_names:
+        _ct_name = st.selectbox("Select client (type to search)", _ct_names, key="ct_sel")
+    else:
+        _ct_name = st.text_input("Client name", key="ct_name_manual",
+                                 placeholder="e.g. ANE Technologies")
+    _ct_slug = re.sub(r"[^a-z0-9]+", "-", (_ct_name or "").lower()).strip("-")
+    if _ct_slug and _ct_slug in _load_node_cache():
+        st.info(f"ℹ️ `{_ct_slug}` already has a template — saving will replace it.")
+
+    _cc1, _cc2 = st.columns([1, 2])
+    _ct_brand = _cc1.color_picker("Brand color", "#0D2140", key="ct_brand")
+    _ct_logo_file = _cc2.file_uploader("Logo (transparent PNG)", type=["png"], key="ct_logo")
+
+    _s1, _s2, _s3, _s4 = st.columns(4)
+    _ct_mw = int(_s1.number_input("Main W", 200, 4000, 1200, key="ct_mw"))
+    _ct_mh = int(_s2.number_input("Main H", 200, 4000, 600, key="ct_mh"))
+    _ct_tw = int(_s3.number_input("Thumb W", 200, 4000, 600, key="ct_tw"))
+    _ct_th = int(_s4.number_input("Thumb H", 200, 4000, 600, key="ct_th"))
+
+    _ct_logo_img = None
+    if _ct_logo_file is not None:
+        try:
+            _ct_logo_img = PILImage.open(_ct_logo_file).convert("RGBA")
+        except Exception:
+            st.warning("⚠️ Couldn't read the logo PNG — using a text logo instead.")
+
+    # ── STEP 2: Generate designs ──
+    # ALWAYS hybrid: every batch (including the first) generates 3 designs with AI abstract
+    # backgrounds under the REAL code-drawn logo + title (exact size, no fake logos). Each
+    # Redo = 3 brand-new designs, dedup'd on layout family vs the previous batch.
+    _ux_section("2", "Generate designs", "3 hybrid-AI designs · Redo makes 3 brand-new ones")
+    _ct_sample_title = "Business Email Compromise (BEC): Attack Risks & Email Security Tips"
+    st.caption("10 layout families · logo + title only. Every batch is hybrid-AI: an AI "
+               "background under the real logo + title. ~25s per design (~1 min per batch).")
+
+    def _ct_fresh_batch():
+        _avoid = {s["style"] for s in (st.session_state.get("ct_specs") or [])}
+        for _ in range(80):
+            _b = _ct_distinct_specs(3)
+            if not _avoid or not ({s["style"] for s in _b} & _avoid):
+                return _b
+        return _ct_distinct_specs(3)
+
+    def _ct_generate_batch(engine):
+        """Build a 3-design batch. For 'hybrid', generate 3 distinct AI backgrounds (with a
+        progress bar); any that fail fall back to code-drawn for that slot. Stores the batch
+        + its AI backgrounds in session_state so preview == what gets saved."""
+        import random as _r
+        _specs = _ct_fresh_batch()
+        _bgs = [None, None, None]
+        if engine == "hybrid":
+            _motifs = _r.sample(_CT_AI_MOTIFS, 3)
+            _prog = st.progress(0.0, text="Generating 3 AI backgrounds… (~25s each)")
+            for _k in range(3):
+                _prog.progress(_k / 3.0, text=f"AI background {_k + 1}/3…")
+                _bgs[_k] = _ct_ai_bg(_ct_brand, _motifs[_k])
+            _prog.progress(1.0, text="AI backgrounds ready ✓")
+            if not any(b is not None for b in _bgs):
+                st.warning("⚠️ AI backgrounds failed (Kie credits or error) — showing "
+                           "code-drawn for this batch. Try Redo again.")
+        st.session_state["ct_specs"] = _specs
+        st.session_state["ct_photo"] = _ct_sample_photo_bytes()
+        st.session_state["ct_ai_bgs"] = _bgs
+        st.session_state["ct_engine"] = engine
+        st.session_state["ct_pick"] = None
+        st.session_state["ct_pick_bg"] = None
+
+    if st.button("✨ Generate designs (~1 min)", type="primary", key="ct_gen",
+                 disabled=not _ct_slug, use_container_width=True):
+        _ct_generate_batch("hybrid")
+
+    if st.session_state.get("ct_specs"):
+        _brand = _ct_hex_to_rgb(_ct_brand)
+        _photo = st.session_state.get("ct_photo") or _ct_sample_photo_bytes()
+        _specs = st.session_state["ct_specs"]
+        _bgs = st.session_state.get("ct_ai_bgs") or [None] * len(_specs)
+        st.caption("🤖 Hybrid-AI batch — AI background + real code-drawn logo/title.")
+        _cols = st.columns(3)
+        for _i, _spec in enumerate(_specs):
+            with _cols[_i % 3]:
+                _bg = _bgs[_i] if _i < len(_bgs) else None
+                try:
+                    _prev_img = _ct_preview(_spec, _ct_mw, _ct_mh, _brand,
+                                            _ct_logo_img, _photo, _ct_sample_title, _ct_name, _i,
+                                            ai_bg=_bg)
+                    if _prev_img:
+                        st.image(_prev_img, use_container_width=True)
+                    else:
+                        st.warning("preview failed")
+                except Exception as _e:
+                    st.warning(f"preview error: {_e}")
+                st.caption(_ct_spec_label(_spec) + ("  · 🤖 AI bg" if _bg is not None else ""))
+                if st.button("✅ Use this", key=f"ct_use_{_i}", use_container_width=True):
+                    st.session_state["ct_pick"] = _spec
+                    st.session_state["ct_pick_bg"] = _bg
+                    st.rerun()
+
+        if st.button("🔄 Redo — 3 new designs (~1 min)", key="ct_redo",
+                     use_container_width=True):
+            _ct_generate_batch("hybrid")
+            st.rerun()
+
+    # ── STEP 3: Save ──
+    if st.session_state.get("ct_pick"):
+        _ux_section("3", "Save template", "plug-and-play in every tab")
+        st.markdown(f"Selected: **{_ct_spec_label(st.session_state['ct_pick'])}** "
+                    f"for **{_ct_name}** (slug: `{_ct_slug}`)")
+        if st.button("💾 Save & register template", type="primary", key="ct_save",
+                     disabled=not _ct_slug, use_container_width=True):
+            try:
+                _mp, _tp = _ct_save_template(_ct_slug, _ct_name, _ct_brand,
+                                             st.session_state["ct_pick"],
+                                             (_ct_mw, _ct_mh), (_ct_tw, _ct_th), _ct_logo_img,
+                                             ai_bg=st.session_state.get("ct_pick_bg"))
+                st.success(f"✅ Saved the template for **{_ct_name}** — it works right away "
+                           "in Auto Batch and Generate from Link.")
+                st.caption(f"📄 {_mp.name} · {_tp.name} · entry in figma_node_cache.json ({_ct_slug})")
+                if not _ct_logo_img:
+                    st.warning("⚠️ No logo uploaded — a text logo was used. Upload a "
+                               "transparent PNG for the real logo.")
+                st.info("💡 To work on the LIVE app, the new overlay PNGs + "
+                        "figma_node_cache.json must be committed — just say the word to push.")
+            except Exception as _e:
+                st.error(f"Save failed: {_e}")
