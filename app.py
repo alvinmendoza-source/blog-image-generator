@@ -3358,7 +3358,11 @@ def do_webflow_connect(api_key: str, manual_site_id: str, client_name: str, slug
             hint = f"\n\nFirst 10 slugs in collection: `{'`, `'.join(sample_slugs)}`"
         except Exception:
             hint = ""
-        raise ValueError(f"Blog post with slug '{slug}' not found in CMS.{hint}")
+        raise ValueError(
+            f"Post '{slug}' isn't in this Webflow collection yet — not even as a draft. "
+            f"Create the post in Webflow first (a DRAFT is fine — the app reads drafts and "
+            f"won't publish them), then generate. The app only replaces images on an existing "
+            f"post; it can't create the post itself.{hint}")
 
     item_id      = item["id"]
     was_published = wf.is_published(item)
