@@ -4631,8 +4631,15 @@ with tab_batch:
                     return ((_r.get("Record ID") or "").strip()
                             or (_r.get("Final blog url") or "").strip())
 
+                def _entry_done(_e):
+                    # "done" only counts if the blog actually has a Main or Thumbnail image.
+                    # A pre-fix entry saved as done-with-no-images (e.g. a cover step that
+                    # produced nothing) self-heals into a retry instead of staying stuck.
+                    return (_e.get("status") == "done"
+                            and bool(_batch_disp_src(_e.get("main_bytes"), _e.get("main_path"))
+                                     or _batch_disp_src(_e.get("thumb_bytes"), _e.get("thumb_path"))))
                 _pending = [(cn, r) for cn in _picked for r in _groups[cn]
-                            if _store.get(_rid(r), {}).get("status") != "done"]
+                            if not _entry_done(_store.get(_rid(r), {}))]
                 _done_already = _total_blogs - len(_pending)
 
                 _MODE_FULL  = "🎨  Full blog images"
@@ -4834,6 +4841,12 @@ with tab_batch:
                                                 _cover_err = f"{type(_ce).__name__}: {_ce}"
                                                 _cs2.update(label=f"Cover/compositing failed: {_ce}", state="error")
 
+                            # A blog with NO Main AND NO Thumbnail is incomplete — never
+                            # store it as "done" (it would be skipped on resume, offered for
+                            # upload, and could be marked Done in Airtable). Mark it failed so
+                            # it auto-retries next Generate and shows the real reason.
+                            _has_pair = bool(_main_b or _thumb_b)
+                            _fail_msg = _cover_err or "cover generation produced no Main/Thumbnail"
                             _store[_rec] = {
                                 "client": _cn, "url": _url, "slug": _slug, "title": _title,
                                 "results": _results, "image_urls": _img_urls,
@@ -4847,7 +4860,8 @@ with tab_batch:
                                 "record": {_k: _r.get(_k, "") for _k in
                                            ("Record ID", "Client name", "Final blog url",
                                             "Primary keyword", "Publishing Date")},
-                                "status": "done", "error": "",
+                                "status": "done" if _has_pair else "failed",
+                                "error": "" if _has_pair else _fail_msg,
                             }
                         except Exception as _ge:
                             _store[_rec] = {"client": _cn, "url": _url, "slug": _slug,
