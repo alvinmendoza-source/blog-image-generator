@@ -2833,6 +2833,59 @@ st.markdown("""
 .ux-bdg { display:inline-block; font-size:10px; font-weight:700; border-radius:999px; padding:2px 8px; margin-top:6px; }
 .ux-bdg.ok { background:rgba(61,240,61,.14); color:var(--uxgreen); }
 .ux-bdg.no { background:rgba(255,107,107,.14); color:var(--uxred); }
+/* mode picker (Batch — what to generate) */
+.ux-modeq { font-size:14px; font-weight:700; color:#f2f2f2; margin:2px 0 6px; }
+[data-testid="stVerticalBlockBorderWrapper"]:has(.ux-modeq) label p { font-size:14px; font-weight:600; color:#eee; }
+.ux-mode { display:flex; align-items:center; gap:12px; border-radius:10px; padding:11px 15px;
+    margin:8px 0 14px; flex-wrap:wrap; border:1px solid var(--uxline); }
+.ux-mode .tag { font-size:12px; font-weight:800; letter-spacing:.4px; padding:4px 11px;
+    border-radius:999px; white-space:nowrap; }
+.ux-mode .desc { font-size:12px; color:var(--uxdim); }
+.ux-mode.cover { background:rgba(53,237,237,.08); border-color:var(--cy); border-left:3px solid var(--cy); }
+.ux-mode.cover .tag { background:var(--cy); color:#000; }
+.ux-mode.full { background:var(--uxpanel); border-left:3px solid var(--uxfaint); }
+.ux-mode.full .tag { background:var(--uxpanel2); color:var(--uxdim); border:1px solid var(--uxline); }
+/* batch intro chrome — how-it-works ribbon, first-run helper, icon legend, step lead */
+.bx-title { font-size:22px; font-weight:800; letter-spacing:-.02em; color:#fff; margin:0 0 2px; }
+.bx-title .dim { color:var(--uxdim); font-weight:400; font-size:15px; }
+.bx-sub { color:var(--uxdim); font-size:13px; margin:0 0 14px; }
+.bx-how { display:grid; grid-template-columns:repeat(5,1fr); gap:9px; margin:0 0 8px; }
+.bx-how .c { background:var(--uxpanel); border:1px solid var(--uxline); border-radius:11px;
+    padding:11px 12px; position:relative; }
+.bx-how .c .ic { font-size:17px; }
+.bx-how .c .t { font-size:12px; font-weight:700; color:#eee; margin-top:5px; }
+.bx-how .c .d { font-size:10.5px; color:var(--uxdim); margin-top:2px; line-height:1.4; }
+.bx-how .c::after { content:"→"; position:absolute; right:-10px; top:50%; transform:translateY(-50%);
+    color:var(--uxfaint); font-size:13px; z-index:2; }
+.bx-how .c:last-child::after { display:none; }
+.bx-help { display:flex; gap:11px; align-items:flex-start; border-radius:11px; padding:12px 15px;
+    margin:2px 0 12px; background:linear-gradient(90deg,rgba(53,237,237,.10),rgba(53,237,237,.02));
+    border:1px solid rgba(53,237,237,.35); }
+.bx-help .hi { font-size:17px; line-height:1.2; }
+.bx-help .ht { font-size:12.5px; color:var(--uxdim); }
+.bx-help .ht b { color:var(--cy); } .bx-help .ht b.t { color:#f2f2f2; }
+.bx-legend { display:flex; gap:16px; flex-wrap:wrap; padding:0 2px; margin:0 0 16px;
+    font-size:11.5px; color:var(--uxfaint); }
+.bx-legend .i { margin-right:4px; }
+.bx-lead { color:var(--uxdim); font-size:12.5px; margin:-2px 0 14px; }
+/* v5.1 — stepper with sub-labels (absorbs the how-it-works ribbon) */
+.bx-st { display:flex; gap:10px; margin:2px 0 14px; flex-wrap:wrap; }
+.bx-st-c { flex:1; min-width:150px; background:var(--uxpanel); border:1px solid var(--uxline);
+    border-radius:12px; padding:13px 15px; }
+.bx-st-c .hd { display:flex; align-items:center; gap:9px; }
+.bx-st-c .n { display:inline-flex; width:23px; height:23px; border-radius:50%; background:var(--uxpanel2);
+    color:var(--uxdim); align-items:center; justify-content:center; font-size:12px; font-weight:800; }
+.bx-st-c .l { font-size:13px; font-weight:700; color:var(--uxdim); }
+.bx-st-c .d { font-size:11px; color:var(--uxfaint); margin-top:6px; line-height:1.4; }
+.bx-st-c.active { border-color:var(--cy); background:linear-gradient(180deg,rgba(53,237,237,.12),transparent); }
+.bx-st-c.active .n { background:var(--cy); color:#000; }
+.bx-st-c.active .l { color:#f2f2f2; }
+.bx-st-c.done .n { background:var(--uxgreen); color:#000; }
+.bx-st-c.done .l { color:#f2f2f2; }
+/* v5.1 — outer step cards: box each step so the eye groups it as one unit */
+[data-testid="stVerticalBlockBorderWrapper"]:has(.bx-cardmark) {
+    background:var(--uxpanel); border-radius:14px; border-color:var(--uxline); }
+.bx-cardmark { display:block; height:0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -2946,8 +2999,8 @@ if not KIE_API_KEY:
     st.error("🔴 **KIE_API_KEY missing** — add it to .env to enable image generation.")
 
 tab_revise, tab_batch, tab_template = st.tabs(
-    ["🔗  Generate from Link", "⚡  Batch Generate (Airtable)",
-     "🎨  Create Template"])
+    ["🔗  Generate from Link",
+     "⚡  Batch Generate (Airtable)", "🎨  Create Template"])
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -4085,6 +4138,16 @@ def _batch_upload_entry(entry: dict):
     Redo the bad ones BEFORE uploading; there is no per-image approve toggle."""
     info = entry["wf_info"]
     wf = WebflowClient(entry.get("token", ""))
+    # Cover-only entries (Main + Thumbnail batch mode) carry no inner images — push just
+    # the featured image + thumbnail, leaving the post body / rich text untouched.
+    if entry.get("cover_only"):
+        do_webflow_upload_cover(
+            wf, info["site_id"], info["collection_id"], info["item_id"], info["was_published"],
+            main_bytes=entry.get("main_bytes"), thumb_bytes=entry.get("thumb_bytes"),
+            blog_title=entry.get("title", ""), client_name=entry.get("client", ""),
+            site_name=info.get("site_name", ""))
+        entry["uploaded"] = True
+        return
     okr = [r for r in entry.get("results", []) if r.get("status") == "ok"]
     do_webflow_upload(
         wf, info["site_id"], info["collection_id"], info["item_id"], info["was_published"],
@@ -4333,7 +4396,13 @@ with tab_revise:
 
 
 with tab_batch:
-    st.markdown("#### ⚡ Batch Generate — Airtable → Webflow")
+    # ── Intro: what this tab does (the per-step "how it works" now lives in the stepper). ──
+    st.markdown(
+        "<div class='bx-title'>⚡ Batch Generate "
+        "<span class='dim'>(Airtable → Webflow)</span></div>"
+        "<div class='bx-sub'>Turn your Airtable blog list into finished, branded images on each "
+        "client's live site. Work top to bottom — nothing goes live until Step 5.</div>",
+        unsafe_allow_html=True)
 
     # Rehydrate the batch store from disk ONCE per session. If the free-tier host
     # rebooted mid-batch, session_state is empty but the on-disk manifest survives —
@@ -4356,10 +4425,50 @@ with tab_batch:
     _all_up = _has_done and all(v.get("uploaded") for v in _res_now.values()
                                 if v.get("status") == "done")
     _active_step = 4 if _all_up else 3 if _has_done else 2 if _any_pick else 1
-    _ux_stepper(["Source", "Pick clients", "Generate", "Review", "Upload"], _active_step)
 
-    # ── STEP 1: Data source ──
-    _ux_section("1", "Data source", "🔒 read-only to Airtable")
+    # Stepper with sub-labels — one element carries both progress AND what each step does.
+    _STEP_META = [
+        ("Source", "Read your blog list from Airtable"),
+        ("Pick clients", "Tick which clients to make images for"),
+        ("Generate", "Choose full or cover-only, then create"),
+        ("Review", "Redo any weak image before it ships"),
+        ("Upload", "Push to Webflow & mark Airtable done"),
+    ]
+    _st_html = "<div class='bx-st'>"
+    for _si, (_slbl, _sdesc) in enumerate(_STEP_META):
+        _cls = "done" if _si < _active_step else ("active" if _si == _active_step else "")
+        _num = "✓" if _si < _active_step else str(_si + 1)
+        _st_html += (f"<div class='bx-st-c {_cls}'><div class='hd'><span class='n'>{_num}</span>"
+                     f"<span class='l'>{_slbl}</span></div><div class='d'>{_sdesc}</div></div>")
+    _st_html += "</div>"
+    st.markdown(_st_html, unsafe_allow_html=True)
+    st.markdown(
+        "<div class='bx-legend'>"
+        "<span><span class='i'>✅</span>ready</span>"
+        "<span><span class='i'>⚠️</span>missing creds/template</span>"
+        "<span><span class='i'>🚩</span>auto-QA flagged</span>"
+        "<span><span class='i'>🚫</span>cancelled — won't upload</span>"
+        "<span><span class='i'>🔁</span>resume-safe</span></div>",
+        unsafe_allow_html=True)
+
+    # Adaptive "you are here" helper — tells a first-timer exactly what to do next,
+    # and updates as the batch progresses so it never goes stale.
+    _bx_hint = {
+        1: ("👋", "<b class='t'>First time here?</b> Just follow the steps top to bottom. "
+                  "Start in <b>Step 2</b> — tick one or more <b>✅ ready</b> clients, then scroll "
+                  "down to Generate. Nothing goes live until the last step."),
+        2: ("🎨", "Clients picked. In <b>Step 3</b> choose <b>Full</b> or <b>Main + Thumbnail only</b>, "
+                  "then press <b>Generate</b>. You can review and redo before anything uploads."),
+        3: ("👀", "Images are ready. In <b>Step 4</b> look them over and <b>Redo</b> any weak "
+                  "<b>🚩</b> image, or <b>Cancel</b> a blog to hold it back — then upload."),
+        4: ("⬆️", "All set. In <b>Step 5</b> press <b>Upload</b> to push everything live and "
+                  "auto-mark each Airtable row <b>Done</b>. Cancelled blogs are skipped."),
+    }.get(_active_step)
+    if _bx_hint:
+        st.markdown(
+            f"<div class='bx-help'><span class='hi'>{_bx_hint[0]}</span>"
+            f"<span class='ht'>{_bx_hint[1]}</span></div>", unsafe_allow_html=True)
+
     # Read straight from Airtable; silently fall back to CSVs in the 1/ folder if the
     # token is missing or the API is unreachable, so the tab never hard-fails.
     _at_blog, _at_clients = _airtable_load()
@@ -4369,21 +4478,28 @@ with tab_batch:
         _blog_rows, _clients_rows = _batch_autoload()
         _src_from = "1/ CSV (fallback)"
 
-    _src_c1, _src_c2 = st.columns([5, 1])
-    with _src_c1:
-        if _blog_rows:
-            _conn = ("✓ Connected to Airtable" if _src_from == "Airtable"
-                     else "⚠️ Airtable not connected — using 1/ CSV fallback")
-            st.markdown(
-                f"<div class='ux-strip'><span class='ok'>{_conn}</span>"
-                f"<span class='meta'>Blog Keyword: <b>{len(_blog_rows)}</b> · "
-                f"Clients info: <b>{len(_clients_rows)}</b> · source: {_src_from}</span></div>",
-                unsafe_allow_html=True)
-    with _src_c2:
-        if st.button("🔄 Refresh", use_container_width=True,
-                     help="Re-read the latest rows from Airtable"):
-            _airtable_load.clear()
-            st.rerun()
+    # ── STEP 1: Data source ──
+    with st.container(border=True):
+        st.markdown("<span class='bx-cardmark'></span>", unsafe_allow_html=True)
+        _ux_section("1", "Data source", "🔒 read-only to Airtable")
+        st.markdown("<div class='bx-lead'>Where the blog list comes from — you don't type anything "
+                    "here. Just confirm it's connected and pick the month you're working on.</div>",
+                    unsafe_allow_html=True)
+        _src_c1, _src_c2 = st.columns([5, 1])
+        with _src_c1:
+            if _blog_rows:
+                _conn = ("✓ Connected to Airtable" if _src_from == "Airtable"
+                         else "⚠️ Airtable not connected — using 1/ CSV fallback")
+                st.markdown(
+                    f"<div class='ux-strip'><span class='ok'>{_conn}</span>"
+                    f"<span class='meta'>Blog Keyword: <b>{len(_blog_rows)}</b> · "
+                    f"Clients info: <b>{len(_clients_rows)}</b> · source: {_src_from}</span></div>",
+                    unsafe_allow_html=True)
+        with _src_c2:
+            if st.button("🔄 Refresh", use_container_width=True,
+                         help="Re-read the latest rows from Airtable"):
+                _airtable_load.clear()
+                st.rerun()
 
     if not _blog_rows:
         st.error("No data. Set **AIRTABLE_TOKEN** in `.env` (or drop the CSVs in the `1/` "
@@ -4429,7 +4545,11 @@ with tab_batch:
             st.success("No _Review needed_ rows in this CSV/month — nothing to generate. 🎉")
         else:
             # ── STEP 2: Pick clients ──
+            st.divider()
             _ux_section("2", "Pick batch clients")
+            st.markdown("<div class='bx-lead'>Tick the clients you want images for. Only "
+                        "<b>✅ ready</b> cards can be selected — greyed-out ones are missing a "
+                        "Webflow login or a Figma template.</div>", unsafe_allow_html=True)
             _ux_kpis([
                 (len(_review), "Blogs · review needed", "cy"),
                 (len(_groups), "Clients", ""),
@@ -4510,8 +4630,47 @@ with tab_batch:
                             if _store.get(_rid(r), {}).get("status") != "done"]
                 _done_already = _total_blogs - len(_pending)
 
-                _ux_section("3", "Generate",
-                            "Main + Thumbnail + inner · auto-QA · no upload")
+                _MODE_FULL  = "🎨  Full blog images"
+                _MODE_COVER = "🖼️  Main + Thumbnail only"
+                _prev_cover = (st.session_state.get("batch_gen_mode") == _MODE_COVER)
+                st.divider()
+                _ux_section("3", "Choose what to generate",
+                            ("Main + Thumbnail only · no inner images"
+                             if _prev_cover
+                             else "Main + Thumbnail + inner · auto-QA"))
+
+                # Prominent mode picker — replaces the easy-to-miss toggle. Each option
+                # carries a one-line caption so a non-technical teammate can tell them
+                # apart at a glance; the choice is applied to the next Generate run.
+                with st.container(border=True):
+                    st.markdown("<span class='ux-cardmark'></span>"
+                                "<div class='ux-modeq'>What should this batch make for "
+                                "each blog?</div>", unsafe_allow_html=True)
+                    _mode_choice = st.radio(
+                        "batch_gen_mode", [_MODE_FULL, _MODE_COVER],
+                        captions=[
+                            "The full deliverable — branded **Main + Thumbnail** plus every "
+                            "inner / body content image (with auto-QA).",
+                            "Just the branded **Main + Thumbnail** cover pair per blog. "
+                            "Skips inner images — much faster & cheaper.",
+                        ],
+                        key="batch_gen_mode", label_visibility="collapsed")
+                _cover_only_ui = (_mode_choice == _MODE_COVER)
+
+                # Active-mode banner so the current choice is unmistakable.
+                if _cover_only_ui:
+                    st.markdown(
+                        "<div class='ux-mode cover'><span class='tag'>🖼️ MAIN + THUMBNAIL ONLY</span>"
+                        "<span class='desc'>Inner / body images are skipped. Review shows just the "
+                        "cover pair; upload touches only the featured image + thumbnail.</span></div>",
+                        unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        "<div class='ux-mode full'><span class='tag'>🎨 FULL BLOG IMAGES</span>"
+                        "<span class='desc'>Main + Thumbnail plus all inner content images — "
+                        "the complete set for the post.</span></div>",
+                        unsafe_allow_html=True)
+
                 _bc1, _bc2 = st.columns([2, 1])
                 with _bc1:
                     _go = st.button(f"⚡ Generate selected ({len(_pending)} remaining)",
@@ -4539,6 +4698,9 @@ with tab_batch:
                     st.session_state["abatch_run"] = True
                     st.session_state["abatch_resumes"] = 0
                     st.session_state.pop("abatch_dead", None)  # force a fresh pre-flight
+                    # Latch the mode at launch so an auto-resume rerun uses the SAME mode
+                    # for the whole batch, even if the picker is nudged mid-run.
+                    st.session_state["abatch_cover_only"] = bool(_cover_only_ui)
 
                 _running = bool(st.session_state.get("abatch_run"))
                 if _running and not _pending:            # nothing left → finished
@@ -4574,6 +4736,9 @@ with tab_batch:
                             _ps.update(label="Pre-flight done ✓", state="complete")
                         st.session_state["abatch_dead"] = _dead
 
+                    # Latched at launch (see _go handler) so the whole batch — including
+                    # auto-resumes — runs in one consistent mode.
+                    _cover_only = bool(st.session_state.get("abatch_cover_only", False))
                     _prog = st.progress(0.0, text="Preparing…")
                     for _i, (_cn, _r) in enumerate(_pending):
                         _rec = _rid(_r)
@@ -4607,18 +4772,15 @@ with tab_batch:
                                 _matched = _match_client(site_name)
                                 _cs.update(label=f"Connected ✓ → {site_name}", state="complete")
 
-                            _title, _img_urls, _results, _ = run_workflow(
-                                _url, _odir, wf_fallback=wf,
-                                collection_id_fallback=collection_id,
-                                item_id_fallback=item_id, client_slug=_matched)
-
                             _main_b, _thumb_b = None, None
-                            _okr = [r for r in _results if r["status"] == "ok"]
-                            if _okr:
+                            if _cover_only:
+                                # Main + Thumbnail only — skip run_workflow (no inner images).
+                                # Title comes from the public page, Webflow CMS draft, or slug.
+                                _title = _fetch_cover_title(_url, _slug, wf, collection_id, item_id)
+                                _img_urls, _results = [], []
                                 with st.status("Cover + main/thumbnail…", expanded=False) as _cs2:
                                     try:
-                                        _pp = [r["prompt"] for r in _okr if r.get("type") != "infographic"]
-                                        _cover = _generate_cover_bg(_title, _pp or [_title])
+                                        _cover = _generate_cover_bg(_title, [_title])
                                         _ml, _tl = ensure_figma_assets_for_client(_matched)
                                         _mtpl, _ttpl = make_tpls(_matched, _ml, _tl)
                                         _main_b = composite_template(_cover, _title, _mtpl)
@@ -4626,11 +4788,31 @@ with tab_batch:
                                         _cs2.update(label="Main + thumbnail ✓", state="complete")
                                     except Exception as _ce:
                                         _cs2.update(label=f"Compositing failed: {_ce}", state="error")
+                            else:
+                                _title, _img_urls, _results, _ = run_workflow(
+                                    _url, _odir, wf_fallback=wf,
+                                    collection_id_fallback=collection_id,
+                                    item_id_fallback=item_id, client_slug=_matched)
+
+                                _okr = [r for r in _results if r["status"] == "ok"]
+                                if _okr:
+                                    with st.status("Cover + main/thumbnail…", expanded=False) as _cs2:
+                                        try:
+                                            _pp = [r["prompt"] for r in _okr if r.get("type") != "infographic"]
+                                            _cover = _generate_cover_bg(_title, _pp or [_title])
+                                            _ml, _tl = ensure_figma_assets_for_client(_matched)
+                                            _mtpl, _ttpl = make_tpls(_matched, _ml, _tl)
+                                            _main_b = composite_template(_cover, _title, _mtpl)
+                                            _thumb_b = composite_template(_cover, _title, _ttpl)
+                                            _cs2.update(label="Main + thumbnail ✓", state="complete")
+                                        except Exception as _ce:
+                                            _cs2.update(label=f"Compositing failed: {_ce}", state="error")
 
                             _store[_rec] = {
                                 "client": _cn, "url": _url, "slug": _slug, "title": _title,
                                 "results": _results, "image_urls": _img_urls,
                                 "main_bytes": _main_b, "thumb_bytes": _thumb_b,
+                                "cover_only": _cover_only,
                                 "template": _matched, "token": _creds["token"],
                                 "wf_info": {"site_id": site_id, "collection_id": collection_id,
                                             "item_id": item_id, "was_published": was_pub,
@@ -4675,6 +4857,7 @@ with tab_batch:
                 _dn = sum(1 for v in _store_disp.values() if v.get("status") == "done")
                 _fl = sum(1 for v in _store_disp.values() if v.get("status") == "failed")
                 _upc = sum(1 for v in _store_disp.values() if v.get("uploaded"))
+                st.divider()
                 _ux_section("4", "Review",
                             f"{_dn} done · {_fl} failed · {_upc} uploaded")
                 _ux_kpis([
@@ -4712,7 +4895,8 @@ with tab_batch:
                                    if r.get("status") == "ok"]
                         _flags = sum(1 for _ii, r in _okimgs if r.get("defect_reason"))
                         _hdr = (f"**📄 `{_v.get('slug','')}`** — {(_v.get('title','') or '')[:55]}"
-                                f" · Main + Thumb + {len(_okimgs)} inner")
+                                + (" · Main + Thumb only" if _v.get("cover_only")
+                                   else f" · Main + Thumb + {len(_okimgs)} inner"))
                         if _flags:
                             _hdr += f" · <span style='color:#f5c451'>🚩 {_flags} flagged</span>"
                         if _v.get("uploaded"):
@@ -4806,6 +4990,7 @@ with tab_batch:
                 _excluded_n = sum(1 for _v in _store_disp.values()
                                   if _v.get("status") == "done" and _v.get("excluded")
                                   and not _v.get("uploaded"))
+                st.divider()
                 _ux_section("5", "Upload to Webflow",
                             "live client site · auto-marks Airtable 'Done'")
                 if _excluded_n:

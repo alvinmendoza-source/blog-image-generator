@@ -388,45 +388,6 @@
     "main_lh": 43,
     "thumb_lh": 25
   },
-  "net-i": {
-    "name": "Net-i",
-    "main": "77:5",
-    "thumb": "77:6",
-    "main_w": 949,
-    "main_h": 526,
-    "overlay_main": "77:3",
-    "overlay_main_x": 0,
-    "overlay_main_y": 0,
-    "main_tx": 32,
-    "main_ty": 383,
-    "main_tw": 464,
-    "main_fsz": 23,
-    "main_font_family": "Inter",
-    "main_font_style": "Semi Bold",
-    "main_font_color": [
-      255,
-      255,
-      255
-    ],
-    "thumb_w": 949,
-    "thumb_h": 345,
-    "overlay_thumb": "77:2",
-    "overlay_thumb_x": 0,
-    "overlay_thumb_y": 0,
-    "thumb_tx": 33,
-    "thumb_ty": 272,
-    "thumb_tw": 464,
-    "thumb_fsz": 23,
-    "thumb_font_family": "Inter",
-    "thumb_font_style": "Semi Bold",
-    "thumb_font_color": [
-      255,
-      255,
-      255
-    ],
-    "main_lh": 29,
-    "thumb_lh": 29
-  },
   "rtc": {
     "name": "RTC",
     "main": "80:14",
@@ -504,45 +465,6 @@
     ],
     "main_lh": 29,
     "thumb_lh": 21
-  },
-  "alexant": {
-    "name": "Alexant",
-    "main": "86:62",
-    "thumb": "86:63",
-    "main_w": 1280,
-    "main_h": 512,
-    "overlay_main": "85:50",
-    "overlay_main_x": 0,
-    "overlay_main_y": 0,
-    "main_tx": 50,
-    "main_ty": 404,
-    "main_tw": 820,
-    "main_fsz": 33,
-    "main_font_family": "Geologica",
-    "main_font_style": "SemiBold",
-    "main_font_color": [
-      255,
-      255,
-      255
-    ],
-    "thumb_w": 546,
-    "thumb_h": 362,
-    "overlay_thumb": "85:51",
-    "overlay_thumb_x": 0,
-    "overlay_thumb_y": 0,
-    "thumb_tx": 20,
-    "thumb_ty": 303,
-    "thumb_tw": 361,
-    "thumb_fsz": 16,
-    "thumb_font_family": "Geologica",
-    "thumb_font_style": "SemiBold",
-    "thumb_font_color": [
-      255,
-      255,
-      255
-    ],
-    "main_lh": 39,
-    "thumb_lh": 20
   },
   "mbps": {
     "name": "MBPS",
@@ -1207,6 +1129,86 @@
       20,
       20,
       20
+    ]
+  },
+  "alexant": {
+    "name": "Alexant",
+    "file_key": "f7Y5Ni2gfmF5CXFCRnA9BS",
+    "main": "86:62",
+    "thumb": "86:63",
+    "main_w": 1280,
+    "main_h": 512,
+    "overlay_main": "85:50",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 50,
+    "main_ty": 404,
+    "main_tw": 805,
+    "main_fsz": 31,
+    "main_lh": 39,
+    "main_font_family": "Geologica",
+    "main_font_style": "SemiBold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 546,
+    "thumb_h": 362,
+    "overlay_thumb": "85:51",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 20,
+    "thumb_ty": 295,
+    "thumb_tw": 361,
+    "thumb_fsz": 15,
+    "thumb_lh": 20,
+    "thumb_font_family": "Geologica",
+    "thumb_font_style": "SemiBold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
+  },
+  "net-i": {
+    "name": "Net-i",
+    "file_key": "f7Y5Ni2gfmF5CXFCRnA9BS",
+    "main": "2049:3",
+    "thumb": "77:6",
+    "main_w": 1200,
+    "main_h": 600,
+    "overlay_main": "2049:2",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 33,
+    "main_ty": 501,
+    "main_tw": 712,
+    "main_fsz": 25,
+    "main_lh": 29,
+    "main_font_family": "Inter",
+    "main_font_style": "Semi Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 949,
+    "thumb_h": 345,
+    "overlay_thumb": "77:2",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 33,
+    "thumb_ty": 272,
+    "thumb_tw": 464,
+    "thumb_fsz": 23,
+    "thumb_lh": 29,
+    "thumb_font_family": "Inter",
+    "thumb_font_style": "Semi Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
     ]
   }
 }
