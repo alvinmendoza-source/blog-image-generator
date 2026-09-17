@@ -3941,7 +3941,10 @@ def _airtable_fetch(table_id, fields=None):
     return out
 
 
-@st.cache_data(ttl=600, show_spinner="📡 Reading Airtable…")
+# ttl kept short so edits in Airtable (new rows, a status flipped to "Review needed")
+# show up automatically within ~1 min — without hammering the API on every rerun. The
+# "Refresh" button clears this cache for an instant re-read.
+@st.cache_data(ttl=60, show_spinner="📡 Reading Airtable…")
 def _airtable_load():
     """Load blogs + clients straight from Airtable, shaped exactly like the CSV rows so
     all downstream code works unchanged. 'Client name' in Blog Keyword is a linked-record
@@ -4497,9 +4500,11 @@ with tab_batch:
                     unsafe_allow_html=True)
         with _src_c2:
             if st.button("🔄 Refresh", use_container_width=True,
-                         help="Re-read the latest rows from Airtable"):
+                         help="Re-read the latest rows from Airtable right now"):
                 _airtable_load.clear()
                 st.rerun()
+            if _src_from == "Airtable":
+                st.caption("Auto-refreshes every minute — click for an instant re-read.")
 
     if not _blog_rows:
         st.error("No data. Set **AIRTABLE_TOKEN** in `.env` (or drop the CSVs in the `1/` "
