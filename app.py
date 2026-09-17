@@ -3045,13 +3045,18 @@ with tab_revise:
     rv_url = st.text_input(
         "Blog URL", placeholder="https://www.version2llc.com/blog/your-post", key="rv_url")
 
-    # Client override — defaults to auto-detect from the URL's domain.
+    # Auto-detect from the URL's domain is the default path, so the tab stays clean. The
+    # manual picker is tucked into a collapsed expander — only needed when the domain isn't
+    # recognized (new/off-domain client) or auto-detect picks the wrong client. It springs
+    # open automatically after a failed detect (rv_needs_client) so the fallback is obvious.
     _rv_cache = _load_node_cache()
     _rv_slugs = sorted(_rv_cache.keys())
     _rv_labels = ["🔍 Auto-detect from URL"] + [_client_display_name(s) for s in _rv_slugs]
-    _rv_choice = st.selectbox(
-        "Client (branding template)", _rv_labels, index=0, key="rv_client_choice",
-        help="Auto-detect uses the link's domain. Pick a client here to override.")
+    with st.expander("⚙️ Wrong client, or not detected? Pick it manually",
+                     expanded=st.session_state.get("rv_needs_client", False)):
+        _rv_choice = st.selectbox(
+            "Client (branding template)", _rv_labels, index=0, key="rv_client_choice",
+            help="Leave on Auto-detect unless the app couldn't find the client from the link.")
     _rv_override = "" if _rv_choice == _rv_labels[0] else _rv_slugs[_rv_labels.index(_rv_choice) - 1]
 
     rv_btn = st.button("Generate Images", type="primary",
@@ -3106,13 +3111,16 @@ with tab_revise:
         # Resolve client: manual override wins, else auto-detect from domain.
         client_slug = _rv_override or _revise_detect_client(url)
         if client_slug:
+            st.session_state["rv_needs_client"] = False
             st.info(f"🏢 Client: **{_client_display_name(client_slug)}** "
                     f"{'(you selected)' if _rv_override else '(auto-detected from link)'}")
         else:
+            st.session_state["rv_needs_client"] = True
             st.warning(
                 "⚠️ Couldn't detect the client from this link — I'll still generate the "
-                "inner images, but **Main + Thumbnail need a client**. Pick one from the "
-                "dropdown above and regenerate to get the branded pair.")
+                "inner images, but **Main + Thumbnail need a client**. Open **⚙️ Wrong "
+                "client, or not detected?** above, pick the client, and regenerate to get "
+                "the branded pair.")
 
         # Step 1: Fetch blog (public scrape)
         with st.status("Fetching blog page...", expanded=True) as s:
