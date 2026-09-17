@@ -4778,21 +4778,32 @@ with tab_batch:
                                 _cs.update(label=f"Connected ✓ → {site_name}", state="complete")
 
                             _main_b, _thumb_b = None, None
+                            _cover_err = ""
                             if _cover_only:
                                 # Main + Thumbnail only — skip run_workflow (no inner images).
                                 # Title comes from the public page, Webflow CMS draft, or slug.
                                 _title = _fetch_cover_title(_url, _slug, wf, collection_id, item_id)
                                 _img_urls, _results = [], []
                                 with st.status("Cover + main/thumbnail…", expanded=False) as _cs2:
-                                    try:
-                                        _cover = _generate_cover_bg(_title, [_title])
-                                        _ml, _tl = ensure_figma_assets_for_client(_matched)
-                                        _mtpl, _ttpl = make_tpls(_matched, _ml, _tl)
-                                        _main_b = composite_template(_cover, _title, _mtpl)
-                                        _thumb_b = composite_template(_cover, _title, _ttpl)
-                                        _cs2.update(label="Main + thumbnail ✓", state="complete")
-                                    except Exception as _ce:
-                                        _cs2.update(label=f"Compositing failed: {_ce}", state="error")
+                                    if not _matched:
+                                        _cover_err = (f"Webflow site '{site_name}' didn't match any "
+                                                      "template in figma_node_cache.json — the client's "
+                                                      "frame/slug isn't registered.")
+                                        _cs2.update(label=_cover_err, state="error")
+                                    else:
+                                        try:
+                                            _cover = _generate_cover_bg(_title, [_title])
+                                            _ml, _tl = ensure_figma_assets_for_client(_matched)
+                                            _mtpl, _ttpl = make_tpls(_matched, _ml, _tl)
+                                            _main_b = composite_template(_cover, _title, _mtpl)
+                                            _thumb_b = composite_template(_cover, _title, _ttpl)
+                                            if not _main_b and not _thumb_b:
+                                                _cover_err = ("cover made but compositing returned nothing — "
+                                                              "check the overlay PNGs / Figma token on live.")
+                                            _cs2.update(label="Main + thumbnail ✓", state="complete")
+                                        except Exception as _ce:
+                                            _cover_err = f"{type(_ce).__name__}: {_ce}"
+                                            _cs2.update(label=f"Cover/compositing failed: {_ce}", state="error")
                             else:
                                 _title, _img_urls, _results, _ = run_workflow(
                                     _url, _odir, wf_fallback=wf,
@@ -4802,21 +4813,32 @@ with tab_batch:
                                 _okr = [r for r in _results if r["status"] == "ok"]
                                 if _okr:
                                     with st.status("Cover + main/thumbnail…", expanded=False) as _cs2:
-                                        try:
-                                            _pp = [r["prompt"] for r in _okr if r.get("type") != "infographic"]
-                                            _cover = _generate_cover_bg(_title, _pp or [_title])
-                                            _ml, _tl = ensure_figma_assets_for_client(_matched)
-                                            _mtpl, _ttpl = make_tpls(_matched, _ml, _tl)
-                                            _main_b = composite_template(_cover, _title, _mtpl)
-                                            _thumb_b = composite_template(_cover, _title, _ttpl)
-                                            _cs2.update(label="Main + thumbnail ✓", state="complete")
-                                        except Exception as _ce:
-                                            _cs2.update(label=f"Compositing failed: {_ce}", state="error")
+                                        if not _matched:
+                                            _cover_err = (f"Webflow site '{site_name}' didn't match any "
+                                                          "template in figma_node_cache.json — the client's "
+                                                          "frame/slug isn't registered.")
+                                            _cs2.update(label=_cover_err, state="error")
+                                        else:
+                                            try:
+                                                _pp = [r["prompt"] for r in _okr if r.get("type") != "infographic"]
+                                                _cover = _generate_cover_bg(_title, _pp or [_title])
+                                                _ml, _tl = ensure_figma_assets_for_client(_matched)
+                                                _mtpl, _ttpl = make_tpls(_matched, _ml, _tl)
+                                                _main_b = composite_template(_cover, _title, _mtpl)
+                                                _thumb_b = composite_template(_cover, _title, _ttpl)
+                                                if not _main_b and not _thumb_b:
+                                                    _cover_err = ("cover made but compositing returned nothing — "
+                                                                  "check the overlay PNGs / Figma token on live.")
+                                                _cs2.update(label="Main + thumbnail ✓", state="complete")
+                                            except Exception as _ce:
+                                                _cover_err = f"{type(_ce).__name__}: {_ce}"
+                                                _cs2.update(label=f"Cover/compositing failed: {_ce}", state="error")
 
                             _store[_rec] = {
                                 "client": _cn, "url": _url, "slug": _slug, "title": _title,
                                 "results": _results, "image_urls": _img_urls,
                                 "main_bytes": _main_b, "thumb_bytes": _thumb_b,
+                                "cover_error": _cover_err,
                                 "cover_only": _cover_only,
                                 "template": _matched, "token": _creds["token"],
                                 "wf_info": {"site_id": site_id, "collection_id": collection_id,
@@ -4924,7 +4946,12 @@ with tab_batch:
                                            _batch_disp_src(r.get("bytes"), r.get("path")),
                                            "inner", _ii, bool(r.get("defect_reason"))))
                         if not _main_src and not _thumb_src:
-                            st.caption("⚠️ No Main/Thumb — this client likely has no template.")
+                            _cerr = (_v.get("cover_error") or "").strip()
+                            if _cerr:
+                                st.warning(f"⚠️ No Main/Thumb — {_cerr}")
+                            else:
+                                st.caption("⚠️ No Main/Thumb — cover generation produced nothing "
+                                           "(check KIE credits/key and the client's template).")
 
                         _locked = _v.get("uploaded", False)
                         _cols = st.columns(min(len(_tiles), 6)) if _tiles else []
