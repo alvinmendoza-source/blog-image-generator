@@ -4047,17 +4047,18 @@ _BATCH_MONTHS = ["January", "February", "March", "April", "May", "June",
 
 
 def _batch_period(row):
-    """Best-effort (year, month) for a blog row, from the most reliable date available:
-    Scheduled Generation Date -> Publishing Date -> free-text Month column. The Month
-    column is unreliable (often no year, or blank on rows that DO have a real date), so
-    the parsed date fields win. year may be None if only a bare month name is found;
-    returns None if nothing parses."""
-    s = (row.get("Scheduled Generation Date") or "").strip()
-    m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
-    if m:
-        y, mo = int(m.group(1)), int(m.group(2))
-        if 1 <= mo <= 12:
-            return (y, mo)
+    """Best-effort (year, month) for a blog row — the EDITORIAL period the blog belongs
+    to (the month it publishes / is grouped under in Airtable), NOT when the image was
+    generated. Priority:
+      1. Publishing Date            — reliable machine date, matches the Airtable "Month" grouping
+      2. free-text "Month" column   — e.g. "July 2026"; if it has no year, borrow the year
+                                       from the Scheduled Generation Date
+      3. Scheduled Generation Date  — last resort only
+    Scheduled Generation Date is deliberately LAST: a July blog is often *generated* in
+    June, so using it first mis-buckets July posts under June and hides July from the
+    Month/Year filter. year may be None if only a bare month name (and no other date) is
+    found; returns None if nothing parses."""
+    # 1) Publishing Date — CSV M/D/YYYY, or Airtable YYYY-MM-DD
     s = (row.get("Publishing Date") or "").strip()
     m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)          # CSV: M/D/YYYY
     if m:
@@ -4069,12 +4070,22 @@ def _batch_period(row):
         y, mo = int(m.group(1)), int(m.group(2))
         if 1 <= mo <= 12:
             return (y, mo)
+
+    # Scheduled Generation Date — parsed here so its YEAR can fill in for a yearless Month
+    sched = (row.get("Scheduled Generation Date") or "").strip()
+    ms = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", sched)
+    sched_ym = (int(ms.group(1)), int(ms.group(2))) if ms and 1 <= int(ms.group(2)) <= 12 else None
+
+    # 2) free-text "Month" column ("July 2026" / bare "July") — borrow year from Sched if missing
     s = (row.get("Month") or "").strip().lower()
     ym = re.search(r"(?:19|20)\d{2}", s)
     for i, nm in enumerate(_BATCH_MONTHS, 1):
         if nm.lower() in s:
-            return (int(ym.group(0)) if ym else None, i)
-    return None
+            year = int(ym.group(0)) if ym else (sched_ym[0] if sched_ym else None)
+            return (year, i)
+
+    # 3) Scheduled Generation Date — last resort
+    return sched_ym
 
 
 def _batch_period_label(row) -> str:
