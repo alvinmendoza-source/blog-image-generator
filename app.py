@@ -1614,6 +1614,22 @@ def _add_client_from_figma_url(figma_url: str) -> tuple:
         if r.status_code == 429:
             wait = r.headers.get("Retry-After", "unknown")
             return False, f"Rate limited (Retry-After: {wait}s). Try again later.", ""
+        if r.status_code in (401, 403):
+            # Figma personal access tokens now require an expiry date, so the token
+            # eventually stops working with 403 "Token expired". This is a config fix,
+            # not a code bug — the user must mint a fresh token and update the secret.
+            return False, (
+                "Figma token expired or invalid.\n\n"
+                "Fix (takes ~1 min):\n"
+                "1. Go to **figma.com → Settings → Security → Personal access tokens**.\n"
+                "2. **Generate new token** — set expiry to the **longest** option, scope **File content: Read-only**.\n"
+                "3. Update **FIGMA_ACCESS_TOKEN**:\n"
+                "   • Live: Streamlit → **Manage app → Settings → Secrets**.\n"
+                "   • Local: your **.env** file.\n"
+                "4. Reboot/reload the app, then paste the frame link again.\n\n"
+                "Note: the Figma token is only needed to ADD a template — normal "
+                "generation uses the committed overlay PNGs and never calls Figma."
+            ), ""
         if not r.ok:
             return False, f"Figma API error {r.status_code}: {r.text[:120]}", ""
 
@@ -1722,6 +1738,12 @@ def _refresh_figma_templates() -> tuple:
         if r1.status_code == 429:
             wait = r1.headers.get("Retry-After", "unknown")
             return False, f"Figma rate limited (Retry-After: {wait}s)", []
+        if r1.status_code in (401, 403):
+            return False, (
+                "Figma token expired or invalid — generate a new token at "
+                "figma.com → Settings → Security (longest expiry, File content Read-only) "
+                "and update FIGMA_ACCESS_TOKEN (Streamlit Secrets on live, .env locally)."
+            ), []
         if not r1.ok:
             return False, f"Figma API error {r1.status_code}", []
 
