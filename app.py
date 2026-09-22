@@ -3718,22 +3718,48 @@ def _resolve_blog_slug(start_url: str):
         return _orig, _slug_of(_orig)
 
 
+_TITLE_STOPWORDS = {"the", "a", "an", "of", "for", "to", "and", "or", "in", "on", "is",
+                    "are", "what", "how", "why", "your", "you", "it", "with", "best",
+                    "guide", "vs", "top", "near", "me"}
+
+
+def _cover_title_ok(title: str, slug: str) -> bool:
+    """A fetched public-page title is trustworthy only if it shares a real word with the
+    blog slug. Guards against a soft-404 / SPA shell that returns 200 with just the brand
+    name as its <title> (e.g. an UNPUBLISHED blog on 'accutech-it.com' yielding the title
+    'accutech') — that shares no word with a slug like 'it-onboarding-checklist', so we
+    reject it and fall through to the Webflow CMS draft, which holds the real title."""
+    if not title:
+        return False
+    tw = {w for w in re.findall(r"[a-z0-9]+", title.lower())
+          if w not in _TITLE_STOPWORDS and len(w) > 2}
+    sw = {w for w in slug.lower().split("-")
+          if w not in _TITLE_STOPWORDS and len(w) > 2}
+    return bool(tw & sw)
+
+
 def _fetch_cover_title(url, slug, wf=None, collection_id=None, item_id=None):
-    """Best-effort blog title for the cover tab: public page → Webflow CMS draft → slug."""
+    """Best-effort blog title for the cover tab: public page → Webflow CMS draft → slug.
+    The public page only wins when its title actually relates to the slug (see
+    _cover_title_ok) — an unpublished blog often soft-404s with the brand name, which must
+    NOT end up printed on the template. In that case the CMS draft (the real pre-publish
+    title) is used, then the slug as a clean last resort."""
+    _public = ""
     try:
-        title, _c, _i = fetch_blog(url)
-        if title:
-            return title
-    except requests.HTTPError as he:
-        if wf and str(getattr(he.response, "status_code", "")) in ("404", "403"):
-            try:
-                title, _c, _i = fetch_blog_from_cms(slug, wf, collection_id, item_id)
-                if title:
-                    return title
-            except Exception:
-                pass
+        _public, _c, _i = fetch_blog(url)
+        if _cover_title_ok(_public, slug):
+            return _public
     except Exception:
         pass
+    # Public page missing or junk (draft / soft-404) → the CMS draft has the real title.
+    if wf and collection_id and item_id:
+        try:
+            _cms, _c, _i = fetch_blog_from_cms(slug, wf, collection_id, item_id)
+            if _cms and _cms.strip().lower() != slug.lower():
+                return _cms
+        except Exception:
+            pass
+    # Last resort: a readable title from the slug (never the junk brand title).
     return slug.replace("-", " ").title()
 
 
@@ -4170,14 +4196,27 @@ def _batch_redo_inner(entry: dict, i: int):
 
 
 def _batch_redo_cover(entry: dict):
-    """Regenerate the cover photo and re-composite Main + Thumbnail (they share one cover)."""
+    """Regenerate the cover photo and re-composite Main + Thumbnail (they share one cover).
+    Also RE-FETCHES the title first (public page → CMS draft → slug) so a Redo repairs an
+    entry whose stored title is a stale junk/brand value (e.g. 'accutech' from an
+    unpublished-blog soft-404) — otherwise Redo would just re-print the same bad title."""
+    _info = entry.get("wf_info", {}) or {}
+    try:
+        _wf = WebflowClient(entry.get("token", "")) if entry.get("token") else None
+        _fresh = _fetch_cover_title(entry.get("url", ""), entry.get("slug", ""),
+                                    _wf, _info.get("collection_id"), _info.get("item_id"))
+        if _fresh:
+            entry["title"] = _fresh
+    except Exception:
+        pass
+    title = entry.get("title", "")
     okr = [r for r in entry.get("results", []) if r.get("status") == "ok"]
     pp = [r["prompt"] for r in okr if r.get("type") != "infographic"]
-    cover = _generate_cover_bg(entry.get("title", ""), pp or [entry.get("title", "")])
+    cover = _generate_cover_bg(title, pp or [title])
     ml, tl = ensure_figma_assets_for_client(entry.get("template", ""))
     mtpl, ttpl = make_tpls(entry.get("template", ""), ml, tl)
-    entry["main_bytes"] = composite_template(cover, entry.get("title", ""), mtpl)
-    entry["thumb_bytes"] = composite_template(cover, entry.get("title", ""), ttpl)
+    entry["main_bytes"] = composite_template(cover, title, mtpl)
+    entry["thumb_bytes"] = composite_template(cover, title, ttpl)
 
 
 def _batch_upload_entry(entry: dict):
@@ -4653,7 +4692,7 @@ with tab_batch:
                 _total_blogs = sum(len(_groups[cn]) for cn in _picked)
                 st.markdown(
                     f"<div class='ux-strip'><span class='ok'>▶ {len(_picked)} client · "
-                    f"{_total_blogs} blog naka-queue</span></div>", unsafe_allow_html=True)
+                    f"{_total_blogs} blogs queued</span></div>", unsafe_allow_html=True)
                 with st.expander(f"View queue ({_total_blogs} blogs)"):
                     for _cn in _picked:
                         _cr = _client_creds[_cn]
@@ -4939,6 +4978,15 @@ with tab_batch:
 
             # ══ Review: contact-sheet (Redo) → upload ══
             _store_disp = st.session_state.get("abatch_results", {})
+            # Cleanup: older runs "set aside" a blog by marking excluded=True and KEEPING
+            # it in the manifest, which left a stuck 🚫 row. Exclude now drops the entry
+            # outright, so purge any such legacy excluded leftovers here too — they vanish
+            # for good instead of lingering. Generated image files on disk are untouched.
+            _legacy_excl = [_k for _k, _vv in _store_disp.items() if _vv.get("excluded")]
+            if _legacy_excl:
+                for _k in _legacy_excl:
+                    _store_disp.pop(_k, None)
+                _batch_state_save(_store_disp)
             if _store_disp:
                 _dn = sum(1 for v in _store_disp.values() if v.get("status") == "done")
                 _fl = sum(1 for v in _store_disp.values() if v.get("status") == "failed")
@@ -4955,13 +5003,16 @@ with tab_batch:
                            "(Main + Thumb + inner) uploads 1:1 to Webflow when you click "
                            "**⬆️ Upload** below. 🚩 = flagged by auto-QA.")
 
-                # Uploaded blogs are finished — hide them from Review so the list only
-                # shows what still needs attention. They stay in the store (so they are
-                # never re-uploaded and survive a reboot) and are cleared with the
-                # "🗑️ Clear results" button above.
+                # Hidden from Review: uploaded (finished) and excluded. Excluding a blog
+                # now DROPS it from the batch entirely (the Exclude button pops the entry
+                # from the store + disk), so it disappears from the list immediately — no
+                # 🚫-labelled leftover, no separate section to hunt through. This skip also
+                # hides any stale excluded entry left in the manifest by an older run.
+                # Uploaded blogs stay in the store (never re-uploaded, survive a reboot);
+                # both are wiped by the "🗑️ Clear results" button above.
                 _by_client = {}
                 for _rid_k, _v in _store_disp.items():
-                    if _v.get("uploaded"):
+                    if _v.get("uploaded") or _v.get("excluded"):
                         continue
                     _by_client.setdefault(_v.get("client", "?"), []).append((_rid_k, _v))
 
@@ -5049,27 +5100,22 @@ with tab_batch:
                                         _drop_entry_bytes(_v)  # keep RAM low again
                                         st.rerun()
 
-                        # ── Cancel / include toggle ──────────────────────────────
-                        # Exclude this generated blog from the batch upload WITHOUT
-                        # deleting its files or re-generating (e.g. a bad title on one
-                        # client while the others are fine). Reversible; the flag rides
-                        # in the store and is persisted to disk so a reboot keeps it.
-                        if not _locked:
-                            if _v.get("excluded"):
-                                st.warning("🚫 Excluded — will be skipped on upload.")
-                                if st.button("↩️ Undo — include in upload again",
-                                             key=f"uncancel_{_rk}", use_container_width=True):
-                                    _v["excluded"] = False
-                                    st.session_state["abatch_results"][_rk] = _v
-                                    _batch_state_save(st.session_state["abatch_results"])
-                                    st.rerun()
-                            else:
-                                if st.button("🚫 Cancel — don't upload this blog",
-                                             key=f"cancel_{_rk}", use_container_width=True):
-                                    _v["excluded"] = True
-                                    st.session_state["abatch_results"][_rk] = _v
-                                    _batch_state_save(st.session_state["abatch_results"])
-                                    st.rerun()
+                        # ── Exclude (drop from batch) ────────────────────────────
+                        # Exclude = take this generated blog OUT of the batch: it won't
+                        # upload and it disappears from the list right away. The entry is
+                        # popped from the store AND the on-disk manifest, so it does not
+                        # come back on the next refresh and there's no leftover 🚫 row to
+                        # confuse the review. The generated Main/Thumb/inner files stay on
+                        # disk (nothing is deleted from generated_images/, nothing uploaded).
+                        if not _locked and not _v.get("excluded"):
+                            if st.button("🚫 Exclude — remove from this batch",
+                                         key=f"cancel_{_rk}", use_container_width=True,
+                                         help="Drop this blog from the batch. It won't "
+                                              "upload and disappears from the list. Its "
+                                              "generated image files stay on disk."):
+                                st.session_state["abatch_results"].pop(_rk, None)
+                                _batch_state_save(st.session_state["abatch_results"])
+                                st.rerun()
                         st.divider()
 
                 # ── Upload approved to Webflow ──
