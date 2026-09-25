@@ -3020,6 +3020,261 @@ st.markdown(
 if not KIE_API_KEY:
     st.error("🔴 **KIE_API_KEY missing** — add it to .env to enable image generation.")
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Shared infrastructure — Airtable credential lookup + Webflow connect.
+# Defined ABOVE st.tabs() on purpose: Streamlit executes this file top-to-bottom,
+# so any tab body that calls these must have them defined first. The Generate from
+# Link tab needs them mid-render to read an unpublished DRAFT straight from the
+# Webflow CMS when the public page 404s.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _batch_norm(s: str) -> str:
+    """Normalise a client name for matching: lowercase, alphanumeric only.
+    'Capstone Works, Inc.' -> 'capstoneworksinc'."""
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+# ── Airtable direct read/write (replaces the CSV drop when AIRTABLE_TOKEN is set) ──
+_AT_BASE = "app0baCBwviPDXArm"
+_AT_TBL_BLOG = "tblJ1ZtHYnb9B5BPq"       # Blog Keyword
+_AT_TBL_CLIENTS = "tblaoZfBy5Ts9R59D"    # Clients info
+_AT_BLOG_FIELDS = ["Client name", "Final blog url", "Image status", "Primary keyword",
+                   "Publishing Date", "Scheduled Generation Date", "Month"]
+
+
+def _airtable_token() -> str:
+    return (os.getenv("AIRTABLE_TOKEN") or "").strip()
+
+
+def _airtable_fetch(table_id, fields=None):
+    """Read ALL records from a table (paginated). Returns list of {id, fields}."""
+    import urllib.request
+    tok = _airtable_token()
+    out, offset = [], None
+    base_url = f"https://api.airtable.com/v0/{_AT_BASE}/{table_id}"
+    while True:
+        params = [("pageSize", "100")]
+        if offset:
+            params.append(("offset", offset))
+        for f in (fields or []):
+            params.append(("fields[]", f))
+        url = base_url + "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+        data = json.load(urllib.request.urlopen(req, timeout=30))
+        out.extend(data.get("records", []))
+        offset = data.get("offset")
+        if not offset:
+            break
+    return out
+
+
+# ttl kept short so edits in Airtable (new rows, a status flipped to "Review needed")
+# show up automatically within ~1 min — without hammering the API on every rerun. The
+# "Refresh" button clears this cache for an instant re-read.
+@st.cache_data(ttl=60, show_spinner="📡 Reading Airtable…")
+def _airtable_load():
+    """Load blogs + clients straight from Airtable, shaped exactly like the CSV rows so
+    all downstream code works unchanged. 'Client name' in Blog Keyword is a linked-record
+    field (returns record ids), so it is resolved back to the client name via Clients info.
+    Returns (blog_rows, clients_rows), or (None, None) if no token / on any error."""
+    if not _airtable_token():
+        return None, None
+    try:
+        clients_rows, id_to_name = [], {}
+        for r in _airtable_fetch(_AT_TBL_CLIENTS):
+            f = {k: (v.strip() if isinstance(v, str) else v)
+                 for k, v in r.get("fields", {}).items()}
+            f["Record ID"] = r["id"]
+            clients_rows.append(f)
+            nm = f.get("Client name")
+            if isinstance(nm, str) and nm:
+                id_to_name[r["id"]] = nm
+
+        blog_rows = []
+        for r in _airtable_fetch(_AT_TBL_BLOG, _AT_BLOG_FIELDS):
+            src = r.get("fields", {})
+            row = {k: (v.strip() if isinstance(v, str) else v) for k, v in src.items()}
+            cn = src.get("Client name")
+            if isinstance(cn, list):  # linked records -> resolve to a name string
+                row["Client name"] = next(
+                    (id_to_name.get(x, "") for x in cn if id_to_name.get(x)), "")
+            row["Record ID"] = r["id"]  # real Airtable record id (used to mark Done)
+            blog_rows.append(row)
+        return blog_rows, clients_rows
+    except Exception:
+        return None, None
+
+
+def _airtable_mark_done(record_id: str):
+    """STRICT WRITE: set ONLY {'Image status': 'Done'} on ONE Blog Keyword record.
+    Never writes any other field, row, table, or value. Returns (ok, error_str)."""
+    import urllib.request
+    if not _airtable_token():
+        return False, "no AIRTABLE_TOKEN"
+    if not record_id or not str(record_id).startswith("rec"):
+        return False, "invalid record id"
+    url = f"https://api.airtable.com/v0/{_AT_BASE}/{_AT_TBL_BLOG}/{record_id}"
+    body = json.dumps({"fields": {"Image status": "Done"}}).encode()
+    req = urllib.request.Request(url, data=body, method="PATCH",
+                                 headers={"Authorization": f"Bearer {_airtable_token()}",
+                                          "Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=30)
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def _batch_clients_index(clients_rows) -> dict:
+    """Map normalised client name -> Clients-info row."""
+    idx = {}
+    for r in clients_rows:
+        nm = _batch_norm(r.get("Client name", ""))
+        if nm:
+            idx[nm] = r
+    return idx
+
+
+def _batch_resolve_creds(client_name: str, clients_idx: dict) -> dict:
+    """Resolve a client's Webflow credentials.
+    Order: Clients info CSV (token+siteId) -> local client_keys.json fallback."""
+    row = clients_idx.get(_batch_norm(client_name))
+    if row:
+        tok = (row.get("webflow_token") or "").strip()
+        site = (row.get("siteId") or "").strip()
+        if tok and site:
+            return {
+                "source": "Clients info", "ok": True, "reason": "",
+                "token": tok, "site_id": site,
+                "collection_id": (row.get("collectionId") or "").strip(),
+                "author_id": (row.get("CMS Item ID of the Author") or "").strip(),
+                "category_id": (row.get("Blog Category Collection ID") or "").strip(),
+            }
+    # Fallback: local, gitignored client_keys.json (e.g. Capstone, which has no Airtable row)
+    slug = _match_client(client_name) or _batch_norm(client_name)
+    key = _get_client_key(slug)
+    if key:
+        return {
+            "source": "local keys", "ok": True,
+            "reason": "from local client_keys.json (no siteId in Airtable — resolved via token)",
+            "token": key, "site_id": "", "collection_id": "",
+            "author_id": "", "category_id": "",
+        }
+    return {"source": "none", "ok": False,
+            "reason": "no webflow_token in Clients info and no local key",
+            "token": "", "site_id": "", "collection_id": "", "author_id": "", "category_id": ""}
+
+
+def _revise_resolve_creds(client_slug: str) -> dict | None:
+    """Pull a client's Webflow creds (token + collectionId) straight from the Airtable
+    'Clients info' table — the same source the Batch Generate tab uses — so the user never
+    has to paste a key. Matches the template slug to the Airtable client name via
+    _match_client. Returns the creds dict (only when a usable token was found), else None."""
+    if not client_slug:
+        return None
+    try:
+        _, clients_rows = _airtable_load()
+    except Exception:
+        clients_rows = None
+    if not clients_rows:
+        return None
+    idx = _batch_clients_index(clients_rows)
+    for row in clients_rows:
+        nm = row.get("Client name", "")
+        if isinstance(nm, str) and nm and _match_client(nm) == client_slug:
+            creds = _batch_resolve_creds(nm, idx)
+            if creds.get("ok") and creds.get("token"):
+                creds["client_name"] = nm
+                return creds
+    return None
+
+
+def do_webflow_connect(api_key: str, manual_site_id: str, client_name: str, slug: str,
+                       blog_url: str = "", known_collection_id: str = ""):
+    """Connect to Webflow and find the blog post. Returns (wf, site_id, site_name,
+    collection_id, item_id, was_published) or raises on failure."""
+    wf = WebflowClient(api_key)
+
+    if manual_site_id:
+        site_id = manual_site_id
+        site_name = client_name or site_id
+        st.write(f"**Site ID:** {site_id}")
+    else:
+        sites = wf.get_sites()
+        if not sites:
+            raise ValueError("No Webflow sites found for this API key.")
+
+        # Try to match the blog URL's domain to the correct Webflow site.
+        # Falls back to sites[0] if no domain match is found.
+        site = sites[0]
+        if blog_url and len(sites) > 1:
+            from urllib.parse import urlparse
+            target_domain = urlparse(blog_url).netloc.lower().removeprefix("www.")
+            for s in sites:
+                # Check displayName, shortName, and customDomains
+                s_name = (s.get("displayName", "") + s.get("shortName", "")).lower()
+                s_domains = [d.get("url", "").lower().removeprefix("www.")
+                             for d in s.get("customDomains", [])]
+                if target_domain in s_name or target_domain in s_domains:
+                    site = s
+                    break
+
+        site_id   = site["id"]
+        site_name = site.get("displayName", site_id)
+        all_names = ", ".join(s.get("displayName", s["id"]) for s in sites)
+        st.write(f"**Site:** {site_name}  _(API key has access to: {all_names})_")
+
+        # Multi-language sites: if the URL is /fr/... (etc.), target that locale so
+        # the post is found, fetched, and uploaded in the right language.
+        _ltag = wf.set_locale_from_url(site, blog_url)
+        if _ltag:
+            _is_secondary = bool(wf.cms_locale_id)
+            st.write(f"**Locale:** {_ltag.upper()} "
+                     f"({'secondary — CMS targets this language' if _is_secondary else 'primary'})")
+
+    # Prefer the explicit collectionId from Airtable/Clients info. The auto-detector
+    # can mis-fire — e.g. it grabbed Zhero's "Newsletters" collection via the "news"
+    # keyword, so blog slugs were searched in the wrong collection and never found.
+    collection = None
+    if known_collection_id:
+        try:
+            cols = wf.get_collections(site_id)
+            collection = next((c for c in cols if c.get("id") == known_collection_id), None)
+        except Exception:
+            collection = None
+        if not collection:
+            collection = {"id": known_collection_id, "displayName": known_collection_id}
+    if not collection:
+        collection = wf.find_blog_collection(site_id)
+    if not collection:
+        raise ValueError("No blog collection found.")
+    collection_id = collection["id"]
+    st.write(f"**Collection:** {collection.get('displayName', collection_id)}")
+
+    item = wf.find_item_by_slug(collection_id, slug)
+    if not item:
+        # Fetch a sample of slugs from the collection to help diagnose the mismatch
+        try:
+            sample_data  = wf._get(f"/collections/{collection_id}/items", params={"limit": 10})
+            sample_slugs = [i.get("fieldData", {}).get("slug", "?")
+                            for i in sample_data.get("items", [])]
+            hint = f"\n\nFirst 10 slugs in collection: `{'`, `'.join(sample_slugs)}`"
+        except Exception:
+            hint = ""
+        raise ValueError(
+            f"Post '{slug}' isn't in this Webflow collection yet — not even as a draft. "
+            f"Create the post in Webflow first (a DRAFT is fine — the app reads drafts and "
+            f"won't publish them), then generate. The app only replaces images on an existing "
+            f"post; it can't create the post itself.{hint}")
+
+    item_id      = item["id"]
+    was_published = wf.is_published(item)
+    st.write(f"**Post found:** {item.get('fieldData', {}).get('name', slug)}")
+    st.write(f"**Status:** {'🟢 Published' if was_published else '🟡 Draft'}")
+
+    return wf, site_id, site_name, collection_id, item_id, was_published
+
+
 tab_revise, tab_batch, tab_template = st.tabs(
     ["🔗  Generate from Link",
      "⚡  Batch Generate (Airtable)", "🎨  Create Template"])
@@ -3056,13 +3311,50 @@ def _revise_build_branded(title: str, ok_results: list, client_slug: str) -> tup
             composite_template(cover, title, ttpl))
 
 
+def _revise_fetch_from_cms(url: str, client_slug: str):
+    """Read a blog straight from the Webflow CMS, bypassing the public page.
+
+    Used when the public URL is unavailable — 404 almost always means the post is an
+    unpublished DRAFT, and 403 usually means Cloudflare is blocking the scrape. Drafts
+    MUST work: the team inserts images into a draft first, the SEO team QAs them, and
+    only then does the SEO team publish. The client's Webflow key is pulled from
+    Airtable (Clients info) exactly like the upload step does, so nothing is pasted.
+
+    A /fr/ (or other locale) URL is honoured — do_webflow_connect sets the CMS locale
+    from the URL, so the FRENCH title and body are read, not the English ones.
+
+    Returns (title, content, image_urls, was_published); raises with a readable reason."""
+    if not client_slug:
+        raise ValueError(
+            "The page isn't publicly reachable, and the client couldn't be detected from "
+            "the link — so there's no Webflow account to read it from. Open "
+            "**⚙️ Wrong client, or not detected?** above, pick the client, and try again.")
+
+    creds = _revise_resolve_creds(client_slug) or {}
+    token = (creds.get("token") or _get_client_key(client_slug)
+             or os.getenv("WEBFLOW_API_KEY", ""))
+    if not token:
+        raise ValueError(
+            f"No Webflow key found for **{_client_display_name(client_slug)}**, which is "
+            f"needed to read an unpublished draft. Add that client's `webflow_token` in "
+            f"Airtable (Clients info), or set `AIRTABLE_TOKEN` so keys load automatically.")
+
+    slug = url.rstrip("/").split("/")[-1]
+    wf, site_id, site_name, collection_id, item_id, was_published = do_webflow_connect(
+        token, None, _client_display_name(client_slug), slug,
+        blog_url=url, known_collection_id=creds.get("collection_id", ""))
+    title, content, image_urls = fetch_blog_from_cms(slug, wf, collection_id, item_id)
+    return title, content, image_urls, was_published
+
+
 with tab_revise:
     _ux_section("🔗", "Generate from Link", "one blog · branded Main + Thumbnail + inner images")
     st.caption(
-        "Paste a **published blog link** and the app detects the client, then generates the "
-        "branded **Main**, **Thumbnail**, and inner images — for a brand-new post or a "
-        "revision. Download them, or **upload straight to Webflow** at the bottom "
-        "(no need to open Webflow).")
+        "Paste a blog link — **published or still a draft** — and the app detects the "
+        "client, then generates the branded **Main**, **Thumbnail**, and inner images. "
+        "Download them, or **upload straight to Webflow** at the bottom (no need to open "
+        "Webflow). A draft stays a draft for the SEO team to QA and publish; an "
+        "already-published post is re-published with the new images.")
 
     rv_url = st.text_input(
         "Blog URL", placeholder="https://www.version2llc.com/blog/your-post", key="rv_url")
@@ -3153,16 +3445,34 @@ with tab_revise:
                 st.write(f"**Images detected on page:** {len(image_urls)} → generating **{count}**")
                 s.update(label="Blog fetched ✓", state="complete")
             except requests.HTTPError as e:
-                if e.response is not None and e.response.status_code == 404:
-                    s.update(label="Page not found (404)", state="error")
-                    st.error(
-                        "**Page not found (404).** The post may be a **draft / unpublished** "
-                        "in Webflow. Publish it first, or use the **Batch Generate tab** (it can "
-                        "read drafts with the client's Webflow key).")
-                else:
+                _code = e.response.status_code if e.response is not None else 0
+                if _code not in (404, 403):
                     s.update(label="Failed to fetch blog", state="error")
                     st.error(f"HTTP error: {e}")
-                st.stop()
+                    st.stop()
+                # Not a dead end. 404 = the post is an unpublished DRAFT; 403 = Cloudflare
+                # blocking the scrape. Either way the post exists in Webflow, so read it
+                # from the CMS. Drafts are a normal part of the workflow: images go in
+                # first, the SEO team QAs them, then the SEO team publishes.
+                st.write(f"Public page returned **{_code}** — reading the post from the "
+                         f"**Webflow CMS** instead (drafts are supported).")
+                try:
+                    title, content, image_urls, _rv_was_pub = \
+                        _revise_fetch_from_cms(url, client_slug)
+                    count = len(image_urls) or 4
+                    st.write(f"**Title:** {title}")
+                    st.write(f"**Images detected in the post:** {len(image_urls)} → "
+                             f"generating **{count}**")
+                    s.update(
+                        label=f"Read from Webflow CMS ✓ — "
+                              f"{'published post' if _rv_was_pub else 'draft (stays a draft)'}",
+                        state="complete")
+                except Exception as ce:
+                    s.update(label="Couldn't read the post", state="error")
+                    st.error(
+                        f"**The public page is unavailable ({_code}) and reading it from "
+                        f"the Webflow CMS failed.**\n\n{ce}")
+                    st.stop()
             except Exception as e:
                 s.update(label="Failed to fetch blog", state="error")
                 st.error(f"Could not load the page: {e}")
@@ -3316,92 +3626,6 @@ with tab_revise:
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 2 — Auto Upload to Webflow
 # ════════════════════════════════════════════════════════════════════════════════
-def do_webflow_connect(api_key: str, manual_site_id: str, client_name: str, slug: str,
-                       blog_url: str = "", known_collection_id: str = ""):
-    """Connect to Webflow and find the blog post. Returns (wf, site_id, site_name,
-    collection_id, item_id, was_published) or raises on failure."""
-    wf = WebflowClient(api_key)
-
-    if manual_site_id:
-        site_id = manual_site_id
-        site_name = client_name or site_id
-        st.write(f"**Site ID:** {site_id}")
-    else:
-        sites = wf.get_sites()
-        if not sites:
-            raise ValueError("No Webflow sites found for this API key.")
-
-        # Try to match the blog URL's domain to the correct Webflow site.
-        # Falls back to sites[0] if no domain match is found.
-        site = sites[0]
-        if blog_url and len(sites) > 1:
-            from urllib.parse import urlparse
-            target_domain = urlparse(blog_url).netloc.lower().removeprefix("www.")
-            for s in sites:
-                # Check displayName, shortName, and customDomains
-                s_name = (s.get("displayName", "") + s.get("shortName", "")).lower()
-                s_domains = [d.get("url", "").lower().removeprefix("www.")
-                             for d in s.get("customDomains", [])]
-                if target_domain in s_name or target_domain in s_domains:
-                    site = s
-                    break
-
-        site_id   = site["id"]
-        site_name = site.get("displayName", site_id)
-        all_names = ", ".join(s.get("displayName", s["id"]) for s in sites)
-        st.write(f"**Site:** {site_name}  _(API key has access to: {all_names})_")
-
-        # Multi-language sites: if the URL is /fr/... (etc.), target that locale so
-        # the post is found, fetched, and uploaded in the right language.
-        _ltag = wf.set_locale_from_url(site, blog_url)
-        if _ltag:
-            _is_secondary = bool(wf.cms_locale_id)
-            st.write(f"**Locale:** {_ltag.upper()} "
-                     f"({'secondary — CMS targets this language' if _is_secondary else 'primary'})")
-
-    # Prefer the explicit collectionId from Airtable/Clients info. The auto-detector
-    # can mis-fire — e.g. it grabbed Zhero's "Newsletters" collection via the "news"
-    # keyword, so blog slugs were searched in the wrong collection and never found.
-    collection = None
-    if known_collection_id:
-        try:
-            cols = wf.get_collections(site_id)
-            collection = next((c for c in cols if c.get("id") == known_collection_id), None)
-        except Exception:
-            collection = None
-        if not collection:
-            collection = {"id": known_collection_id, "displayName": known_collection_id}
-    if not collection:
-        collection = wf.find_blog_collection(site_id)
-    if not collection:
-        raise ValueError("No blog collection found.")
-    collection_id = collection["id"]
-    st.write(f"**Collection:** {collection.get('displayName', collection_id)}")
-
-    item = wf.find_item_by_slug(collection_id, slug)
-    if not item:
-        # Fetch a sample of slugs from the collection to help diagnose the mismatch
-        try:
-            sample_data  = wf._get(f"/collections/{collection_id}/items", params={"limit": 10})
-            sample_slugs = [i.get("fieldData", {}).get("slug", "?")
-                            for i in sample_data.get("items", [])]
-            hint = f"\n\nFirst 10 slugs in collection: `{'`, `'.join(sample_slugs)}`"
-        except Exception:
-            hint = ""
-        raise ValueError(
-            f"Post '{slug}' isn't in this Webflow collection yet — not even as a draft. "
-            f"Create the post in Webflow first (a DRAFT is fine — the app reads drafts and "
-            f"won't publish them), then generate. The app only replaces images on an existing "
-            f"post; it can't create the post itself.{hint}")
-
-    item_id      = item["id"]
-    was_published = wf.is_published(item)
-    st.write(f"**Post found:** {item.get('fieldData', {}).get('name', slug)}")
-    st.write(f"**Status:** {'🟢 Published' if was_published else '🟡 Draft'}")
-
-    return wf, site_id, site_name, collection_id, item_id, was_published
-
-
 def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
                       image_urls, ok_results, site_name, client_name,
                       main_bytes=None, thumb_bytes=None, blog_title=""):
@@ -3923,12 +4147,6 @@ def _render_blog_results(blog_state: dict):
 BATCH_DATA_DIR = Path("1")
 
 
-def _batch_norm(s: str) -> str:
-    """Normalise a client name for matching: lowercase, alphanumeric only.
-    'Capstone Works, Inc.' -> 'capstoneworksinc'."""
-    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
-
-
 def _batch_read_csv_rows(text: str) -> list:
     import csv, io
     try:
@@ -3965,137 +4183,6 @@ def _batch_autoload():
         elif kind == "blog" and not blog:
             blog = rows
     return blog, clients
-
-
-# ── Airtable direct read/write (replaces the CSV drop when AIRTABLE_TOKEN is set) ──
-_AT_BASE = "app0baCBwviPDXArm"
-_AT_TBL_BLOG = "tblJ1ZtHYnb9B5BPq"       # Blog Keyword
-_AT_TBL_CLIENTS = "tblaoZfBy5Ts9R59D"    # Clients info
-_AT_BLOG_FIELDS = ["Client name", "Final blog url", "Image status", "Primary keyword",
-                   "Publishing Date", "Scheduled Generation Date", "Month"]
-
-
-def _airtable_token() -> str:
-    return (os.getenv("AIRTABLE_TOKEN") or "").strip()
-
-
-def _airtable_fetch(table_id, fields=None):
-    """Read ALL records from a table (paginated). Returns list of {id, fields}."""
-    import urllib.request
-    tok = _airtable_token()
-    out, offset = [], None
-    base_url = f"https://api.airtable.com/v0/{_AT_BASE}/{table_id}"
-    while True:
-        params = [("pageSize", "100")]
-        if offset:
-            params.append(("offset", offset))
-        for f in (fields or []):
-            params.append(("fields[]", f))
-        url = base_url + "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
-        data = json.load(urllib.request.urlopen(req, timeout=30))
-        out.extend(data.get("records", []))
-        offset = data.get("offset")
-        if not offset:
-            break
-    return out
-
-
-# ttl kept short so edits in Airtable (new rows, a status flipped to "Review needed")
-# show up automatically within ~1 min — without hammering the API on every rerun. The
-# "Refresh" button clears this cache for an instant re-read.
-@st.cache_data(ttl=60, show_spinner="📡 Reading Airtable…")
-def _airtable_load():
-    """Load blogs + clients straight from Airtable, shaped exactly like the CSV rows so
-    all downstream code works unchanged. 'Client name' in Blog Keyword is a linked-record
-    field (returns record ids), so it is resolved back to the client name via Clients info.
-    Returns (blog_rows, clients_rows), or (None, None) if no token / on any error."""
-    if not _airtable_token():
-        return None, None
-    try:
-        clients_rows, id_to_name = [], {}
-        for r in _airtable_fetch(_AT_TBL_CLIENTS):
-            f = {k: (v.strip() if isinstance(v, str) else v)
-                 for k, v in r.get("fields", {}).items()}
-            f["Record ID"] = r["id"]
-            clients_rows.append(f)
-            nm = f.get("Client name")
-            if isinstance(nm, str) and nm:
-                id_to_name[r["id"]] = nm
-
-        blog_rows = []
-        for r in _airtable_fetch(_AT_TBL_BLOG, _AT_BLOG_FIELDS):
-            src = r.get("fields", {})
-            row = {k: (v.strip() if isinstance(v, str) else v) for k, v in src.items()}
-            cn = src.get("Client name")
-            if isinstance(cn, list):  # linked records -> resolve to a name string
-                row["Client name"] = next(
-                    (id_to_name.get(x, "") for x in cn if id_to_name.get(x)), "")
-            row["Record ID"] = r["id"]  # real Airtable record id (used to mark Done)
-            blog_rows.append(row)
-        return blog_rows, clients_rows
-    except Exception:
-        return None, None
-
-
-def _airtable_mark_done(record_id: str):
-    """STRICT WRITE: set ONLY {'Image status': 'Done'} on ONE Blog Keyword record.
-    Never writes any other field, row, table, or value. Returns (ok, error_str)."""
-    import urllib.request
-    if not _airtable_token():
-        return False, "no AIRTABLE_TOKEN"
-    if not record_id or not str(record_id).startswith("rec"):
-        return False, "invalid record id"
-    url = f"https://api.airtable.com/v0/{_AT_BASE}/{_AT_TBL_BLOG}/{record_id}"
-    body = json.dumps({"fields": {"Image status": "Done"}}).encode()
-    req = urllib.request.Request(url, data=body, method="PATCH",
-                                 headers={"Authorization": f"Bearer {_airtable_token()}",
-                                          "Content-Type": "application/json"})
-    try:
-        urllib.request.urlopen(req, timeout=30)
-        return True, ""
-    except Exception as e:
-        return False, str(e)
-
-
-def _batch_clients_index(clients_rows) -> dict:
-    """Map normalised client name -> Clients-info row."""
-    idx = {}
-    for r in clients_rows:
-        nm = _batch_norm(r.get("Client name", ""))
-        if nm:
-            idx[nm] = r
-    return idx
-
-
-def _batch_resolve_creds(client_name: str, clients_idx: dict) -> dict:
-    """Resolve a client's Webflow credentials.
-    Order: Clients info CSV (token+siteId) -> local client_keys.json fallback."""
-    row = clients_idx.get(_batch_norm(client_name))
-    if row:
-        tok = (row.get("webflow_token") or "").strip()
-        site = (row.get("siteId") or "").strip()
-        if tok and site:
-            return {
-                "source": "Clients info", "ok": True, "reason": "",
-                "token": tok, "site_id": site,
-                "collection_id": (row.get("collectionId") or "").strip(),
-                "author_id": (row.get("CMS Item ID of the Author") or "").strip(),
-                "category_id": (row.get("Blog Category Collection ID") or "").strip(),
-            }
-    # Fallback: local, gitignored client_keys.json (e.g. Capstone, which has no Airtable row)
-    slug = _match_client(client_name) or _batch_norm(client_name)
-    key = _get_client_key(slug)
-    if key:
-        return {
-            "source": "local keys", "ok": True,
-            "reason": "from local client_keys.json (no siteId in Airtable — resolved via token)",
-            "token": key, "site_id": "", "collection_id": "",
-            "author_id": "", "category_id": "",
-        }
-    return {"source": "none", "ok": False,
-            "reason": "no webflow_token in Clients info and no local key",
-            "token": "", "site_id": "", "collection_id": "", "author_id": "", "category_id": ""}
 
 
 _BATCH_MONTHS = ["January", "February", "March", "April", "May", "June",
@@ -4376,34 +4463,11 @@ def _batch_state_clear() -> None:
 
 # ════════════════════════════════════════════════════════════════════════════════
 # Revise from Link — Upload section (SECOND tab_revise block; placed here, after
-# do_webflow_connect / do_webflow_upload AND the Airtable helpers are defined, so it
-# can call them. Streamlit lets you write to the same tab from multiple `with` blocks —
-# this renders at the bottom of the Revise tab, under the generated images.)
+# do_webflow_upload is defined, so it can call it. Streamlit lets you write to the same
+# tab from multiple `with` blocks — this renders at the bottom of the Revise tab, under
+# the generated images. (do_webflow_connect + the Airtable credential helpers now live
+# ABOVE st.tabs() — the generate block up top needs them to read unpublished drafts.)
 # ════════════════════════════════════════════════════════════════════════════════
-def _revise_resolve_creds(client_slug: str) -> dict | None:
-    """Pull a client's Webflow creds (token + collectionId) straight from the Airtable
-    'Clients info' table — the same source the Batch Generate tab uses — so the user never
-    has to paste a key. Matches the template slug to the Airtable client name via
-    _match_client. Returns the creds dict (only when a usable token was found), else None."""
-    if not client_slug:
-        return None
-    try:
-        _, clients_rows = _airtable_load()
-    except Exception:
-        clients_rows = None
-    if not clients_rows:
-        return None
-    idx = _batch_clients_index(clients_rows)
-    for row in clients_rows:
-        nm = row.get("Client name", "")
-        if isinstance(nm, str) and nm and _match_client(nm) == client_slug:
-            creds = _batch_resolve_creds(nm, idx)
-            if creds.get("ok") and creds.get("token"):
-                creds["client_name"] = nm
-                return creds
-    return None
-
-
 with tab_revise:
     if st.session_state.get("rv_results"):
         _rv_okr = [r for r in st.session_state["rv_results"] if r["status"] == "ok"]
