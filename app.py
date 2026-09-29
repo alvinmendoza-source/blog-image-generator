@@ -2407,9 +2407,276 @@ def _ct_silhouette(grad, mask, logo_img, brand, W, H, rng=None, busy=False):
     return PILImage.alpha_composite(grad.convert("RGBA"), layer).convert("RGB")
 
 
+# 43 more layout families (53 total) so Generate/Redo has far more to choose from. Same
+# house rules as the originals: logo + title on the LEFT / in a brand band, the photo in
+# its own window, and the title column never runs into the photo. Masks are drawn at 3x
+# and downsampled so curves (circles, arches, waves) come out anti-aliased.
+_CT_EXTRA_STYLES = {
+    "panel_circle":      "Circle photo",
+    "panel_semicircle":  "Curved edge",
+    "panel_concave":     "Scooped edge",
+    "panel_wave":        "Wave edge",
+    "panel_arch":        "Arch photo",
+    "panel_pill":        "Pill photo",
+    "panel_arrow_in":    "Arrow photo",
+    "panel_arrow_out":   "Arrow panel",
+    "panel_hexagon":     "Hexagon photo",
+    "panel_chamfer":     "Cut-corner photo",
+    "panel_leaf":        "Leaf-corner photo",
+    "panel_tab":         "Tab-corner photo",
+    "panel_step":        "Stepped edge",
+    "panel_diag_rev":    "Reverse diagonal",
+    "panel_para":        "Slanted card",
+    "panel_twin":        "Twin photos (stacked)",
+    "panel_twin_v":      "Twin photos (side by side)",
+    "panel_slats":       "Photo slats",
+    "panel_mosaic":      "Photo mosaic",
+    "panel_stagger":     "Staggered photos",
+    "panel_blob":        "Organic photo",
+    "panel_circles":     "Circle duo",
+    "panel_tilt":        "Tilted card",
+    "card_bleed_right":  "Card off the edge",
+    "card_bottom":       "Card from the bottom",
+    "card_top":          "Card from the top",
+    "card_square":       "Square photo",
+    "u_frame":           "Open frame",
+    "bands_both":        "Top + bottom bands",
+    "band_bottom_wave":  "Wave bottom band",
+    "band_bottom_diag":  "Slanted bottom band",
+    "band_top_diag":     "Slanted top band",
+    "band_bottom_card":  "Photo card + bottom band",
+    "band_top_card":     "Top band + photo card",
+    "band_bottom_arc":   "Arc bottom band",
+    "l_shape_rev":       "Reverse L-frame",
+    "corner_block_top":  "Photo + top block",
+    "corner_block_tall": "Photo + floating panel",
+    "corner_circle":     "Photo + brand circle",
+    "corner_quarter":    "Photo + quarter circle",
+    "scrim_corner":      "Photo + corner glow",
+    "scrim_diag":        "Photo + diagonal scrim",
+    "scrim_top":         "Photo + top scrim",
+}
+_CT_STYLES.extend(k for k in _CT_EXTRA_STYLES if k not in _CT_STYLES)
+_CT_STYLE_LABELS.update(_CT_EXTRA_STYLES)
+
+
+def _ct_extra_layout(style, W, H, spec):
+    """Mask (255 = brand surface, 0 = photo) + layout for one of the _CT_EXTRA_STYLES.
+    Returns (mask_L, lo): lo['col'] = right edge of the free brand column the title/logo
+    may use, plus optional logo_xy / logo_h / tx / ty / tw overrides."""
+    import numpy as np
+    K = 3
+    mn = min(W, H)
+    mm = round(mn * 0.06); inset = round(W * 0.045); g = round(W * 0.02)
+    gap = max(4, round(mn * 0.03))
+    rad = round(mn * max(0.04, spec.get("radius", 0.05)))
+    x0 = round(W * spec.get("pw", 0.44))
+    lsm = round(H * 0.11 * spec.get("logo_scale", 1.0))     # logo height inside bands/blocks
+    phase = (spec.get("sil_seed", 0) % 628) / 100.0          # wave phase, stable per design
+    lo = {"col": x0}
+
+    # scrims are soft alpha ramps: build them directly, no supersampling needed
+    if style in ("scrim_corner", "scrim_diag"):
+        yy, xx = np.mgrid[0:H, 0:W].astype(float)
+        if style == "scrim_corner":             # brand glow from the bottom-left corner
+            t = np.hypot(xx, H - yy) / W
+            a = np.clip((0.95 - t) / (0.95 - 0.62), 0, 1)
+            lo.update(ty=round(H * 0.72), tw=round(W * 0.45), logo_h=lsm)
+            lo["logo_xy"] = (inset, lo["ty"] - lsm - round(H * 0.03))
+        else:                                   # diagonal: brand left, clears up-right
+            t = xx / W - 0.3 * (yy / H)
+            a = np.clip((0.55 - t) / 0.30, 0, 1)
+            lo["tw"] = round(W * 0.30)
+        return PILImage.fromarray((a * 255).astype("uint8"), "L"), lo
+    if style == "scrim_top":
+        lo.update(logo_h=lsm, logo_xy=(inset, round(H * 0.07)), tw=round(W * 0.60))
+        lo["ty"] = lo["logo_xy"][1] + lsm + round(H * 0.03)
+        return _ct_scrim_mask(W, H, "v", 255, 0, 0.40, 0.66), lo
+
+    full_photo = style.startswith("corner_")      # photo everywhere, brand shape on top
+    m = PILImage.new("L", (W * K, H * K), 0 if full_photo else 255)
+    d = ImageDraw.Draw(m)
+    fill = 255 if full_photo else 0
+
+    def rect(b, f=None):
+        d.rectangle([v * K for v in b], fill=fill if f is None else f)
+
+    def rr(b, r, f=None, corners=None):
+        r = max(0, min(r, (b[2] - b[0]) / 2, (b[3] - b[1]) / 2))
+        d.rounded_rectangle([v * K for v in b], radius=r * K, fill=fill if f is None else f,
+                            corners=corners)
+
+    def el(b, f=None):
+        d.ellipse([v * K for v in b], fill=fill if f is None else f)
+
+    def poly(pts, f=None):
+        d.polygon([(x * K, y * K) for x, y in pts], fill=fill if f is None else f)
+
+    px = x0 + g                                   # left edge of a floating photo window
+    if style == "panel_circle":
+        D = max(H * 1.2, (W - x0) * 1.25)
+        el([px, H / 2 - D / 2, px + D, H / 2 + D / 2])
+    elif style == "panel_semicircle":
+        r = W - x0
+        el([W - r, H / 2 - r, W + r, H / 2 + r])
+    elif style == "panel_concave":
+        rect([x0, 0, W, H])
+        el([x0 - W * 0.35, -H * 0.2, x0 + W * 0.10, H * 1.2], f=255)
+        lo["col"] = x0 + round(W * 0.05)
+    elif style == "panel_wave":
+        A = W * 0.03
+        edge = [(x0 + A * math.sin(2 * math.pi * y / H + phase), y)
+                for y in np.linspace(0, H, 60)]
+        poly(edge + [(W, H), (W, 0)])
+        lo["col"] = round(x0 - A)
+    elif style == "panel_arch":
+        w = W - mm - px
+        rr([px, mm, W - mm, H + w], w / 2)
+    elif style == "panel_pill":
+        rr([px, mm, W - mm, H - mm], (H - 2 * mm) / 2)
+    elif style == "panel_arrow_in":
+        tip = W * 0.10
+        poly([(x0, H / 2), (x0 + tip, 0), (W, 0), (W, H), (x0 + tip, H)])
+    elif style == "panel_arrow_out":
+        poly([(x0, 0), (W, 0), (W, H), (x0, H), (x0 + W * 0.10, H / 2)])
+    elif style == "panel_hexagon":
+        R = H * 0.62; cx = x0 + R
+        poly([(cx + R * math.cos(math.radians(a)), H / 2 + R * math.sin(math.radians(a)))
+              for a in range(0, 360, 60)])
+    elif style == "panel_chamfer":
+        c = H * 0.10; x1, y1, x2, y2 = px, mm, W - mm, H - mm
+        poly([(x1 + c, y1), (x2 - c, y1), (x2, y1 + c), (x2, y2 - c),
+              (x2 - c, y2), (x1 + c, y2), (x1, y2 - c), (x1, y1 + c)])
+    elif style == "panel_leaf":
+        rr([px, mm, W - mm, H - mm], H * 0.30, corners=(True, False, True, False))
+    elif style == "panel_tab":
+        rr([x0, mm, W, H], H * 0.30, corners=(True, False, False, False))
+    elif style == "panel_step":
+        s = W * 0.04
+        poly([(x0 + 2 * s, 0), (W, 0), (W, H), (x0, H), (x0, H * 0.66), (x0 + s, H * 0.66),
+              (x0 + s, H * 0.33), (x0 + 2 * s, H * 0.33)])
+    elif style == "panel_diag_rev":
+        sl = W * 0.07
+        poly([(x0 - sl, 0), (W, 0), (W, H), (x0 + sl, H)])
+        lo["col"] = round(x0 - sl * 0.7)
+    elif style == "panel_para":
+        sl = W * 0.06
+        poly([(px + sl, mm), (W - mm, mm), (W - mm - sl, H - mm), (px, H - mm)])
+    elif style == "panel_twin":
+        rr([px, mm, W - mm, H / 2 - gap / 2], rad)
+        rr([px, H / 2 + gap / 2, W - mm, H - mm], rad)
+    elif style == "panel_twin_v":
+        mid = (px + W - mm) / 2
+        rr([px, mm, mid - gap / 2, H - mm], rad)
+        rr([mid + gap / 2, mm, W - mm, H - mm], rad)
+    elif style == "panel_slats":
+        n = 3; sw = (W - mm - px - gap * (n - 1)) / n
+        for i in range(n):
+            xa = px + i * (sw + gap)
+            rr([xa, mm, xa + sw, H - mm], min(rad, sw / 4))
+    elif style == "panel_mosaic":
+        cw = (W - mm - px - gap) / 2; ch = (H - 2 * mm - gap) / 2
+        for i in range(2):
+            for j in range(2):
+                xa, ya = px + i * (cw + gap), mm + j * (ch + gap)
+                rr([xa, ya, xa + cw, ya + ch], rad)
+    elif style == "panel_stagger":
+        a = px + (W - px) * 0.5
+        rr([px, -rad, a - gap / 2, H * 0.72], rad)
+        rr([a + gap / 2, H * 0.28, W + rad, H + rad], rad)
+    elif style == "panel_blob":
+        R = H * 0.55; cx = x0 + R * 1.18
+        th = np.linspace(0, 2 * math.pi, 240, endpoint=False)
+        r = R * (1 + 0.09 * np.sin(3 * th + phase) + 0.05 * np.sin(5 * th + 2 * phase))
+        poly(list(zip(cx + r * np.cos(th), H / 2 + r * np.sin(th))))
+    elif style == "panel_circles":
+        D = max(H * 1.1, (W - x0) * 1.2); bx = px + W * 0.04
+        el([bx, H / 2 - D / 2, bx + D, H / 2 + D / 2])
+        sr = H * 0.13; scx, scy = px + W * 0.03, H * 0.80
+        el([scx - sr, scy - sr, scx + sr, scy + sr])
+        lo["col"] = round(min(x0, scx - sr - g))
+    elif style == "panel_tilt":
+        ang = math.radians(-4)
+        w, h = W - mm - px, H - 2 * mm
+        w, h = w - h * abs(math.sin(ang)), h - w * abs(math.sin(ang)) * 0.6
+        cx, cy = px + (W - mm - px) / 2, H / 2
+        pts = [(cx + dx * math.cos(ang) - dy * math.sin(ang),
+                cy + dx * math.sin(ang) + dy * math.cos(ang))
+               for dx, dy in ((-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2))]
+        poly(pts)
+        lo["col"] = round(min(x0, min(p[0] for p in pts) - g))
+    elif style == "card_bleed_right":
+        rr([px, mm, W + rad * 2, H - mm], rad)
+    elif style == "card_bottom":
+        rr([px, mm * 2, W - mm, H + rad * 2], rad)
+    elif style == "card_top":
+        rr([px, -rad * 2, W - mm, H - mm * 2], rad)
+    elif style == "card_square":
+        side = H - 2 * mm; xs = max(px, W - mm - side)
+        rr([xs, mm, W - mm, H - mm], rad)
+        lo["col"] = xs - g
+    elif style == "u_frame":
+        rect([x0, round(H * 0.12), W, H - round(H * 0.12)])
+    elif style == "bands_both":
+        tb, bb = round(H * 0.27), round(H * 0.36)
+        rect([0, tb, W, H - bb])
+        lh_ = round(tb * 0.5 * spec.get("logo_scale", 1.0))
+        lo.update(logo_h=lh_, logo_xy=(inset, (tb - lh_) // 2),
+                  ty=H - bb + round(H * 0.06), tw=round(W * 0.80))
+    elif style.startswith("band_") or style == "l_shape_rev":
+        top = False
+        ly = H * 0.06
+        if style == "band_bottom_wave":
+            bh, A = H * 0.40, H * 0.03
+            edge = [(x, H - bh + A * math.sin(2 * math.pi * 1.2 * x / W + phase))
+                    for x in np.linspace(W, 0, 80)]
+            poly([(0, 0), (W, 0)] + edge)
+            ly = H - bh + A + H * 0.04
+        elif style == "band_bottom_diag":
+            poly([(0, 0), (W, 0), (W, H * 0.72), (0, H * 0.55)])
+            ly = H * 0.61
+        elif style == "band_top_diag":
+            poly([(0, H * 0.52), (W, H * 0.34), (W, H), (0, H)])
+        elif style == "band_bottom_card":
+            rr([mm, mm, W - mm, H * 0.60], rad)
+            ly = H * 0.66
+        elif style == "band_top_card":
+            rr([mm, H * 0.40, W - mm, H - mm], rad)
+        elif style == "band_bottom_arc":
+            el([-W * 0.25, -H * 1.0, W * 1.25, H * 0.64])
+            ly = H * 0.66
+        else:                                               # l_shape_rev
+            rect([round(W * 0.34), round(H * 0.42), W, H])
+        ly = round(ly)
+        tw_f = {"band_top_card": 0.80, "band_bottom_diag": 0.55, "band_bottom_arc": 0.55,
+                "band_top_diag": 0.50, "l_shape_rev": 0.80}.get(style, 0.62)
+        lo.update(logo_h=lsm, logo_xy=(inset, ly), ty=ly + lsm + round(H * 0.03),
+                  tw=round(W * tw_f))
+    elif style == "corner_block_top":
+        bw, bh = round(W * 0.46), round(H * 0.50)
+        rr([inset, inset, inset + bw, inset + bh], mn * 0.03)
+        bx = inset + round(W * 0.03)
+        lo.update(logo_h=lsm, logo_xy=(bx, inset + round(H * 0.06)), tx=bx,
+                  ty=inset + round(H * 0.06) + lsm + round(H * 0.03), tw=bw - round(W * 0.06))
+    elif style == "corner_block_tall":
+        bw = round(W * 0.42)
+        rr([inset, mm, inset + bw, H - mm], mn * 0.03)
+        bx = inset + round(W * 0.03)
+        lo.update(logo_xy=(bx, mm + round(H * 0.10)), tx=bx, tw=bw - round(W * 0.06))
+    elif style == "corner_circle":
+        r = H * 0.62; cx, cy = W * 0.2, H * 0.55
+        el([cx - r, cy - r, cx + r, cy + r])
+        lo["tw"] = round(W * 0.32)
+    elif style == "corner_quarter":
+        r = H * 1.1
+        el([-r, -r, r, r])
+        lo["tw"] = round(W * 0.32)
+    return m.resize((W, H), PILImage.LANCZOS), lo
+
+
 def _ct_overlay(spec, W, H, brand, logo_img, name="Brand", ai_bg=None):
     """Build a full-canvas overlay (opaque brand surface + logo, transparent/scrim photo
-    window) for one of TEN layout families, and return (overlay_rgba,
+    window) for one of the layout families (_CT_STYLES), and return (overlay_rgba,
     coords={tx,ty,tw,fsz,lh,color}). Brand-coloured, LOGO + TITLE — no accent lines
     or extra graphics, except a faint silhouette of the client's own logo mark behind the
     brand surface (the one brand element, like the watermark on ANE's site hero).
@@ -2462,13 +2729,13 @@ def _ct_overlay(spec, W, H, brand, logo_img, name="Brand", ai_bg=None):
         md.rectangle([0, 0, W, H - bh], fill=0)             # photo on top
         logo_h = round(H * 0.11 * lscale)
         logo_xy = (inset, H - bh + round(H * 0.055))
-        ty = logo_xy[1] + logo_h + round(H * 0.03); tw = round(W * 0.60)
+        ty = logo_xy[1] + logo_h + round(H * 0.03); tw = round(W * 0.80)
     elif style == "band_top":
         bh = round(H * 0.34)
         md.rectangle([0, bh, W, H], fill=0)                 # photo below
         logo_h = round(H * 0.11 * lscale)
         logo_xy = (inset, round(H * 0.06))
-        ty = logo_xy[1] + logo_h + round(H * 0.03); tw = round(W * 0.60)
+        ty = logo_xy[1] + logo_h + round(H * 0.03); tw = round(W * 0.80)
     elif style == "corner_block":  # photo full-bleed + a solid rounded brand block bottom-left
         mask = PILImage.new("L", (W, H), 0)                 # transparent (photo) everywhere
         md = ImageDraw.Draw(mask)
@@ -2500,7 +2767,14 @@ def _ct_overlay(spec, W, H, brand, logo_img, name="Brand", ai_bg=None):
         # Cluster logo + title TOGETHER in the bottom band (was: logo top-left + title in
         # the band = disconnected). The left column stays a clean brand accent beside the photo.
         logo_xy = (inset, H - bh + round(H * 0.06))
-        ty = logo_xy[1] + logo_h + round(H * 0.035); tx = inset; tw = round(W * 0.62)
+        ty = logo_xy[1] + logo_h + round(H * 0.035); tx = inset; tw = round(W * 0.80)
+    elif style in _CT_EXTRA_STYLES:
+        mask, lo = _ct_extra_layout(style, W, H, spec)
+        md = ImageDraw.Draw(mask)
+        tw = max(60, lo["col"] - inset - round(W * 0.03))
+        logo_h = lo.get("logo_h", logo_h)
+        logo_xy = lo.get("logo_xy", logo_xy)
+        tx, ty, tw = lo.get("tx", tx), lo.get("ty", ty), lo.get("tw", tw)
     else:                          # safe fallback → simple left panel
         pw = round(W * 0.44)
         md.rectangle([pw, 0, W, H], fill=0)
