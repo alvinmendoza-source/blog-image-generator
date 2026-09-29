@@ -14,7 +14,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import streamlit as st
-from PIL import Image as PILImage, ImageDraw, ImageFont
+from PIL import Image as PILImage, ImageDraw, ImageFont, ImageFilter
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
@@ -2176,6 +2176,7 @@ def _ct_random_spec(rng=None):
         "title_pos":  r.choice(_CT_TITLE_POS),        # panel/scrim styles honour this
         "grad":       r.choice([0.55, 0.65, 0.72, 0.82, 0.9]),
         "logo_scale": round(r.uniform(0.9, 1.1), 2),
+        "sil_seed":   r.randint(1, 10**6),             # fixes the logo-silhouette spot so preview == saved
     }
 
 
@@ -2294,11 +2295,124 @@ def _ct_place_logo(ov, logo_img, x, y, max_w, max_h):
     ov.alpha_composite(lg, (int(x), int(y)))
 
 
+def _ct_strip_bg(logo_img):
+    """Logos uploaded with a solid (non-transparent) background would silhouette into a
+    plain box — key out the corner colour when all four corners are opaque and alike."""
+    import numpy as np
+    lg = logo_img.convert("RGBA")
+    a = np.asarray(lg).astype(int)
+    h, w = a.shape[:2]
+    corners = [a[0, 0], a[0, w - 1], a[h - 1, 0], a[h - 1, w - 1]]
+    if min(c[3] for c in corners) < 200:
+        return lg                                  # already transparent
+    ref = np.mean([c[:3] for c in corners], axis=0)
+    if max(np.abs(c[:3] - ref).max() for c in corners) > 30:
+        return lg                                  # busy edges — not a flat background
+    dist = np.sqrt(((a[..., :3] - ref) ** 2).sum(-1))
+    out = a.copy()
+    out[..., 3] = np.minimum(a[..., 3], np.clip((dist - 20) * 6, 0, 255))
+    return PILImage.fromarray(out.astype("uint8"), "RGBA")
+
+
+def _ct_logo_mark(logo_img):
+    """The ICON part of a logo lockup (e.g. ANE's cube, AboutIT's eye) for the background
+    silhouette — a wordmark silhouette just reads as faint text. Splits the logo on the
+    empty columns between its parts and keeps the largest roughly-square part; falls back
+    to the whole logo (icon-only or stacked logos)."""
+    import numpy as np
+    lg = _ct_strip_bg(logo_img)
+    bb = lg.split()[-1].point(lambda v: 255 if v > 40 else 0).getbbox()
+    if not bb:
+        return None
+    lg = lg.crop(bb)
+    al = np.asarray(lg.split()[-1]) > 40
+    cols = al.any(0)
+    gap_min = max(3, int(lg.height * 0.06))
+    segs, s, e, gap = [], None, 0, 0
+    for x, on in enumerate(cols):
+        if on:
+            if s is None:
+                s = x
+            e, gap = x, 0
+        elif s is not None:
+            gap += 1
+            if gap >= gap_min:
+                segs.append((s, e)); s = None
+    if s is not None:
+        segs.append((s, e))
+    best = None
+    for s, e in segs:
+        rows = np.where(al[:, s:e + 1].any(1))[0]
+        w, h = e - s + 1, rows[-1] - rows[0] + 1
+        if w > lg.height * 0.3 and 0.6 < w / h < 1.7 and (best is None or w * h > best[4]):
+            best = (s, rows[0], e + 1, rows[-1] + 1, w * h)
+    return lg.crop(best[:4]) if best and len(segs) > 1 else lg
+
+
+def _ct_silhouette(grad, mask, logo_img, brand, W, H, rng=None, busy=False):
+    """Paint a huge, faint silhouette of the CLIENT'S OWN logo mark onto the brand surface
+    (like the watermark globe behind ANE's site hero) — a real brand element instead of a
+    bare gradient. Drawn under the overlay's alpha, so it only shows on the brand surface,
+    never over the photo. Placement is scored per layout: prefer spots where a good part
+    of the mark lands on the brand surface but it still bleeds off an edge/behind the photo."""
+    import numpy as np
+    if logo_img is None:
+        return grad
+    mark = _ct_logo_mark(logo_img)
+    if mark is None:
+        return grad
+    r = rng or random
+    a = np.asarray(mark).astype(float)
+    al = a[..., 3] / 255
+    on = al > 0.2
+    lum = (0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2]) / 255
+    if on.any() and np.ptp(lum[on]) > 0.05:        # keep the mark's inner strokes visible
+        lum = np.clip((lum - lum[on].min()) / np.ptp(lum[on]), 0, 1)
+        al = al * (0.45 + 0.55 * lum)
+    dark = _ct_lum(brand) < 140
+    tint = tuple(int(c + (255 - c) * 0.6) for c in brand) if dark else _ct_darken(brand, 0.55)
+    op = 0.13 if dark else 0.11
+    if busy:                                       # AI backgrounds are textured — lift the mark above the noise
+        op *= 1.6
+    base_m = PILImage.fromarray((al * 255 * op).astype("uint8"), "L")
+    mk = np.asarray(mask.resize((W // 8, H // 8))) / 255.0
+
+    cands = []
+    for scale in (0.75, 0.95, 1.2, 1.45, 1.7):
+        sh = int(H * scale); sw = max(1, int(mark.width * sh / mark.height))
+        for fx in (-0.35, -0.15, 0.1, 0.3, 0.45, 0.6, 0.75):
+            for fy in (-0.35, -0.15, 0.05, 0.25):
+                x, y = int(W * fx - sw * 0.2), int(H * fy)
+                # visible share of the mark's box on the brand surface
+                x0, y0 = max(0, x) // 8, max(0, y) // 8
+                x1, y1 = min(W, x + sw) // 8, min(H, y + sh) // 8
+                if x1 <= x0 or y1 <= y0:
+                    continue
+                inside = (x1 - x0) * (y1 - y0) / max(1, (sw // 8) * (sh // 8))
+                brand_part = mk[y0:y1, x0:x1].mean()
+                vis = inside * brand_part
+                if not 0.25 <= vis <= 0.75:        # too hidden, or fully inside = sticker
+                    continue
+                cands.append((vis * (sw * sh) ** 0.5, x, y, sw, sh))
+    if not cands:
+        return grad
+    cands.sort(reverse=True)
+    _, x, y, sw, sh = r.choice(cands[:4])
+    m = base_m.resize((sw, sh), PILImage.LANCZOS)
+    m = m.filter(ImageFilter.GaussianBlur(max(1, sh // 300)))   # soften upscaled edges
+    layer = PILImage.new("RGBA", (W, H), tint + (0,))
+    lm = PILImage.new("L", (W, H), 0)
+    lm.paste(m, (x, y))
+    layer.putalpha(lm)
+    return PILImage.alpha_composite(grad.convert("RGBA"), layer).convert("RGB")
+
+
 def _ct_overlay(spec, W, H, brand, logo_img, name="Brand", ai_bg=None):
     """Build a full-canvas overlay (opaque brand surface + logo, transparent/scrim photo
     window) for one of TEN layout families, and return (overlay_rgba,
-    coords={tx,ty,tw,fsz,lh,color}). Brand-coloured, LOGO + TITLE ONLY — no accent lines
-    or extra graphics (design changes only, per user).
+    coords={tx,ty,tw,fsz,lh,color}). Brand-coloured, LOGO + TITLE — no accent lines
+    or extra graphics, except a faint silhouette of the client's own logo mark behind the
+    brand surface (the one brand element, like the watermark on ANE's site hero).
 
     HYBRID: when `ai_bg` (a PIL image) is given, the brand SURFACE is filled with the
     AI-generated abstract background instead of a flat brand gradient. Everything else —
@@ -2392,6 +2506,9 @@ def _ct_overlay(spec, W, H, brand, logo_img, name="Brand", ai_bg=None):
         md.rectangle([pw, 0, W, H], fill=0)
         tw = max(60, pw - inset - round(W * 0.03))
 
+    # Brand element: a faint silhouette of the client's own logo mark on the brand surface.
+    grad = _ct_silhouette(grad, mask, logo_img, brand, W, H,
+                          rng=random.Random(spec.get("sil_seed", 0)), busy=ai_bg is not None)
     ov = grad.convert("RGBA")
     ov.putalpha(mask)
     d = ImageDraw.Draw(ov)
