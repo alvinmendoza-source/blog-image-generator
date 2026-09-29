@@ -1369,6 +1369,8 @@ class WebflowClient:
         return all_items
 
     def find_item_by_slug(self, collection_id: str, slug: str):
+        # Pasted URLs can carry stray whitespace / %20 around the slug.
+        slug = urllib.parse.unquote(slug or "").strip().strip("/").strip()
         all_items = self._all_collection_items(collection_id)
         # Pass 1: exact match
         for item in all_items:
@@ -3189,6 +3191,13 @@ def _revise_resolve_creds(client_slug: str) -> dict | None:
     return None
 
 
+def _url_slug(url: str) -> str:
+    """Last path segment of a blog URL, cleaned of query, %20 and stray spaces."""
+    path = urllib.parse.urlsplit((url or "").strip()).path
+    seg = urllib.parse.unquote(path).strip().rstrip("/").split("/")[-1]
+    return seg.strip()
+
+
 def do_webflow_connect(api_key: str, manual_site_id: str, client_name: str, slug: str,
                        blog_url: str = "", known_collection_id: str = ""):
     """Connect to Webflow and find the blog post. Returns (wf, site_id, site_name,
@@ -3339,7 +3348,7 @@ def _revise_fetch_from_cms(url: str, client_slug: str):
             f"needed to read an unpublished draft. Add that client's `webflow_token` in "
             f"Airtable (Clients info), or set `AIRTABLE_TOKEN` so keys load automatically.")
 
-    slug = url.rstrip("/").split("/")[-1]
+    slug = _url_slug(url)
     wf, site_id, site_name, collection_id, item_id, was_published = do_webflow_connect(
         token, None, _client_display_name(client_slug), slug,
         blog_url=url, known_collection_id=creds.get("collection_id", ""))
@@ -3420,7 +3429,8 @@ with tab_revise:
                   "rv_client", "rv_main_bytes", "rv_thumb_bytes"]:
             st.session_state.pop(k, None)
 
-        url = ("https://" + rv_url) if not rv_url.startswith("http") else rv_url
+        _rv_u = rv_url.strip()
+        url = ("https://" + _rv_u) if not _rv_u.startswith("http") else _rv_u
 
         # Resolve client: manual override wins, else auto-detect from domain.
         client_slug = _rv_override or _revise_detect_client(url)
@@ -3551,7 +3561,7 @@ with tab_revise:
         st.session_state["rv_main_bytes"]  = main_bytes
         st.session_state["rv_thumb_bytes"] = thumb_bytes
         st.session_state["rv_url_final"]   = url
-        st.session_state["rv_slug"]        = url.rstrip("/").split("/")[-1]
+        st.session_state["rv_slug"]        = _url_slug(url)
         st.session_state["rv_image_urls"]  = image_urls
         st.session_state.pop("rv_uploaded", None)
 
