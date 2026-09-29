@@ -2284,6 +2284,23 @@ def _ct_scrim_mask(W, H, axis, a0, a1, f0, f1):
     return m
 
 
+def _ct_read_logo(uploaded):
+    """Open an uploaded logo (PNG or SVG) as RGBA. SVGs are rasterised with resvg at
+    ~1600px on the long side — crisp even as the big background silhouette — and cropped
+    to their drawn content (SVG canvases often carry empty padding)."""
+    raw = uploaded.getvalue()
+    if not (uploaded.name or "").lower().endswith((".svg", ".svgz")):
+        return PILImage.open(io.BytesIO(raw)).convert("RGBA")
+    import resvg_py
+    svg = raw.decode("utf-8-sig", errors="replace")
+    first = PILImage.open(io.BytesIO(bytes(resvg_py.svg_to_bytes(svg_string=svg))))
+    zoom = 1600 / max(1, max(first.size))
+    img = PILImage.open(io.BytesIO(bytes(resvg_py.svg_to_bytes(svg_string=svg, zoom=zoom))))
+    img = img.convert("RGBA")
+    bb = img.split()[-1].getbbox()
+    return img.crop(bb) if bb else img
+
+
 def _ct_place_logo(ov, logo_img, x, y, max_w, max_h):
     """Alpha-composite a client logo (RGBA), scaled to fit a box, top-left at (x, y)."""
     if logo_img is None:
@@ -5684,8 +5701,9 @@ with tab_template:
     _cc1, _cc2 = st.columns([1, 2])
     _ct_brand = _cc1.color_picker("Brand color", "#0D2140", key="ct_brand")
     _cc1.caption("The client's main color.")
-    _ct_logo_file = _cc2.file_uploader("Logo (transparent PNG)", type=["png"], key="ct_logo")
-    _cc2.caption("A see-through (transparent) PNG works best. No logo yet? You can still "
+    _ct_logo_file = _cc2.file_uploader("Logo (SVG or transparent PNG)", type=["svg", "png"],
+                                       key="ct_logo")
+    _cc2.caption("SVG works best (always sharp), or a see-through PNG. No logo yet? You can still "
                  "generate — the name is drawn as text for now.")
 
     _ct_size_mode = st.selectbox(
@@ -5705,9 +5723,9 @@ with tab_template:
     _ct_logo_img = None
     if _ct_logo_file is not None:
         try:
-            _ct_logo_img = PILImage.open(_ct_logo_file).convert("RGBA")
+            _ct_logo_img = _ct_read_logo(_ct_logo_file)
         except Exception:
-            st.warning("⚠️ Couldn't read the logo PNG — using a text logo instead.")
+            st.warning("⚠️ Couldn't read that logo file — using a text logo instead.")
 
     # ── STEP 2: Generate designs ──
     # ALWAYS hybrid: every batch (including the first) generates 3 designs with AI abstract
