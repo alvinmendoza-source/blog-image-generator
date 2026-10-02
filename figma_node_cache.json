@@ -1210,5 +1210,45 @@
       255,
       255
     ]
+  },
+  "shartega": {
+    "name": "Shartega",
+    "file_key": "f7Y5Ni2gfmF5CXFCRnA9BS",
+    "main": "2067:12",
+    "thumb": "2067:13",
+    "main_w": 1200,
+    "main_h": 600,
+    "overlay_main": "2067:3",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 54,
+    "main_ty": 244,
+    "main_tw": 421,
+    "main_fsz": 40,
+    "main_lh": 48,
+    "main_font_family": "AccordAlternate",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      255,
+      255,
+      255
+    ],
+    "thumb_w": 767,
+    "thumb_h": 431,
+    "overlay_thumb": "2067:2",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 29,
+    "thumb_ty": 176,
+    "thumb_tw": 314,
+    "thumb_fsz": 26,
+    "thumb_lh": 35,
+    "thumb_font_family": "AccordAlternate",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      255,
+      255,
+      255
+    ]
   }
 }
