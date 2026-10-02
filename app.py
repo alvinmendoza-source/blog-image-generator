@@ -70,9 +70,9 @@ Each image must show a DIFFERENT activity — same topic, different angle of the
 
 ━━ RULE 3 — PEOPLE VARIETY (required across all {count} images) ━━
 - Mix male and female workers across the {count} images — not all the same gender
-- Vary hair color each image: use blonde, brown, dark/black, greying — each image different
-- Vary apparent age: some look early 30s, some mid-40s
-- Be SPECIFIC in each description — write "a dark-haired woman in her early 40s" not just "a person"
+- Vary hair each image: blonde, brown, black, red/auburn, greying, bald — and style: curly, cropped, long, tied back
+- Vary apparent age (late 20s to early 60s), build, glasses, facial hair — no two images with the same type of person
+- Be SPECIFIC in each description — write "a curly red-haired woman in her early 40s with glasses" not just "a person"
 - White American or British Caucasian only
 - Eyes on screen/desk/colleague — NEVER at the camera
 - Natural posture: slight slouch, shifted weight — not perfectly upright
@@ -80,11 +80,12 @@ Each image must show a DIFFERENT activity — same topic, different angle of the
     · A person who is ALONE in the scene (no colleague present) must NEVER point at, present toward, or gesture at a screen, monitor, paper, notepad, or the desk — with nobody to talk to, that always looks staged. Their hands simply DO the task: typing, using the mouse, holding a document up to read it, writing, or resting naturally.
     · Pointing, presenting, or an open-hand "explaining" gesture is allowed ONLY when another person is in the same scene as the listener — the gesture must be directed at that person, not at a screen.
     · NEVER point a finger at a screen or monitor in ANY scene, alone or in a group — it always looks scripted.
-- Plain business casual: navy polo, grey fleece, chinos, plain t-shirt — NO logos or company names
+- Do NOT describe clothing — outfits are assigned separately (no logos or company names)
 
 ━━ RULE 4 — ENVIRONMENT DETAILS ━━
-- Monitors show dark dashboards or terminal windows — no readable text
-- Desk surfaces: keyboard, mouse, papers, a phone face-down — plain and lived-in
+- Do NOT describe the office decor, lighting, or what is on the monitors — those are assigned separately
+- A normal small-business office: one or two screens per desk at most, never a wall of monitors
+- NO sticky notes or post-it notes anywhere in the scene
 - NO food, NO drinks, NO coffee cups, NO water bottles on desks
 
 ━━ OUTPUT FORMAT ━━
@@ -111,7 +112,7 @@ _DESK_SCENES = [   # one person seated at an individual computer/desk
     ("HELP DESK COUNTER", "one person at a help-desk counter wearing a headset, two monitors in front"),
     ("LAPTOP HANDS CLOSE-UP", "tight close-up of one person's hands on a laptop keyboard, their face softly blurred behind"),
     ("OVER-SHOULDER MONITOR", "over-the-shoulder framing of one person studying a dark dashboard on a monitor"),
-    ("STICKY-NOTE DESK", "one person at a desk edged with sticky notes, adding a note to one of them"),
+    ("LAPTOP RISER DESK", "one person at a desk with their laptop raised on a stand beside a separate keyboard"),
     ("HEADSET SUPPORT DESK", "one person in a headset at a support desk mid-call, one hand on the mouse and a notepad open in front of them"),
     ("EVENING DESK LAMP", "one person at a desk lit mostly by a warm desk lamp in a dim after-hours office"),
     ("NOTEBOOK AND SCREEN", "one person splitting attention between a paper notebook and a monitor"),
@@ -178,7 +179,7 @@ _ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a 
     ("WHITEBOARD SESSION", "one or two people at a whiteboard with markers, no readable text on the board"),
     ("PRESENTATION SCREEN", "one person standing beside a wall-mounted TV or screen presenting to two or three seated colleagues, a relaxed open-hand gesture directed at the group"),
     ("OUTDOOR TERRACE", "one or two people working at a table on a sunny office terrace or rooftop"),
-    ("STICKY NOTE WALL", "two people at a wall covered in colorful sticky notes, organizing them"),
+    ("LAPTOP ON WINDOW LEDGE", "one person standing at a wide window ledge working on an open laptop"),
     ("INFORMAL HUDDLE", "two people standing and talking near a kitchen counter or hallway"),
     ("COFFEE BREAK CHAT", "two people in a casual standing chat near a coffee machine in a break room"),
     ("OPEN PLAN WIDE", "wide shot of three or four people at separate desks across an open-plan floor"),
@@ -201,7 +202,7 @@ _ACTIVE_SCENES = [ # standing / walking / at a wall — clearly NOT seated at a 
     ("PLANT-LINED CORRIDOR", "one person walking a corridor lined with tall office plants"),
     ("STANDING TABLET REVIEW", "one person standing near a window reviewing something on a tablet"),
     ("OPEN-HAND PRESENTER", "one person at the head of a room presenting to several seated colleagues, a single relaxed open-hand gesture directed toward the group"),
-    ("PINBOARD PLANNING", "two people standing at a pinboard rearranging index cards"),
+    ("STANDING HIGH-TOP CHAT", "two people standing at a high-top table in an open area, one holding a tablet"),
     ("COAT-BY-DOOR ARRIVAL", "one person arriving, laptop bag on shoulder, near a coat area by the entrance"),
     ("BALCONY LAPTOP STAND", "one person standing at a rail on an office balcony with a laptop on a ledge"),
     ("OPEN KITCHEN HUDDLE", "three people standing loosely around an office kitchen island talking"),
@@ -253,6 +254,146 @@ def _pick_required_scenes(count: int) -> list:
 
     random.shuffle(picks)
     return picks[:count]
+
+
+# ── Per-image "look" layer ────────────────────────────────────────────────────
+# The scene pool varies WHAT happens and the framing, but every image still came
+# out as the same grey open-plan office full of dark dashboards, everyone in
+# navy/grey knitwear, same flat daylight — so different scenes still read as
+# repetitive. Each image now also gets a randomly drawn look (interior style,
+# wardrobe colours, light, screen content, lens). Within one blog no look repeats,
+# and recently used interiors/wardrobes are skipped across blogs (small disk log).
+_LOOK_MARK = " Look — "
+
+_OFFICE_STYLES = [
+    "a converted brick-walled loft office with exposed ductwork and wooden beams",
+    "a small suburban business office with carpet tiles, framed prints and low cubicle walls",
+    "a bright Scandinavian-style office with white oak desks, pale walls and plenty of plants",
+    "a traditional professional-services office with dark wood panelling and full bookshelves",
+    "the administrative back office of a medical clinic, clean white and soft blue decor",
+    "a mezzanine office overlooking a warehouse floor through large interior windows",
+    "a busy co-working space with mixed furniture and pendant lights",
+    "a creative office with a painted terracotta accent wall and mid-century furniture",
+    "a polished-concrete industrial office with black steel-framed windows",
+    "a coastal-town office with whitewashed walls, light linen tones and big windows",
+    "a family-run accounting firm office with filing cabinets and warm beige walls",
+    "a law-firm office with glass partitions, charcoal carpet and leather chairs",
+    "a manufacturing company's front office with safety-yellow accents and a view of the shop floor",
+    "a nonprofit office with mismatched furniture and a friendly lived-in feel",
+    "a high-rise corporate office with floor-to-ceiling windows and a city skyline beyond",
+    "a garden-level office with greenery visible through low wide windows",
+    "a sage-green and walnut office with acoustic felt wall panels",
+    "a retail company head office with bright white surfaces and pops of red",
+    "a small-town bank back office with neat desks and muted teal walls",
+    "a real-estate agency office with light hardwood floors and large framed property photos",
+    "a construction firm's office with plan tables and rolled blueprints",
+    "a sunlit home office in a spare room with a bookshelf and a window seat",
+    "a university department office with tall bookshelves and arched windows",
+    "a hotel group's regional office with soft carpet, warm wood and upholstered chairs",
+]
+
+_WARDROBES = [
+    "a burgundy knit sweater", "an olive-green overshirt over a white tee",
+    "a light-blue oxford shirt with rolled sleeves", "a cream cable-knit cardigan",
+    "a mustard-yellow blouse", "a charcoal blazer over a striped tee",
+    "a faded denim shirt", "a rust-orange pullover",
+    "a crisp white button-down", "a forest-green quarter-zip",
+    "a floral-patterned blouse", "a lavender dress shirt",
+    "a camel turtleneck", "a red-and-black checked flannel shirt",
+    "a teal wrap top", "a coral cardigan",
+    "a tan corduroy jacket", "a sky-blue crewneck sweater",
+    "a black turtleneck with a tweed blazer", "a soft pink linen shirt",
+]
+
+_LIGHTS = [
+    "bright overcast daylight from large windows",
+    "crisp midday sun with defined window shadows",
+    "soft late-afternoon side light",
+    "even overhead office lighting mixed with some daylight",
+    "cool clear morning daylight",
+    "daylight with a few warm practical lamps switched on",
+]
+
+_SCREEN_LOOKS = [
+    "light-themed business software", "a spreadsheet-style layout",
+    "a video call grid", "an email inbox layout", "colourful bar and line charts",
+    "a ticket queue layout", "a document being edited", "a calendar and task board",
+]
+
+_LENSES = [
+    "35mm lens, environmental framing that shows the room",
+    "50mm lens, natural eye-level perspective",
+    "85mm lens, tighter framing with a softly blurred background",
+]
+
+_RECENT_LOOKS_FILE = Path("generated_images") / "_recent_looks.json"
+_RECENT_KEEP = 15   # interiors/wardrobes skipped across blogs (pool sizes leave plenty)
+
+
+def _load_recent_looks() -> dict:
+    try:
+        return json.loads(_RECENT_LOOKS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_recent_looks(picked: list):
+    try:
+        rec = _load_recent_looks()
+        for key in ("office", "wardrobe"):
+            rec[key] = (rec.get(key, []) + [p[key] for p in picked])[-_RECENT_KEEP:]
+        _RECENT_LOOKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _RECENT_LOOKS_FILE.write_text(json.dumps(rec), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _draw_distinct(pool: list, n: int, avoid: list) -> list:
+    """n distinct items, skipping recently used ones while enough remain."""
+    fresh = [x for x in pool if x not in set(avoid)]
+    src = fresh if len(fresh) >= n else pool
+    if n <= len(src):
+        return random.sample(src, n)
+    return [random.choice(src) for _ in range(n)]
+
+
+def _pick_looks(n: int) -> list:
+    """n looks, all different from each other and from recent blogs."""
+    rec = _load_recent_looks()
+    offices   = _draw_distinct(_OFFICE_STYLES, n, rec.get("office", []))
+    wardrobes = _draw_distinct(_WARDROBES, n, rec.get("wardrobe", []))
+    # colleagues get their own explicit outfit — "different colours" alone made the
+    # model default background people to mustard/green every time
+    others = _draw_distinct(_WARDROBES, n, wardrobes)
+    looks = [{
+        "office": offices[i],
+        "wardrobe": wardrobes[i],
+        "other": others[i],
+        "light": random.choice(_LIGHTS),
+        "screen": random.choice(_SCREEN_LOOKS),
+        "lens": random.choice(_LENSES),
+    } for i in range(n)]
+    _save_recent_looks(looks)
+    return looks
+
+
+def _look_text(look: dict) -> str:
+    return (f"{_LOOK_MARK}Interior: {look['office']}. "
+            f"Clothing: the main person wears {look['wardrobe']}; a colleague, if present, wears "
+            f"{look.get('other', 'a different colour')}; any further people wear their own varied everyday colours. "
+            f"Light: {look['light']}. "
+            f"Any visible screens show {look['screen']}, slightly blurred. "
+            f"Camera: {look['lens']}.")
+
+
+def _with_look(desc: str, look: dict = None) -> str:
+    """Attach a look to a scene description, replacing any previous one."""
+    base = (desc or "").split(_LOOK_MARK)[0].rstrip()
+    return base + _look_text(look or _pick_looks(1)[0])
+
+
+def _strip_look(desc: str) -> str:
+    return (desc or "").split(_LOOK_MARK)[0].rstrip()
 
 
 def _format_required_envs(scenes: list) -> str:
@@ -353,6 +494,8 @@ NEGATIVE_PROMPT = (
     "lone person presenting, solo person presenting, presenting to an empty room, presenting to no audience, "
     "gesturing at nothing, gesturing with no audience, one person pointing at paper, pointing at the desk, "
     "pointing at a notepad, pointing at documents alone, single person mid-presentation gesture, staged presenting pose, "
+    # sticky notes — user asked for none in any scene (2026-10-02)
+    "sticky notes, post-it notes, sticky note wall, sticky notes on monitor, "
     # misc
     "watermark, text overlay, logo, oversaturated, oversharpened, extreme HDR, fake depth, "
     # clothing — no branded/company items
@@ -376,18 +519,22 @@ KIE_QUALITY_SUFFIX = (
     # expression — genuine understated smile so people never look flat/unfriendly
     "each person has a subtle warm natural smile, relaxed friendly approachable expression, looking pleasant and content, "
     "natural relaxed varied hand positions, hands resting on the desk, keyboard, or at their sides, "
+    # GPT Image 2 gets no negative prompt, so the pointing ban has to live here
+    "nobody points a finger at a screen or monitor, no sticky notes or post-it notes anywhere, "
     "no food on desk, no drinks on desk, no water bottle, no coffee cup, no snacks, clean professional workspace, "
     # monitors/screens must not show readable text — the model tends to paint the blog
     # title onto displays, which then looks cut off. Keep screens active-looking but only
     # lightly (~30%) blurred so no title/words are legible, NOT blank white.
-    "monitors and screens are turned on showing soft out-of-focus generic dashboard interfaces with muted colors, "
-    "only slightly blurred so no text is legible, the displays clearly look active and in use, "
-    "never blank white screens, no readable words or title text on any display"
+    "any monitors and screens are turned on and only slightly blurred so no text is legible, "
+    "the displays clearly look active and in use, never blank white screens, no readable words or title text on any display, "
+    # variety — stop every image collapsing into the same grey NOC-style room
+    "a real small-business office, not a network operations center, no wall of monitors, "
+    "at most one or two screens per desk, people's clothing in varied distinct colours"
 )
 KIE_NEGATIVE_PROMPT = NEGATIVE_PROMPT + (
     # text in scene
     "whiteboard with writing, whiteboard text, chalkboard text, "
-    "sticky notes on wall, writing on board, presentation screen with text, readable signs, "
+    "sticky notes, post-it notes, sticky notes on wall, sticky notes on monitor, writing on board, presentation screen with text, readable signs, "
     "text on screen, visible words on displays, "
     # cable mess
     "messy cables, tangled cables, spaghetti wiring, chaotic wiring, cable chaos, "
@@ -396,7 +543,7 @@ KIE_NEGATIVE_PROMPT = NEGATIVE_PROMPT + (
 
 
 # ── Image prompt builder — puts [ENV LABEL] FIRST so image model sees it before style tags ──
-_ENV_LABEL_RE = re.compile(r'^\[([A-Z][A-Z\s]+)\]\s*')
+_ENV_LABEL_RE = re.compile(r'^\[([A-Z][A-Z0-9\s/\-]+)\]\s*')   # labels can contain "-" (BAR-HEIGHT STOOL DESK)
 
 def _build_image_prompt(scene_desc: str, quality_suffix: str) -> str:
     """Restructure the final prompt so [ENV LABEL] is the very first token.
@@ -913,6 +1060,7 @@ def _plan_image_slots(title: str, content: str, count: int) -> list:
     while len(descs) < count:
         descs.append(fallback)
     descs = descs[:count]
+    descs = [_with_look(d, lk) for d, lk in zip(descs, _pick_looks(len(descs)))]
 
     slots = [{"slot": i + 1, "type": "photo", "description": d}
              for i, d in enumerate(descs)]
@@ -988,6 +1136,7 @@ def generate_prompt_variation(original_prompt: str, title: str) -> str:
     """Write a DIFFERENT image scene for the same blog topic.
     Always changes the environment vs the original — even when Gemini is unavailable."""
     # Detect the original scene's environment (from its [ENV] prefix, if any) and avoid it
+    original_prompt = _strip_look(original_prompt)
     _cur = None
     _m = re.match(r"\s*\[([A-Z0-9 /\-]+)\]", original_prompt or "")
     if _m:
@@ -1003,11 +1152,12 @@ def generate_prompt_variation(original_prompt: str, title: str) -> str:
         "This label is how the image generator knows which physical space to render.\n\n"
         "ACTIVITY RULE: Show a SPECIFIC task directly related to the blog topic. "
         "Not 'working at a computer' — describe the exact thing the person is doing.\n\n"
-        "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
+        "PEOPLE: White American or British Caucasian only, age late 20s to early 60s — pick a specific, "
+        "distinctive person (hair colour/style, glasses, facial hair, build), not a generic one. "
         "Eyes on screen/desk/colleague — NEVER at the camera. "
         "HANDS: if the person is alone, they NEVER point at or present toward a screen, paper, or desk — their hands just do the task; a pointing or presenting gesture is only allowed when a colleague is present as the listener, and never aimed at a screen. "
         "Plain business casual — NO logos or company names on clothing.\n\n"
-        "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
+        "ENVIRONMENT: do NOT describe clothing, decor, lighting or screen contents — assigned separately. "
         "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
         "Write something COMPLETELY DIFFERENT from the original scene — different environment, different number of people, different activity.\n\n"
         f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
@@ -1019,14 +1169,16 @@ def generate_prompt_variation(original_prompt: str, title: str) -> str:
     )
     result = _gemini_text(system_var, user_var, max_tokens=150, temperature=1.2)
     if result and len(result) > 30:
-        return result.lstrip("•-* ")
+        return _with_look(result.lstrip("•-* "))
     # Quota-free fallback: still a DIFFERENT environment than the original (never a copy)
-    return f"[{env_name}] {env_desc}, focused on a task related to {(title or 'the topic')[:60]}"
+    return _with_look(f"[{env_name}] {env_desc}, focused on a task related to {(title or 'the topic')[:60]}")
 
 
-def _generate_cover_scene(title: str) -> str:
-    """Generate a cover scene description directly tied to the blog title."""
-    env_name, env_desc = random.choice(SCENE_TYPES)
+def _generate_cover_scene(title: str, avoid_labels: set = None) -> str:
+    """Generate a cover scene description directly tied to the blog title.
+    avoid_labels: scene labels already used by this blog's content images."""
+    _pool = [s for s in SCENE_TYPES if s[0] not in (avoid_labels or set())] or SCENE_TYPES
+    env_name, env_desc = random.choice(_pool)
     system = (
         "Write a plain scene description for a documentary office photo. "
         "Your output fills: 'Documentary-style candid workplace photography of [YOUR OUTPUT]'\n"
@@ -1035,23 +1187,26 @@ def _generate_cover_scene(title: str) -> str:
         f"Your description MUST start with [{env_name}].\n\n"
         "ACTIVITY RULE: The scene must DIRECTLY show the core activity from the blog title. "
         "Describe the exact task — not 'working at a computer.'\n\n"
-        "PEOPLE: White American or British Caucasian only, age 30–50, average build. "
+        "PEOPLE: White American or British Caucasian only, age late 20s to early 60s — pick a specific, "
+        "distinctive person (hair colour/style, glasses, facial hair, build), not a generic one. "
         "Eyes on screen/desk/colleague — NEVER at the camera. "
         "HANDS: if the person is alone, they NEVER point at or present toward a screen, paper, or desk — their hands just do the task; a pointing or presenting gesture is only allowed when a colleague is present as the listener, and never aimed at a screen. "
         "Plain business casual — NO logos or company names on clothing.\n\n"
-        "ENVIRONMENT: Desk has keyboard, mouse, papers, phone face-down. "
+        "ENVIRONMENT: do NOT describe clothing, decor, lighting or screen contents — assigned separately. "
         "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
         f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
     )
     result = _gemini_text(system, f"Blog title: {title}\n\nWrite the cover image scene:", max_tokens=150, temperature=1.0)
     if result and len(result) > 30:
-        return result.lstrip("•-* ")
-    return title
+        return _with_look(result.lstrip("•-* "))
+    return _with_look(f"[{env_name}] {env_desc}, a moment related to {(title or 'the topic')[:60]}")
 
 
 def _generate_cover_bg(title: str, content_prompts: list) -> bytes:
     """Generate a dedicated background photo for main/thumbnail — tied directly to the blog title."""
-    cover_prompt = _generate_cover_scene(title)
+    _used = {m.group(1).strip() for p in (content_prompts or [])
+             if isinstance(p, str) and (m := _ENV_LABEL_RE.match(p.strip()))}
+    cover_prompt = _generate_cover_scene(title, avoid_labels=_used)
     seed = abs(hash(title)) % 90000 + 50000
     return _dispatch_image_gen(cover_prompt, 99, DEFAULT_WIDTH, DEFAULT_HEIGHT, seed=seed)
 
