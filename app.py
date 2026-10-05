@@ -70,9 +70,11 @@ Each image must show a DIFFERENT activity — same topic, different angle of the
 
 ━━ RULE 3 — PEOPLE VARIETY (required across all {count} images) ━━
 - Mix male and female workers across the {count} images — not all the same gender
-- Vary hair each image: blonde, brown, black, red/auburn, greying, bald — and style: curly, cropped, long, tied back
-- Vary apparent age (late 20s to early 60s), build, glasses, facial hair — no two images with the same type of person
-- Be SPECIFIC in each description — write "a curly red-haired woman in her early 40s with glasses" not just "a person"
+- EVERYONE is an employee of a modern MSP (managed IT services) company: help desk technicians, network and cloud engineers, cybersecurity analysts, service desk leads, account managers, project coordinators — describe them by such a role, never as a generic "office worker" or an executive
+- AGE: everyone is between 25 and 45 — vary it within that range (mid-20s, early 30s, late 30s, early 40s). NEVER older than 45, no grey or white hair, no elderly or retirement-age people
+- Vary hair each image: blonde, brown, black, red/auburn, dark — and current styles: curly, textured crop, fade, buzz cut, long, tied back, low bun
+- Vary build, glasses, facial hair (trimmed beard, stubble, clean-shaven) — no two images with the same type of person
+- Be SPECIFIC in each description — write "a curly red-haired help desk technician in her early 30s with glasses" not just "a person"
 - White American or British Caucasian only
 - Eyes on screen/desk/colleague — NEVER at the camera
 - Natural posture: slight slouch, shifted weight — not perfectly upright
@@ -266,43 +268,47 @@ def _pick_required_scenes(count: int) -> list:
 _LOOK_MARK = " Look — "
 
 _OFFICE_STYLES = [
-    "a converted brick-walled loft office with exposed ductwork and wooden beams",
-    "a small suburban business office with carpet tiles, framed prints and low cubicle walls",
-    "a bright Scandinavian-style office with white oak desks, pale walls and plenty of plants",
-    "a traditional professional-services office with dark wood panelling and full bookshelves",
-    "the administrative back office of a medical clinic, clean white and soft blue decor",
-    "a mezzanine office overlooking a warehouse floor through large interior windows",
-    "a busy co-working space with mixed furniture and pendant lights",
-    "a creative office with a painted terracotta accent wall and mid-century furniture",
-    "a polished-concrete industrial office with black steel-framed windows",
-    "a coastal-town office with whitewashed walls, light linen tones and big windows",
-    "a family-run accounting firm office with filing cabinets and warm beige walls",
-    "a law-firm office with glass partitions, charcoal carpet and leather chairs",
-    "a manufacturing company's front office with safety-yellow accents and a view of the shop floor",
-    "a nonprofit office with mismatched furniture and a friendly lived-in feel",
-    "a high-rise corporate office with floor-to-ceiling windows and a city skyline beyond",
-    "a garden-level office with greenery visible through low wide windows",
-    "a sage-green and walnut office with acoustic felt wall panels",
-    "a retail company head office with bright white surfaces and pops of red",
-    "a small-town bank back office with neat desks and muted teal walls",
-    "a real-estate agency office with light hardwood floors and large framed property photos",
-    "a construction firm's office with plan tables and rolled blueprints",
-    "a sunlit home office in a spare room with a bookshelf and a window seat",
-    "a university department office with tall bookshelves and arched windows",
-    "a hotel group's regional office with soft carpet, warm wood and upholstered chairs",
+    # every interior is the MSP's own modern office (user 2026-10-05: people must
+    # read as MSP employees, nothing old-fashioned) — plus two on-site client visits
+    "a modern MSP office in a converted brick-walled loft with exposed ductwork and black pendant lights",
+    "a bright Scandinavian-style IT services office with white oak desks, pale walls and plenty of plants",
+    "a managed IT services company office with polished concrete floors and black steel-framed windows",
+    "a modern tech office with sage-green acoustic felt wall panels and walnut desks",
+    "an open-plan MSP service desk area with sit-stand desks and soft grey carpet tiles",
+    "a contemporary IT company office with glass-walled huddle rooms and colourful lounge seating",
+    "a co-working-style tech office with mixed modern furniture and warm wood accents",
+    "a startup-style MSP office with a painted navy accent wall and light birch furniture",
+    "a high-rise IT services office with floor-to-ceiling windows and a city skyline beyond",
+    "a modern MSP office with a terracotta accent wall, mid-century chairs and big windows",
+    "a clean minimalist tech office with white surfaces, light wood and pops of orange",
+    "a ground-floor IT services office with greenery visible through wide windows",
+    "a modern MSP office with a moss wall, light wood slats and soft daylight",
+    "a contemporary office with a long shared bench desk, acoustic ceiling baffles and plants",
+    "an IT company project room with a large wall-mounted display and modern meeting chairs",
+    "a bright tech office with pale blue walls, white desks and hanging plants",
+    "a modern MSP office collaboration area with high tables and stools",
+    "a newly fitted-out IT services office with herringbone wood floors and glass partitions",
+    "a creative tech office with exposed brick, warm lighting and lounge corners",
+    "a suburban business-park MSP office, modern and tidy, with large windows onto trees",
+    "a client's modern office that the MSP technician is visiting on-site, bright and contemporary",
+    "a client's small-business office that the MSP engineer is visiting, clean and modern with plants",
 ]
 
 _WARDROBES = [
-    "a burgundy knit sweater", "an olive-green overshirt over a white tee",
-    "a light-blue oxford shirt with rolled sleeves", "a cream cable-knit cardigan",
-    "a mustard-yellow blouse", "a charcoal blazer over a striped tee",
-    "a faded denim shirt", "a rust-orange pullover",
-    "a crisp white button-down", "a forest-green quarter-zip",
-    "a floral-patterned blouse", "a lavender dress shirt",
-    "a camel turtleneck", "a red-and-black checked flannel shirt",
-    "a teal wrap top", "a coral cardigan",
-    "a tan corduroy jacket", "a sky-blue crewneck sweater",
-    "a black turtleneck with a tweed blazer", "a soft pink linen shirt",
+    # current MSP / tech-company smart-casual (user 2026-10-05: old clothes looked
+    # dated — no cardigans, tweed, turtlenecks, florals). Colours stay varied so
+    # images don't all collapse into navy/grey.
+    "a slim-fit forest-green polo shirt", "a slim-fit white polo shirt",
+    "a heather-grey quarter-zip pullover over a white tee", "a light-blue slim-fit oxford shirt with rolled sleeves",
+    "a black performance polo shirt", "a burgundy knit polo",
+    "a sage-green overshirt over a plain white tee", "a navy fleece vest over a light-blue button-down",
+    "a sky-blue polo shirt", "a charcoal unstructured blazer over a plain white crewneck tee",
+    "a rust-orange crewneck sweatshirt", "a fitted black crewneck tee under an olive bomber jacket",
+    "a soft-pink modern button-down shirt", "a cream knit polo",
+    "a teal quarter-zip performance pullover", "a fitted mustard-yellow knit top",
+    "a white slim-fit button-down with the sleeves pushed up", "a dusty-blue henley",
+    "a black zip-up softshell jacket over a grey tee", "a fitted lavender modern blouse",
+    "a tan chore jacket over a white tee", "a coral polo shirt",
 ]
 
 _LIGHTS = [
@@ -380,15 +386,43 @@ def _pick_looks(n: int) -> list:
 def _look_text(look: dict) -> str:
     return (f"{_LOOK_MARK}Interior: {look['office']}. "
             f"Clothing: the main person wears {look['wardrobe']}; a colleague, if present, wears "
-            f"{look.get('other', 'a different colour')}; any further people wear their own varied everyday colours. "
+            f"{look.get('other', 'a different colour')}; any further people wear their own varied modern smart-casual outfits. "
+            f"Everyone is an MSP tech-company employee aged 25 to 45 with a current hairstyle — nobody older, no grey hair. "
             f"Light: {look['light']}. "
             f"Any visible screens show {look['screen']}, slightly blurred. "
             f"Camera: {look['lens']}.")
 
 
+_AGE_FIXES = [
+    # Gemini still drifts outside 25–45 now and then — clamp it in code
+    (re.compile(r"\b(?:early|late|mid)[- ]?(?:50s|60s|70s)\b", re.I), "early 40s"),
+    (re.compile(r"\bin (?:his|her|their) (?:50s|60s|70s|fifties|sixties)\b", re.I), "in their early 40s"),
+    (re.compile(r"\b(?:early|mid)[- ]?20s\b", re.I), "mid-20s"),
+    (re.compile(r"\ban?\s+(?:middle-aged|older|elderly|senior-aged)\s+", re.I),
+     lambda m: "A " if m.group(0)[0].isupper() else "a "),
+    (re.compile(r"\b(?:middle-aged|older|elderly|senior-aged)\s+", re.I), ""),
+    (re.compile(r"\b(?:greying|graying|grey|gray|silver|white)[- ](?:haired|hair)\b", re.I), "dark-haired"),
+    (re.compile(r"\bsalt-and-pepper\b", re.I), "dark"),
+]
+# "points to / pointing at the screen" — the rule alone doesn't stop Gemini, so the
+# verb is swapped for "looks at" (keeps the sentence, loses the scripted gesture)
+# also eats "with her index finger" / "with an open palm" / "a pen" between verb and preposition
+_POINT_VERB = re.compile(r"\b(?:point|gestur(?=e|ing))(s|ing|ed|es|e|d)?"
+                         r"(?:\s+(?:with\s+)?(?:a|an|his|her|their|the)(?:\s+[\w-]+){1,3}?)?"
+                         r"\s+(?:at|to|toward|towards)\b(?=\s+(?:the|a|an|his|her|their|its|one|another|[\w-]+'s)\b)", re.I)
+_LOOK_VERB = {None: "look at", "e": "look at", "s": "looks at", "es": "looks at",
+              "ing": "looking at", "ed": "looked at", "d": "looked at"}
+
+
+def _sanitize_people(desc: str) -> str:
+    for rx, sub in _AGE_FIXES:
+        desc = rx.sub(sub, desc)
+    return _POINT_VERB.sub(lambda m: _LOOK_VERB[(m.group(1) or "").lower() or None], desc)
+
+
 def _with_look(desc: str, look: dict = None) -> str:
     """Attach a look to a scene description, replacing any previous one."""
-    base = (desc or "").split(_LOOK_MARK)[0].rstrip()
+    base = _sanitize_people((desc or "").split(_LOOK_MARK)[0].rstrip())
     return base + _look_text(look or _pick_looks(1)[0])
 
 
@@ -438,7 +472,8 @@ _QUALITY_BLOCK = (
     # environment
     "authentic lived-in office, slightly messy desk, "
     # ethnicity anchor
-    "white American Caucasian office workers"
+    "young-to-mid-career white American Caucasian MSP IT professionals aged 25 to 45, "
+    "modern smart-casual tech-company clothing, current hairstyles"
     # NOTE: NO "avoid X" here — those belong in NEGATIVE_PROMPT only.
     # Flux reads "avoid plastic skin" as a POSITIVE token for plastic skin.
 )
@@ -498,6 +533,11 @@ NEGATIVE_PROMPT = (
     "sticky notes, post-it notes, sticky note wall, sticky notes on monitor, "
     # misc
     "watermark, text overlay, logo, oversaturated, oversharpened, extreme HDR, fake depth, "
+    # age / dated look — people must read as 25-45 MSP staff (user 2026-10-05)
+    "elderly, old man, old woman, senior citizen, retiree, grandparent, aged face, deep wrinkles, "
+    "grey hair, gray hair, white hair, silver hair, receding hairline, person over 50, "
+    "old-fashioned clothing, outdated fashion, dated 1990s office wear, tweed jacket, cardigan, sweater vest, "
+    "turtleneck, bow tie, necktie, three-piece suit, pleated trousers, frumpy clothing, "
     # clothing — no branded/company items
     "company logo on shirt, branded clothing, logo on polo, logo on uniform, company uniform, "
     "branded polo shirt, embroidered logo, company name on clothing, uniform with logo, name tag, "
@@ -515,7 +555,8 @@ KIE_QUALITY_SUFFIX = (
     "photojournalistic editorial style, natural office lighting, "
     "Sony A7 IV, no color grading, no filter, no CGI, "
     "plain unbranded clothing with no logos or company names, "
-    "white Caucasian American office workers, "
+    "white Caucasian American MSP IT employees, everyone between 25 and 45 years old, nobody elderly, no grey or white hair, "
+    "modern smart-casual tech-company clothing such as polo shirts, quarter-zips, overshirts and fitted tees, nothing old-fashioned, "
     # expression — genuine understated smile so people never look flat/unfriendly
     "each person has a subtle warm natural smile, relaxed friendly approachable expression, looking pleasant and content, "
     "natural relaxed varied hand positions, hands resting on the desk, keyboard, or at their sides, "
@@ -1152,11 +1193,13 @@ def generate_prompt_variation(original_prompt: str, title: str) -> str:
         "This label is how the image generator knows which physical space to render.\n\n"
         "ACTIVITY RULE: Show a SPECIFIC task directly related to the blog topic. "
         "Not 'working at a computer' — describe the exact thing the person is doing.\n\n"
-        "PEOPLE: White American or British Caucasian only, age late 20s to early 60s — pick a specific, "
-        "distinctive person (hair colour/style, glasses, facial hair, build), not a generic one. "
+        "PEOPLE: White American or British Caucasian only, employees of a modern MSP (managed IT services) company "
+        "— help desk tech, network/cloud engineer, cybersecurity analyst, service desk lead or account manager. "
+        "AGE 25 to 45 ONLY — never older, no grey or white hair. Pick a specific, "
+        "distinctive person (current hairstyle, glasses, facial hair, build), not a generic one. "
         "Eyes on screen/desk/colleague — NEVER at the camera. "
         "HANDS: if the person is alone, they NEVER point at or present toward a screen, paper, or desk — their hands just do the task; a pointing or presenting gesture is only allowed when a colleague is present as the listener, and never aimed at a screen. "
-        "Plain business casual — NO logos or company names on clothing.\n\n"
+        "Modern smart-casual tech-company clothing — NO logos or company names on clothing.\n\n"
         "ENVIRONMENT: do NOT describe clothing, decor, lighting or screen contents — assigned separately. "
         "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
         "Write something COMPLETELY DIFFERENT from the original scene — different environment, different number of people, different activity.\n\n"
@@ -1187,11 +1230,13 @@ def _generate_cover_scene(title: str, avoid_labels: set = None) -> str:
         f"Your description MUST start with [{env_name}].\n\n"
         "ACTIVITY RULE: The scene must DIRECTLY show the core activity from the blog title. "
         "Describe the exact task — not 'working at a computer.'\n\n"
-        "PEOPLE: White American or British Caucasian only, age late 20s to early 60s — pick a specific, "
-        "distinctive person (hair colour/style, glasses, facial hair, build), not a generic one. "
+        "PEOPLE: White American or British Caucasian only, employees of a modern MSP (managed IT services) company "
+        "— help desk tech, network/cloud engineer, cybersecurity analyst, service desk lead or account manager. "
+        "AGE 25 to 45 ONLY — never older, no grey or white hair. Pick a specific, "
+        "distinctive person (current hairstyle, glasses, facial hair, build), not a generic one. "
         "Eyes on screen/desk/colleague — NEVER at the camera. "
         "HANDS: if the person is alone, they NEVER point at or present toward a screen, paper, or desk — their hands just do the task; a pointing or presenting gesture is only allowed when a colleague is present as the listener, and never aimed at a screen. "
-        "Plain business casual — NO logos or company names on clothing.\n\n"
+        "Modern smart-casual tech-company clothing — NO logos or company names on clothing.\n\n"
         "ENVIRONMENT: do NOT describe clothing, decor, lighting or screen contents — assigned separately. "
         "NO food, NO drinks, NO coffee cups, NO water bottles.\n\n"
         f"FORMAT: Start with [{env_name}], then 1–2 plain sentences. No photography words, no dramatic adjectives."
