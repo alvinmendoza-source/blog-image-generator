@@ -4030,6 +4030,7 @@ with tab_revise:
                         st.session_state.get("rv_title", ""), okr, _rv_cl)
                     st.session_state["rv_main_bytes"]  = mb
                     st.session_state["rv_thumb_bytes"] = tb
+                    st.session_state.pop("rv_cover_excluded", None)
                 except Exception as e:
                     st.error(f"Cover regeneration failed: {e}")
 
@@ -4039,7 +4040,7 @@ with tab_revise:
             st.error("Please enter a blog URL.")
             st.stop()
         for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
-                  "rv_client", "rv_main_bytes", "rv_thumb_bytes"]:
+                  "rv_client", "rv_main_bytes", "rv_thumb_bytes", "rv_cover_excluded"]:
             st.session_state.pop(k, None)
 
         _rv_u = rv_url.strip()
@@ -4184,21 +4185,40 @@ with tab_revise:
         _rv_cl    = st.session_state.get("rv_client", "")
 
         # Branded Main + Thumbnail
+        # Exclude on Main / Thumbnail works like the Batch tab's Exclude: the image is
+        # dropped right away — it disappears and won't upload, so the post keeps its
+        # current Main / Thumbnail. "Regenerate cover" brings back a fresh pair.
         _mb = st.session_state.get("rv_main_bytes")
         _tb = st.session_state.get("rv_thumb_bytes")
-        if _mb or _tb:
+        _rv_cov_ex = st.session_state.get("rv_cover_excluded", [])
+        _cover_tiles = [(_label, _bytes, _fname, _bkey) for _label, _bytes, _fname, _bkey in [
+            ("Main", _mb, "main.png", "rv_main_bytes"),
+            ("Thumbnail", _tb, "thumbnail.png", "rv_thumb_bytes")]
+            if _label not in _rv_cov_ex]
+        if (_mb or _tb or _rv_cov_ex) and _rv_cl:
             _ux_section("🎨", "Branded Cover", f"{_client_display_name(_rv_cl)} · Main + Thumbnail")
-            bc1, bc2 = st.columns(2)
-            for _col, _label, _bytes, _fname in [
-                (bc1, "Main", _mb, "main.png"), (bc2, "Thumbnail", _tb, "thumbnail.png")]:
-                with _col:
-                    if _bytes:
-                        st.image(_bytes, caption=_label, use_container_width=True)
-                        st.download_button(f"⬇ Download {_label}", data=_bytes,
-                                           file_name=_fname, mime="image/png",
-                                           key=f"rv_dl_{_label}", use_container_width=True)
-                    else:
-                        st.info(f"{_label} not generated.")
+            if _cover_tiles:
+                _bcols = st.columns(2)
+                for _col, (_label, _bytes, _fname, _bkey) in zip(_bcols, _cover_tiles):
+                    with _col:
+                        if _bytes:
+                            st.image(_bytes, caption=_label, use_container_width=True)
+                            st.download_button(f"⬇ Download {_label}", data=_bytes,
+                                               file_name=_fname, mime="image/png",
+                                               key=f"rv_dl_{_label}", use_container_width=True)
+                            if (not st.session_state.get("rv_uploaded")
+                                    and st.button(f"🚫 Exclude {_label}",
+                                                  key=f"rv_exclude_{_label.lower()}",
+                                                  use_container_width=True,
+                                                  help=f"Drop this {_label}. It won't upload — "
+                                                       f"the post keeps its current {_label}.")):
+                                st.session_state.pop(_bkey, None)
+                                st.session_state.setdefault("rv_cover_excluded", []).append(_label)
+                                st.rerun()
+                        else:
+                            st.info(f"{_label} not generated.")
+            else:
+                st.caption("Main + Thumbnail excluded — the post keeps its current ones.")
             if st.button("🔄 Regenerate cover (new Main + Thumbnail)", key="rv_redo_cover_btn",
                          use_container_width=True):
                 st.session_state["rv_redo_cover"] = True
@@ -4256,7 +4276,7 @@ with tab_revise:
                               "disappears from the tab."):
                 for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
                           "rv_client", "rv_main_bytes", "rv_thumb_bytes", "rv_url_final",
-                          "rv_slug", "rv_image_urls", "rv_uploaded"]:
+                          "rv_slug", "rv_image_urls", "rv_uploaded", "rv_cover_excluded"]:
                     st.session_state.pop(k, None)
                 st.rerun()
 
