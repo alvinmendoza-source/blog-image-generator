@@ -4185,9 +4185,9 @@ with tab_revise:
         _rv_cl    = st.session_state.get("rv_client", "")
 
         # Branded Main + Thumbnail
-        # Exclude on Main / Thumbnail works like the Batch tab's Exclude: the image is
-        # dropped right away — it disappears and won't upload, so the post keeps its
-        # current Main / Thumbnail. "Regenerate cover" brings back a fresh pair.
+        # One Exclude for the Main + Thumbnail pair, like the Batch tab's Exclude: both are
+        # dropped right away — they disappear and won't upload, so the post keeps its
+        # current Main + Thumbnail. "Regenerate cover" brings back a fresh pair.
         _mb = st.session_state.get("rv_main_bytes")
         _tb = st.session_state.get("rv_thumb_bytes")
         _rv_cov_ex = st.session_state.get("rv_cover_excluded", [])
@@ -4206,17 +4206,17 @@ with tab_revise:
                             st.download_button(f"⬇ Download {_label}", data=_bytes,
                                                file_name=_fname, mime="image/png",
                                                key=f"rv_dl_{_label}", use_container_width=True)
-                            if (not st.session_state.get("rv_uploaded")
-                                    and st.button(f"🚫 Exclude {_label}",
-                                                  key=f"rv_exclude_{_label.lower()}",
-                                                  use_container_width=True,
-                                                  help=f"Drop this {_label}. It won't upload — "
-                                                       f"the post keeps its current {_label}.")):
-                                st.session_state.pop(_bkey, None)
-                                st.session_state.setdefault("rv_cover_excluded", []).append(_label)
-                                st.rerun()
                         else:
                             st.info(f"{_label} not generated.")
+                if not st.session_state.get("rv_uploaded") and st.button(
+                        "🚫 Exclude Main + Thumbnail", key="rv_exclude_cover",
+                        use_container_width=True,
+                        help="Drop the Main + Thumbnail. They won't upload — the post "
+                             "keeps its current ones."):
+                    st.session_state.pop("rv_main_bytes", None)
+                    st.session_state.pop("rv_thumb_bytes", None)
+                    st.session_state["rv_cover_excluded"] = ["Main", "Thumbnail"]
+                    st.rerun()
             else:
                 st.caption("Main + Thumbnail excluded — the post keeps its current ones.")
             if st.button("🔄 Regenerate cover (new Main + Thumbnail)", key="rv_redo_cover_btn",
