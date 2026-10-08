@@ -3915,6 +3915,11 @@ def _revise_detect_client(url: str) -> str:
     from urllib.parse import urlparse
     host = urlparse(url if url.startswith("http") else "https://" + url).netloc.lower()
     host = host.split(":")[0].removeprefix("www.")
+    # Explicit domains first — for clients whose domain doesn't resemble their name
+    # (e.g. rstechnology.net → Rock Solid Technology Solutions).
+    for slug, entry in _load_node_cache().items():
+        if isinstance(entry, dict) and host in entry.get("domains", []):
+            return slug
     for cand in (host, re.sub(r"\.[a-z]{2,}$", "", host), host.split(".")[0]):
         m = _match_client(cand)
         if m:

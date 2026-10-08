@@ -1250,5 +1250,44 @@
       255,
       255
     ]
+  },
+  "rock-solid-technology-solutions": {
+    "name": "Rock Solid Technology Solutions",
+    "source": "rebuilt from Sept 2026 uploads",
+    "domains": [
+      "rstechnology.net"
+    ],
+    "main_w": 1200,
+    "main_h": 600,
+    "thumb_w": 723,
+    "thumb_h": 389,
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "main_tx": 54,
+    "main_ty": 268,
+    "main_tw": 395,
+    "main_fsz": 37,
+    "main_lh": 48,
+    "thumb_tx": 23,
+    "thumb_ty": 179,
+    "thumb_tw": 262,
+    "thumb_fsz": 27,
+    "thumb_lh": 29,
+    "main_font_family": "Inter",
+    "main_font_style": "SemiBold",
+    "thumb_font_family": "Inter",
+    "thumb_font_style": "SemiBold",
+    "main_font_color": [
+      20,
+      20,
+      21
+    ],
+    "thumb_font_color": [
+      21,
+      21,
+      23
+    ]
   }
 }
