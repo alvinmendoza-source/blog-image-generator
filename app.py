@@ -4001,7 +4001,6 @@ with tab_revise:
     # ── Handle per-image redo (inner images) ──────────────────────────────────
     if st.session_state.get("rv_redo_idx") is not None and "rv_results" in st.session_state:
         redo_i    = st.session_state.pop("rv_redo_idx")
-        st.session_state.pop(f"rv_ex_{redo_i}", None)   # a redone image is wanted again
         redo_seed = st.session_state.pop("rv_redo_seed", random.randint(10000, 999999))
         with st.spinner(f"Regenerating image {redo_i}..."):
             try:
@@ -4042,8 +4041,6 @@ with tab_revise:
         for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
                   "rv_client", "rv_main_bytes", "rv_thumb_bytes"]:
             st.session_state.pop(k, None)
-        for k in [k for k in st.session_state if str(k).startswith("rv_ex_")]:
-            st.session_state.pop(k, None)   # fresh blog → nothing excluded
 
         _rv_u = rv_url.strip()
         url = ("https://" + _rv_u) if not _rv_u.startswith("http") else _rv_u
@@ -4196,13 +4193,7 @@ with tab_revise:
                 (bc1, "Main", _mb, "main.png"), (bc2, "Thumbnail", _tb, "thumbnail.png")]:
                 with _col:
                     if _bytes:
-                        _ex_key = f"rv_ex_{_label.lower()}"
-                        _ex = st.session_state.get(_ex_key, False)
-                        st.image(_bytes, caption=(f"🚫 {_label} — excluded, won't upload"
-                                                  if _ex else _label),
-                                 use_container_width=True)
-                        st.checkbox("🚫 Exclude from upload", key=_ex_key,
-                                    help="Keep the post's current image instead of this one.")
+                        st.image(_bytes, caption=_label, use_container_width=True)
                         st.download_button(f"⬇ Download {_label}", data=_bytes,
                                            file_name=_fname, mime="image/png",
                                            key=f"rv_dl_{_label}", use_container_width=True)
@@ -4225,14 +4216,9 @@ with tab_revise:
                     i = result["index"]
                     if result["bytes"]:
                         fname = f"image_{i:02d}.{result['ext']}"
-                        _ex = st.session_state.get(f"rv_ex_{i}", False)
                         st.image(result["bytes"],
-                                 caption=(f"🚫 {fname} — excluded, won't upload" if _ex
-                                          else f"{fname} — {result['size_kb']} KB"),
+                                 caption=f"{fname} — {result['size_kb']} KB",
                                  use_container_width=True)
-                        st.checkbox("🚫 Exclude from upload", key=f"rv_ex_{i}",
-                                    help="Keep the post's current image in this spot "
-                                         "instead of this one.")
                         st.text_area(f"Alt text #{i}", value=result["alt"],
                                      height=70, key=f"rv_alt_{i}")
                         dl_c, redo_c = st.columns([3, 1])
@@ -4256,11 +4242,23 @@ with tab_revise:
                             st.rerun()
 
         ok = sum(1 for r in results if r["status"] == "ok")
-        _n_ex = sum(1 for r in results
-                    if r["status"] == "ok" and st.session_state.get(f"rv_ex_{r['index']}"))
         st.success(f"Done! {ok}/{len(results)} inner images ready"
-                   + (" · Main + Thumbnail above." if (_mb or _tb) else ".")
-                   + (f" · {_n_ex} excluded from upload." if _n_ex else ""))
+                   + (" · Main + Thumbnail above." if (_mb or _tb) else "."))
+
+        # ── Exclude (drop this blog) — same as the Batch tab ──────────────────
+        # Exclude = take this generated blog OUT: it won't upload and it disappears
+        # right away (Main, Thumbnail, inner images and the Upload section all go).
+        # Nothing is sent to Webflow. Paste a link and Generate again to start over.
+        if not st.session_state.get("rv_uploaded"):
+            if st.button("🚫 Exclude — remove this blog", key="rv_exclude_btn",
+                         use_container_width=True,
+                         help="Drop this generated blog. It won't upload and "
+                              "disappears from the tab."):
+                for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
+                          "rv_client", "rv_main_bytes", "rv_thumb_bytes", "rv_url_final",
+                          "rv_slug", "rv_image_urls", "rv_uploaded"]:
+                    st.session_state.pop(k, None)
+                st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -5113,34 +5111,14 @@ def _batch_state_clear() -> None:
 # ════════════════════════════════════════════════════════════════════════════════
 with tab_revise:
     if st.session_state.get("rv_results"):
-        # Excluded images are left out of the upload — the post keeps its current image
-        # in that spot (rich-text replacement is slot-aware, so nothing shifts).
-        _rv_okr_all = [r for r in st.session_state["rv_results"] if r["status"] == "ok"]
-        _rv_okr = [r for r in _rv_okr_all if not st.session_state.get(f"rv_ex_{r['index']}")]
-        _rv_main_up = (None if st.session_state.get("rv_ex_main")
-                       else st.session_state.get("rv_main_bytes"))
-        _rv_thumb_up = (None if st.session_state.get("rv_ex_thumbnail")
-                        else st.session_state.get("rv_thumb_bytes"))
+        _rv_okr = [r for r in st.session_state["rv_results"] if r["status"] == "ok"]
+        _rv_main_up = st.session_state.get("rv_main_bytes")
+        _rv_thumb_up = st.session_state.get("rv_thumb_bytes")
         _rv_has_cover = bool(_rv_main_up or _rv_thumb_up)
-        _rv_any_gen = bool(_rv_okr_all or st.session_state.get("rv_main_bytes")
-                           or st.session_state.get("rv_thumb_bytes"))
-        if _rv_any_gen and not (_rv_okr or _rv_has_cover):
-            st.divider()
-            st.info("🚫 Every image is excluded — nothing to upload. Untick "
-                    "**Exclude from upload** on the ones you want to send to Webflow.")
         if _rv_okr or _rv_has_cover:
             st.divider()
             _ux_section("⬆️", "Upload to Webflow",
                         "push these straight to the blog — no need to open Webflow")
-            _rv_ex_names = ([f"image_{r['index']:02d}" for r in _rv_okr_all if r not in _rv_okr]
-                            + (["Main"] if st.session_state.get("rv_main_bytes") and not _rv_main_up else [])
-                            + (["Thumbnail"] if st.session_state.get("rv_thumb_bytes") and not _rv_thumb_up else []))
-            _rv_in_names = ([f"image_{r['index']:02d}" for r in _rv_okr]
-                            + (["Main"] if _rv_main_up else [])
-                            + (["Thumbnail"] if _rv_thumb_up else []))
-            st.caption("Will upload: **" + ", ".join(_rv_in_names) + "**"
-                       + (" · 🚫 Excluded (post keeps its current image): **"
-                          + ", ".join(_rv_ex_names) + "**" if _rv_ex_names else ""))
 
             _rv_up_slug     = st.session_state.get("rv_client", "")
             _rv_client_disp = _client_display_name(_rv_up_slug) if _rv_up_slug else ""
