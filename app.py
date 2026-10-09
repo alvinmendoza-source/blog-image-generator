@@ -4000,6 +4000,24 @@ with tab_revise:
             help="Leave on Auto-detect unless the app couldn't find the client from the link.")
     _rv_override = "" if _rv_choice == _rv_labels[0] else _rv_slugs[_rv_labels.index(_rv_choice) - 1]
 
+    # Same choice as the Batch tab's Step 3 — but for this ONE blog (one link = one post).
+    _RV_MODE_FULL  = "🎨  Full blog images"
+    _RV_MODE_COVER = "🖼️  Main + Thumbnail only"
+    with st.container(border=True):
+        st.markdown("<span class='ux-cardmark'></span>"
+                    "<div class='ux-modeq'>What should we make for this blog?</div>",
+                    unsafe_allow_html=True)
+        _rv_mode = st.radio(
+            "rv_gen_mode", [_RV_MODE_FULL, _RV_MODE_COVER],
+            captions=[
+                "The full deliverable — branded **Main + Thumbnail** plus every "
+                "inner / body content image.",
+                "Just the branded **Main + Thumbnail** cover pair. Skips inner "
+                "images — the post keeps its current ones.",
+            ],
+            key="rv_gen_mode", label_visibility="collapsed")
+    _rv_cover_only_ui = (_rv_mode == _RV_MODE_COVER)
+
     rv_btn = st.button("Generate Images", type="primary",
                        use_container_width=True, key="rv_btn")
 
@@ -4046,7 +4064,7 @@ with tab_revise:
             st.stop()
         for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
                   "rv_client", "rv_main_bytes", "rv_thumb_bytes", "rv_cover_excluded",
-                  "rv_inner_excluded"]:
+                  "rv_inner_excluded", "rv_cover_only"]:
             st.session_state.pop(k, None)
 
         _rv_u = rv_url.strip()
@@ -4058,6 +4076,12 @@ with tab_revise:
             st.session_state["rv_needs_client"] = False
             st.info(f"🏢 Client: **{_client_display_name(client_slug)}** "
                     f"{'(you selected)' if _rv_override else '(auto-detected from link)'}")
+        elif _rv_cover_only_ui:
+            st.session_state["rv_needs_client"] = True
+            st.error("⚠️ Couldn't detect the client from this link — **Main + Thumbnail need "
+                     "a client**. Open **⚙️ Wrong client, or not detected?** above, pick the "
+                     "client, and click Generate again.")
+            st.stop()
         else:
             st.session_state["rv_needs_client"] = True
             st.warning(
@@ -4108,64 +4132,68 @@ with tab_revise:
                 st.error(f"Could not load the page: {e}")
                 st.stop()
 
-        # Step 2: Plan slots + alt texts
-        with st.status(f"Planning {count} image slots...", expanded=True) as _s:
-            try:
-                slots = _plan_image_slots(title, content, count)
-                _s.update(label=f"Slots planned ✓ — {count} photo{'s' if count != 1 else ''}",
-                          state="complete")
-            except Exception as e:
-                _s.update(label="Slot planning failed", state="error")
-                st.error(str(e))
-                st.stop()
-
-        with st.status("Generating alt texts...", expanded=True) as _s:
-            alt_texts = []
-            for i, sl in enumerate(slots, 1):
-                alt_texts.append(generate_alt_text_for(sl.get("description", ""), title, index=i))
-                time.sleep(1)
-            _s.update(label="Alt texts ready ✓", state="complete")
-
-        # Step 3: Generate inner images
-        _ux_section("🖼️", "Inner Images", "content images for the blog body")
-        gen_prog = st.progress(0, text="Starting image generation...")
-        results  = []
-        img_seeds = [random.randint(10000, 999999) for _ in slots]
-        for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
-            gen_prog.progress(i / len(slots), text=f"Generating image {i} of {len(slots)}...")
-            prompt = sl.get("description", "")
-            last_err, final_bytes, final_ext = None, None, "jpg"
-            base_seed = img_seeds[i - 1]
-            for attempt in range(1, MAX_ATTEMPTS + 1):
+        if _rv_cover_only_ui:
+            # Main + Thumbnail only — no inner images (same as Batch cover mode).
+            slots, alt_texts, results = [], [], []
+        else:
+            # Step 2: Plan slots + alt texts
+            with st.status(f"Planning {count} image slots...", expanded=True) as _s:
                 try:
-                    raw = _dispatch_image_gen(prompt, i, DEFAULT_WIDTH, DEFAULT_HEIGHT,
-                                              seed=base_seed + attempt * 1000)
-                    is_ok, reason = check_anatomy(raw)
-                    if not is_ok and attempt < MAX_ATTEMPTS:
-                        st.warning(f"⚠️ Image {i} — defect ({reason}), regenerating...")
-                        continue
-                    final_bytes, final_ext = optimize_image(raw, max_kb=200)
-                    if not is_ok:
-                        st.warning(f"⚠️ Image {i} — kept after {MAX_ATTEMPTS} attempts ({reason})")
-                    break
+                    slots = _plan_image_slots(title, content, count)
+                    _s.update(label=f"Slots planned ✓ — {count} photo{'s' if count != 1 else ''}",
+                              state="complete")
                 except Exception as e:
-                    last_err = e
-                    if attempt < MAX_ATTEMPTS:
-                        st.warning(f"⚠️ Image {i} failed ({e}), retrying...")
-                        time.sleep(2)
-            results.append({
-                "index": i, "bytes": final_bytes, "ext": final_ext,
-                "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
-                "alt": alt, "prompt": prompt,
-                "status": "ok" if final_bytes else f"failed: {last_err}",
-                "defect_reason": "",
-            })
-        gen_prog.empty()
+                    _s.update(label="Slot planning failed", state="error")
+                    st.error(str(e))
+                    st.stop()
+
+            with st.status("Generating alt texts...", expanded=True) as _s:
+                alt_texts = []
+                for i, sl in enumerate(slots, 1):
+                    alt_texts.append(generate_alt_text_for(sl.get("description", ""), title, index=i))
+                    time.sleep(1)
+                _s.update(label="Alt texts ready ✓", state="complete")
+
+            # Step 3: Generate inner images
+            _ux_section("🖼️", "Inner Images", "content images for the blog body")
+            gen_prog = st.progress(0, text="Starting image generation...")
+            results  = []
+            img_seeds = [random.randint(10000, 999999) for _ in slots]
+            for i, (sl, alt) in enumerate(zip(slots, alt_texts), 1):
+                gen_prog.progress(i / len(slots), text=f"Generating image {i} of {len(slots)}...")
+                prompt = sl.get("description", "")
+                last_err, final_bytes, final_ext = None, None, "jpg"
+                base_seed = img_seeds[i - 1]
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    try:
+                        raw = _dispatch_image_gen(prompt, i, DEFAULT_WIDTH, DEFAULT_HEIGHT,
+                                                  seed=base_seed + attempt * 1000)
+                        is_ok, reason = check_anatomy(raw)
+                        if not is_ok and attempt < MAX_ATTEMPTS:
+                            st.warning(f"⚠️ Image {i} — defect ({reason}), regenerating...")
+                            continue
+                        final_bytes, final_ext = optimize_image(raw, max_kb=200)
+                        if not is_ok:
+                            st.warning(f"⚠️ Image {i} — kept after {MAX_ATTEMPTS} attempts ({reason})")
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt < MAX_ATTEMPTS:
+                            st.warning(f"⚠️ Image {i} failed ({e}), retrying...")
+                            time.sleep(2)
+                results.append({
+                    "index": i, "bytes": final_bytes, "ext": final_ext,
+                    "size_kb": round(len(final_bytes) / 1024, 1) if final_bytes else 0,
+                    "alt": alt, "prompt": prompt,
+                    "status": "ok" if final_bytes else f"failed: {last_err}",
+                    "defect_reason": "",
+                })
+            gen_prog.empty()
 
         # Step 4: Branded Main + Thumbnail (only if a client is known)
         main_bytes, thumb_bytes = None, None
         okr = [r for r in results if r["status"] == "ok"]
-        if client_slug and okr:
+        if client_slug and (okr or _rv_cover_only_ui):
             with st.status("Generating cover + branded Main/Thumbnail...", expanded=True) as _s:
                 try:
                     main_bytes, thumb_bytes = _revise_build_branded(title, okr, client_slug)
@@ -4173,6 +4201,7 @@ with tab_revise:
                 except Exception as e:
                     _s.update(label=f"Compositing failed: {e}", state="error")
 
+        st.session_state["rv_cover_only"]  = _rv_cover_only_ui
         st.session_state["rv_results"]     = results
         st.session_state["rv_slots"]       = slots
         st.session_state["rv_alt_texts"]   = alt_texts
@@ -4232,11 +4261,13 @@ with tab_revise:
         elif _rv_cl:
             st.info("Branded Main/Thumbnail weren't generated — try **Regenerate Images** again.")
 
-        # Inner images
-        _ux_section("🖼️", "Inner Images", "download the ones you want")
+        # Inner images (none in Main + Thumbnail only mode)
         results = st.session_state["rv_results"]
-        _rv_inner_ex = st.session_state.get("rv_inner_excluded", False)
-        if _rv_inner_ex:
+        _rv_cov_only = st.session_state.get("rv_cover_only", False)
+        _rv_inner_ex = st.session_state.get("rv_inner_excluded", False) or _rv_cov_only
+        if not _rv_cov_only:
+            _ux_section("🖼️", "Inner Images", "download the ones you want")
+        if _rv_inner_ex and not _rv_cov_only:
             st.caption("Inner images excluded — they won't upload, the post keeps its "
                        "current inner images. Main + Thumbnail above still upload.")
         for rowi in range(0, len(results) if not _rv_inner_ex else 0, 4):
@@ -5138,8 +5169,9 @@ def _batch_state_clear() -> None:
 # ABOVE st.tabs() — the generate block up top needs them to read unpublished drafts.)
 # ════════════════════════════════════════════════════════════════════════════════
 with tab_revise:
-    if st.session_state.get("rv_results"):
-        _rv_inner_ex_up = st.session_state.get("rv_inner_excluded", False)
+    if "rv_results" in st.session_state:
+        _rv_inner_ex_up = (st.session_state.get("rv_inner_excluded", False)
+                           or st.session_state.get("rv_cover_only", False))
         _rv_okr = ([] if _rv_inner_ex_up else
                    [r for r in st.session_state["rv_results"] if r["status"] == "ok"])
         _rv_main_up = st.session_state.get("rv_main_bytes")
