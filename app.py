@@ -3740,6 +3740,34 @@ def _airtable_mark_done(record_id: str):
         return False, str(e)
 
 
+def _airtable_norm_url(u: str) -> str:
+    """host (no www) + path (no trailing slash), lower-cased — for matching blog URLs."""
+    u = (u or "").strip()
+    if u and not u.startswith("http"):
+        u = "https://" + u
+    sp = urllib.parse.urlsplit(u)
+    host = sp.netloc.lower().removeprefix("www.")
+    path = urllib.parse.unquote(sp.path).strip().rstrip("/").lower()
+    return host + path
+
+
+def _airtable_find_blog_records(url: str) -> list:
+    """Blog Keyword rows whose 'Final blog url' is this blog. Exact URL match first
+    (host + path, so /fr/ and EN stay separate); else same host + same slug. Read-only."""
+    rows, _ = _airtable_load()
+    if not rows:
+        return []
+    target = _airtable_norm_url(url)
+    hits = [r for r in rows if _airtable_norm_url(r.get("Final blog url", "")) == target]
+    if not hits:
+        host, slug = target.split("/", 1)[0], _url_slug(url).lower()
+        hits = [r for r in rows
+                if r.get("Final blog url")
+                and _airtable_norm_url(r["Final blog url"]).split("/", 1)[0] == host
+                and _url_slug(r["Final blog url"]).lower() == slug]
+    return hits
+
+
 def _batch_clients_index(clients_rows) -> dict:
     """Map normalised client name -> Clients-info row."""
     idx = {}
@@ -5259,6 +5287,32 @@ with tab_revise:
                         st.session_state["rv_uploaded"] = True
                     except Exception as e:
                         st.error(f"Upload failed: {e}")
+
+                    # Same as the Batch tab: after a SUCCESSFUL upload, mark ONLY this
+                    # blog's "Image status" = "Done" in Airtable. Nothing else is touched.
+                    # No Main/Thumb (and not excluded on purpose) = incomplete → not Done.
+                    if st.session_state.get("rv_uploaded"):
+                        _rv_cover_ok = (_rv_has_cover
+                                        or bool(st.session_state.get("rv_cover_excluded")))
+                        _rv_recs = _airtable_find_blog_records(
+                            st.session_state.get("rv_url_final", ""))
+                        if not _rv_cover_ok:
+                            st.warning("⚠️ No Main/Thumbnail was uploaded — Airtable NOT "
+                                       "marked Done (blog is incomplete).")
+                        elif not _airtable_token():
+                            st.info("Airtable not marked Done — no `AIRTABLE_TOKEN` set.")
+                        elif not _rv_recs:
+                            st.info("ℹ️ This blog's link wasn't found in Airtable (Blog "
+                                    "Keyword → Final blog url) — nothing to mark Done.")
+                        else:
+                            _rv_md = [_airtable_mark_done(r.get("Record ID", ""))
+                                      for r in _rv_recs]
+                            if all(ok for ok, _ in _rv_md):
+                                st.success("✅ Airtable updated — Image status = **Done**.")
+                            else:
+                                st.error("Airtable Done ✗ — "
+                                         + "; ".join(err for ok, err in _rv_md if not ok))
+                            _airtable_load.clear()
 
 
 with tab_batch:
