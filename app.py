@@ -4045,7 +4045,8 @@ with tab_revise:
             st.error("Please enter a blog URL.")
             st.stop()
         for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
-                  "rv_client", "rv_main_bytes", "rv_thumb_bytes", "rv_cover_excluded"]:
+                  "rv_client", "rv_main_bytes", "rv_thumb_bytes", "rv_cover_excluded",
+                  "rv_inner_excluded"]:
             st.session_state.pop(k, None)
 
         _rv_u = rv_url.strip()
@@ -4234,7 +4235,11 @@ with tab_revise:
         # Inner images
         _ux_section("🖼️", "Inner Images", "download the ones you want")
         results = st.session_state["rv_results"]
-        for rowi in range(0, len(results), 4):
+        _rv_inner_ex = st.session_state.get("rv_inner_excluded", False)
+        if _rv_inner_ex:
+            st.caption("Inner images excluded — they won't upload, the post keeps its "
+                       "current inner images. Main + Thumbnail above still upload.")
+        for rowi in range(0, len(results) if not _rv_inner_ex else 0, 4):
             cols = st.columns(4)
             for ci, result in enumerate(results[rowi:rowi + 4]):
                 with cols[ci]:
@@ -4266,24 +4271,22 @@ with tab_revise:
                             st.session_state["rv_redo_seed"] = random.randint(10000, 999999)
                             st.rerun()
 
-        ok = sum(1 for r in results if r["status"] == "ok")
-        st.success(f"Done! {ok}/{len(results)} inner images ready"
-                   + (" · Main + Thumbnail above." if (_mb or _tb) else "."))
+        if not _rv_inner_ex:
+            ok = sum(1 for r in results if r["status"] == "ok")
+            st.success(f"Done! {ok}/{len(results)} inner images ready"
+                       + (" · Main + Thumbnail above." if (_mb or _tb) else "."))
 
-        # ── Exclude (drop this blog) — same as the Batch tab ──────────────────
-        # Exclude = take this generated blog OUT: it won't upload and it disappears
-        # right away (Main, Thumbnail, inner images and the Upload section all go).
-        # Nothing is sent to Webflow. Paste a link and Generate again to start over.
-        if not st.session_state.get("rv_uploaded"):
-            if st.button("🚫 Exclude — remove this blog", key="rv_exclude_btn",
-                         use_container_width=True,
-                         help="Drop this generated blog. It won't upload and "
-                              "disappears from the tab."):
-                for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
-                          "rv_client", "rv_main_bytes", "rv_thumb_bytes", "rv_url_final",
-                          "rv_slug", "rv_image_urls", "rv_uploaded", "rv_cover_excluded"]:
-                    st.session_state.pop(k, None)
-                st.rerun()
+            # ── Exclude inner images ONLY ─────────────────────────────────────
+            # Exclude applies to the inner (body) images: they disappear and won't
+            # upload, so the post keeps its current inner images. Main + Thumbnail
+            # stay and still upload (they have their own Exclude above).
+            if not st.session_state.get("rv_uploaded"):
+                if st.button("🚫 Exclude inner images", key="rv_exclude_btn",
+                             use_container_width=True,
+                             help="Drop the generated inner images. They won't upload — "
+                                  "Main + Thumbnail stay."):
+                    st.session_state["rv_inner_excluded"] = True
+                    st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -5136,7 +5139,9 @@ def _batch_state_clear() -> None:
 # ════════════════════════════════════════════════════════════════════════════════
 with tab_revise:
     if st.session_state.get("rv_results"):
-        _rv_okr = [r for r in st.session_state["rv_results"] if r["status"] == "ok"]
+        _rv_inner_ex_up = st.session_state.get("rv_inner_excluded", False)
+        _rv_okr = ([] if _rv_inner_ex_up else
+                   [r for r in st.session_state["rv_results"] if r["status"] == "ok"])
         _rv_main_up = st.session_state.get("rv_main_bytes")
         _rv_thumb_up = st.session_state.get("rv_thumb_bytes")
         _rv_has_cover = bool(_rv_main_up or _rv_thumb_up)
@@ -5202,13 +5207,23 @@ with tab_revise:
                                     blog_url=st.session_state.get("rv_url_final", ""),
                                     known_collection_id=_rv_coll)
                             _cs.update(label=f"Connected ✓ → {site_name}", state="complete")
-                        do_webflow_upload(
-                            wf, site_id, collection_id, item_id, was_pub,
-                            st.session_state.get("rv_image_urls", []), _rv_okr,
-                            site_name, _rv_client_disp or site_name,
-                            main_bytes=_rv_main_up,
-                            thumb_bytes=_rv_thumb_up,
-                            blog_title=st.session_state.get("rv_title", ""))
+                        if _rv_inner_ex_up:
+                            # Inner images excluded → Main + Thumbnail only; the
+                            # post's body images are left untouched.
+                            do_webflow_upload_cover(
+                                wf, site_id, collection_id, item_id, was_pub,
+                                main_bytes=_rv_main_up, thumb_bytes=_rv_thumb_up,
+                                blog_title=st.session_state.get("rv_title", ""),
+                                client_name=_rv_client_disp or site_name,
+                                site_name=site_name)
+                        else:
+                            do_webflow_upload(
+                                wf, site_id, collection_id, item_id, was_pub,
+                                st.session_state.get("rv_image_urls", []), _rv_okr,
+                                site_name, _rv_client_disp or site_name,
+                                main_bytes=_rv_main_up,
+                                thumb_bytes=_rv_thumb_up,
+                                blog_title=st.session_state.get("rv_title", ""))
                         st.session_state["rv_uploaded"] = True
                     except Exception as e:
                         st.error(f"Upload failed: {e}")
