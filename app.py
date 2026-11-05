@@ -3831,6 +3831,67 @@ def _airtable_find_blog_records(url: str) -> list:
     return hits
 
 
+def _airtable_lookup_blog_records(url: str) -> tuple:
+    """Find this blog's Blog Keyword rows with ONE filtered Airtable query (~1s) instead
+    of the full ~1,600-row table read (~40s, and a timeout there used to be reported as
+    "link not found in Airtable"). Retries a few times. Read-only.
+    Returns (records, error) — records is None when Airtable couldn't be read."""
+    import urllib.request
+    slug = _url_slug(url).lower()
+    if not slug or not _airtable_token():
+        return None, "no AIRTABLE_TOKEN"
+    target = _airtable_norm_url(url)
+    host = target.split("/", 1)[0]
+    formula = "FIND('{}', LOWER({{Final blog url}}))".format(slug.replace("'", "\\'"))
+    q = urllib.parse.urlencode([("filterByFormula", formula), ("pageSize", "100"),
+                                ("fields[]", "Final blog url"), ("fields[]", "Image status")])
+    req_url = f"https://api.airtable.com/v0/{_AT_BASE}/{_AT_TBL_BLOG}?{q}"
+    err = ""
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(req_url,
+                                         headers={"Authorization": f"Bearer {_airtable_token()}"})
+            recs = json.load(urllib.request.urlopen(req, timeout=30)).get("records", [])
+            rows = [{**r.get("fields", {}), "Record ID": r["id"]} for r in recs]
+            hits = [r for r in rows if _airtable_norm_url(r.get("Final blog url", "")) == target]
+            if not hits:
+                hits = [r for r in rows
+                        if _airtable_norm_url(r.get("Final blog url", "")).split("/", 1)[0] == host
+                        and _url_slug(r.get("Final blog url", "")).lower() == slug]
+            return hits, ""
+        except Exception as e:
+            err = str(e)
+            time.sleep(1.5 * (attempt + 1))
+    return None, err
+
+
+def _rv_mark_airtable_done(url: str):
+    """Generate from Link → set ONLY this blog's Image status = Done. Shows the outcome."""
+    recs, err = _airtable_lookup_blog_records(url)
+    if recs is None:
+        recs = _airtable_find_blog_records(url) or None   # cached full read as a backup
+    if recs is None:
+        st.session_state["rv_airtable_pending"] = True
+        st.error(f"⚠️ Couldn't read Airtable right now ({err or 'no response'}) — the "
+                 f"upload worked, but Image status is NOT Done yet. Click **Mark Done in "
+                 f"Airtable** below to try again.")
+        return
+    if not recs:
+        st.session_state.pop("rv_airtable_pending", None)
+        st.info("ℹ️ This blog's link wasn't found in Airtable (Blog Keyword → Final blog "
+                "url) — nothing to mark Done.")
+        return
+    _md = [_airtable_mark_done(r.get("Record ID", "")) for r in recs]
+    if all(ok for ok, _ in _md):
+        st.session_state.pop("rv_airtable_pending", None)
+        st.success("✅ Airtable updated — Image status = **Done**.")
+    else:
+        st.session_state["rv_airtable_pending"] = True
+        st.error("Airtable Done ✗ — " + "; ".join(e for ok, e in _md if not ok)
+                 + " — click **Mark Done in Airtable** below to try again.")
+    _airtable_load.clear()
+
+
 def _batch_clients_index(clients_rows) -> dict:
     """Map normalised client name -> Clients-info row."""
     idx = {}
@@ -4166,7 +4227,7 @@ with tab_revise:
             st.stop()
         for k in ["rv_results", "rv_slots", "rv_alt_texts", "rv_title",
                   "rv_client", "rv_main_bytes", "rv_thumb_bytes", "rv_cover_excluded",
-                  "rv_inner_excluded", "rv_cover_only"]:
+                  "rv_inner_excluded", "rv_cover_only", "rv_airtable_pending"]:
             st.session_state.pop(k, None)
 
         _rv_u = rv_url.strip()
@@ -5322,6 +5383,12 @@ with tab_revise:
 
             if st.session_state.get("rv_uploaded"):
                 st.success("✅ Already uploaded to Webflow. Regenerate the blog to upload again.")
+                # Upload worked but Airtable couldn't be updated at that moment — retry
+                # ONLY the Done mark (no re-upload).
+                if st.session_state.get("rv_airtable_pending") and st.button(
+                        "✅ Mark Done in Airtable", key="rv_airtable_retry",
+                        use_container_width=True):
+                    _rv_mark_airtable_done(st.session_state.get("rv_url_final", ""))
             elif st.button("⬆️ Upload to Webflow now", type="primary",
                            use_container_width=True, key="rv_upload_btn"):
                 if not _rv_key:
@@ -5368,25 +5435,13 @@ with tab_revise:
                     if st.session_state.get("rv_uploaded"):
                         _rv_cover_ok = (_rv_has_cover
                                         or bool(st.session_state.get("rv_cover_excluded")))
-                        _rv_recs = _airtable_find_blog_records(
-                            st.session_state.get("rv_url_final", ""))
                         if not _rv_cover_ok:
                             st.warning("⚠️ No Main/Thumbnail was uploaded — Airtable NOT "
                                        "marked Done (blog is incomplete).")
                         elif not _airtable_token():
                             st.info("Airtable not marked Done — no `AIRTABLE_TOKEN` set.")
-                        elif not _rv_recs:
-                            st.info("ℹ️ This blog's link wasn't found in Airtable (Blog "
-                                    "Keyword → Final blog url) — nothing to mark Done.")
                         else:
-                            _rv_md = [_airtable_mark_done(r.get("Record ID", ""))
-                                      for r in _rv_recs]
-                            if all(ok for ok, _ in _rv_md):
-                                st.success("✅ Airtable updated — Image status = **Done**.")
-                            else:
-                                st.error("Airtable Done ✗ — "
-                                         + "; ".join(err for ok, err in _rv_md if not ok))
-                            _airtable_load.clear()
+                            _rv_mark_airtable_done(st.session_state.get("rv_url_final", ""))
 
 
 with tab_batch:
