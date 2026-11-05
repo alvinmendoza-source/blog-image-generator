@@ -2107,10 +2107,12 @@ def _match_client(site_name: str) -> str:
     for key in cache:
         if _squash(key) == s:
             return key
-    # 2) containment either way (squashed), longest key first to avoid spurious short matches
+    # 2) containment either way (squashed), longest key first to avoid spurious short matches.
+    #    A tiny fragment must not match inside a key: "ut" (from ut.ca) is in "solutions",
+    #    which sent Unified Technicians blogs to Rock Solid's Webflow site.
     for key in sorted(cache, key=lambda k: len(_squash(k)), reverse=True):
         ks = _squash(key)
-        if ks and (ks in s or s in ks):
+        if ks and ((len(ks) >= 3 and ks in s) or (len(s) >= 4 and s in ks)):
             return key
     return ""   # no match — do not fall back to a random client
 
@@ -4100,8 +4102,22 @@ def _revise_detect_client(url: str) -> str:
     # Explicit domains first — for clients whose domain doesn't resemble their name
     # (e.g. rstechnology.net → Rock Solid Technology Solutions).
     for slug, entry in _load_node_cache().items():
-        if isinstance(entry, dict) and host in entry.get("domains", []):
+        if isinstance(entry, dict) and host in (entry.get("domains") or []):
             return slug
+    # Then Airtable Clients info: the row whose Website url is this domain names the
+    # client (ut.ca → Unified Technicians), which beats guessing from the domain text.
+    try:
+        _, clients_rows = _airtable_load_uncached_failures()
+    except Exception:
+        clients_rows = None
+    for row in clients_rows or []:
+        w = str(row.get("Website url") or "").strip()
+        w_host = urlparse(w if "://" in w else "https://" + w).netloc.lower()
+        nm = row.get("Client name")
+        if w and w_host.split(":")[0].removeprefix("www.") == host and isinstance(nm, str):
+            m = _match_client(nm)
+            if m:
+                return m
     for cand in (host, re.sub(r"\.[a-z]{2,}$", "", host), host.split(".")[0]):
         m = _match_client(cand)
         if m:
