@@ -1532,8 +1532,17 @@ class WebflowClient:
         this retry the 3rd/4th blog would 429 and fail. Honors the Retry-After header."""
         url = f"{self.BASE}{path}"
         for attempt in range(5):
-            r = requests.request(method, url, headers=self.headers,
-                                  params=params, json=json_body, timeout=timeout)
+            try:
+                r = requests.request(method, url, headers=self.headers,
+                                     params=params, json=json_body, timeout=timeout)
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                # Webflow's API sometimes just doesn't answer — retry instead of failing
+                # the whole upload (GET/PATCH are idempotent; a repeated asset POST only
+                # leaves an unused duplicate asset).
+                if attempt < 4:
+                    time.sleep(min(2 ** attempt * 3, 30))
+                    continue
+                raise
             if r.ok:
                 return r.json()
             # Retry on rate limit (429) and transient server errors (502/503/504)
@@ -1662,12 +1671,22 @@ class WebflowClient:
 
         content_type = upload_details.get("Content-Type", "image/jpeg")
         form_data = {k: v for k, v in upload_details.items() if k != "Content-Type"}
-        s3 = requests.post(
-            upload_url,
-            data=form_data,
-            files={"file": (filename, img_bytes, content_type)},
-            timeout=60,
-        )
+        for attempt in range(3):
+            try:
+                s3 = requests.post(
+                    upload_url,
+                    data=form_data,
+                    files={"file": (filename, img_bytes, content_type)},
+                    timeout=60,
+                )
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                if attempt == 2:
+                    raise
+                time.sleep(3 * (attempt + 1))
+                continue
+            if s3.ok or s3.status_code < 500 or attempt == 2:
+                break
+            time.sleep(3 * (attempt + 1))
         if not s3.ok:
             raise ValueError(f"S3 upload failed ({s3.status_code}): {s3.text[:200]}")
 
@@ -4486,6 +4505,16 @@ with tab_revise:
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 2 — Auto Upload to Webflow
 # ════════════════════════════════════════════════════════════════════════════════
+def _cover_check(main_bytes, thumb_bytes, mkey, tkey, img_fields: dict):
+    """Raise unless every generated cover image (Main / Thumbnail) has a CMS field to go in."""
+    missing = [n for n, b, k in (("Main image", main_bytes, mkey), ("Thumbnail", thumb_bytes, tkey))
+               if b and not k]
+    if missing:
+        raise RuntimeError(
+            f"couldn't find the CMS image field for the {' and '.join(missing)} "
+            f"(image fields on this post: {list(img_fields.keys()) or 'none'})")
+
+
 def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
                       image_urls, ok_results, site_name, client_name,
                       main_bytes=None, thumb_bytes=None, blog_title=""):
@@ -4509,8 +4538,7 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
             s.update(label=f"Uploaded {len(new_urls)} image(s) ✓", state="complete")
         except Exception as e:
             s.update(label="Upload failed", state="error")
-            st.error(str(e))
-            st.stop()
+            raise RuntimeError(f"Image upload to Webflow failed: {e}") from e
 
     # ── Update CMS item ───────────────────────────────────────────────────────
     with st.status("Updating Webflow CMS...", expanded=True) as s:
@@ -4566,8 +4594,7 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
             s.update(label="CMS updated ✓", state="complete")
         except Exception as e:
             s.update(label="CMS update failed", state="error")
-            st.error(str(e))
-            st.stop()
+            raise RuntimeError(f"Webflow CMS update failed: {e}") from e
 
     # ── Upload main image + thumbnail ─────────────────────────────────────────
     if main_bytes or thumb_bytes:
@@ -4653,14 +4680,14 @@ def do_webflow_upload(wf, site_id, collection_id, item_id, was_published,
                     else:
                         st.warning(f"⚠️ No image field found for thumbnail. Fields: {list(img_fields.keys())}")
 
-                if img_update:
-                    wf.update_item(collection_id, item_id, img_update)
-                    st.write(f"CMS updated: {list(img_update.keys())}")
+                _cover_check(main_bytes, thumb_bytes, mkey, tkey, img_fields)
+                wf.update_item(collection_id, item_id, img_update)
+                st.write(f"CMS updated: {list(img_update.keys())}")
 
                 s.update(label="Main image & thumbnail uploaded ✓", state="complete")
             except Exception as e:
                 s.update(label="Main/thumbnail upload failed", state="error")
-                st.error(str(e))
+                raise RuntimeError(f"Main/Thumbnail upload failed: {e}") from e
 
     # ── Publish ───────────────────────────────────────────────────────────────
     with st.status("Checking publish status...", expanded=True) as s:
@@ -4754,14 +4781,13 @@ def do_webflow_upload_cover(wf, site_id, collection_id, item_id, was_published,
                     st.write(f"✓ Thumbnail → `{tkey}`")
                 elif thumb_bytes:
                     st.warning(f"⚠️ No image field found for thumbnail. Fields: {list(img_fields.keys())}")
-                if img_update:
-                    wf.update_item(collection_id, item_id, img_update)
-                    st.write(f"CMS updated: {list(img_update.keys())}")
+                _cover_check(main_bytes, thumb_bytes, mkey, tkey, img_fields)
+                wf.update_item(collection_id, item_id, img_update)
+                st.write(f"CMS updated: {list(img_update.keys())}")
                 s.update(label="Main image & thumbnail uploaded ✓", state="complete")
             except Exception as e:
                 s.update(label="Main/thumbnail upload failed", state="error")
-                st.error(str(e))
-                return
+                raise RuntimeError(f"Main/Thumbnail upload failed: {e}") from e
 
     with st.status("Checking publish status...", expanded=True) as s:
         try:
