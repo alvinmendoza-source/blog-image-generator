@@ -1278,7 +1278,7 @@ _POLICY_SOFTEN = [
     (r"\bphishing\b", "suspicious email"),
     (r"\bbreach(?:es|ed)?\b", "security incident"),
     (r"\bexploit(?:s|ed|ing)?\b", "weakness"),
-    (r"\b(?:malicious|nefarious|sabotage\w*|espionage|fraudulent)\b", "suspicious"),
+    (r"\b(?:malicious|nefarious|sabotag\w*|espionage|fraudulent)\b", "suspicious"),
     (r"\b(?:victims?|weapons?|suspects?)\b", "people involved"),
 ]
 
