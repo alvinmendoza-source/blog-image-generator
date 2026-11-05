@@ -2087,15 +2087,16 @@ def _save_client_key(slug: str, key: str):
 
 
 def _get_client_key(slug: str) -> str:
-    """Resolve a client's Webflow key: local keys file → legacy cache entry → global env/secret."""
+    """Resolve a client's OWN Webflow key: local keys file → legacy cache entry.
+    Never falls back to the global WEBFLOW_API_KEY — that key belongs to ONE site
+    (Carmichael), so using it for another client searched the wrong collection and
+    reported "post isn't in this collection" (Protozoon, 2026-11-05)."""
     if slug:
         k = _load_client_keys().get(slug, "")
         if k:
             return k
-        legacy = _load_node_cache().get(slug, {}).get("webflow_api_key", "")
-        if legacy:
-            return legacy
-    return os.getenv("WEBFLOW_API_KEY", "")
+        return _load_node_cache().get(slug, {}).get("webflow_api_key", "")
+    return ""
 
 
 def _lookup_node_ids(slug: str) -> tuple:
@@ -3720,6 +3721,15 @@ def _airtable_load():
         return None, None
 
 
+def _airtable_load_uncached_failures():
+    """_airtable_load, but a FAILED read isn't kept in the cache — otherwise one Airtable
+    hiccup is remembered for the whole ttl and every client's creds look "missing"."""
+    blog_rows, clients_rows = _airtable_load()
+    if clients_rows is None and _airtable_token():
+        _airtable_load.clear()
+    return blog_rows, clients_rows
+
+
 def _airtable_mark_done(record_id: str):
     """STRICT WRITE: set ONLY {'Image status': 'Done'} on ONE Blog Keyword record.
     Never writes any other field, row, table, or value. Returns (ok, error_str)."""
@@ -3808,7 +3818,7 @@ def _batch_resolve_creds(client_name: str, clients_idx: dict) -> dict:
             "token": "", "site_id": "", "collection_id": "", "author_id": "", "category_id": ""}
 
 
-def _revise_resolve_creds(client_slug: str) -> dict | None:
+def _revise_resolve_creds(client_slug: str, blog_url: str = "") -> dict | None:
     """Pull a client's Webflow creds (token + collectionId) straight from the Airtable
     'Clients info' table — the same source the Batch Generate tab uses — so the user never
     has to paste a key. Matches the template slug to the Airtable client name via
@@ -3816,13 +3826,24 @@ def _revise_resolve_creds(client_slug: str) -> dict | None:
     if not client_slug:
         return None
     try:
-        _, clients_rows = _airtable_load()
+        _, clients_rows = _airtable_load_uncached_failures()
     except Exception:
         clients_rows = None
     if not clients_rows:
         return None
     idx = _batch_clients_index(clients_rows)
-    for row in clients_rows:
+
+    def _host(u):
+        u = (u or "").strip()
+        return urllib.parse.urlsplit(u if "://" in u else "https://" + u).netloc.lower().removeprefix("www.")
+
+    # Several Airtable rows can match one template ("Allied IT Systems" AND "Allied
+    # Sandbox" → allied). Prefer the row whose Website url is the blog's own domain,
+    # so the right Webflow site is used regardless of Airtable row order.
+    blog_host = _host(blog_url)
+    rows = sorted(clients_rows,
+                  key=lambda r: not (blog_host and _host(r.get("Website url", "")) == blog_host))
+    for row in rows:
         nm = row.get("Client name", "")
         if isinstance(nm, str) and nm and _match_client(nm) == client_slug:
             creds = _batch_resolve_creds(nm, idx)
@@ -3985,14 +4006,14 @@ def _revise_fetch_from_cms(url: str, client_slug: str):
             "the link — so there's no Webflow account to read it from. Open "
             "**⚙️ Wrong client, or not detected?** above, pick the client, and try again.")
 
-    creds = _revise_resolve_creds(client_slug) or {}
-    token = (creds.get("token") or _get_client_key(client_slug)
-             or os.getenv("WEBFLOW_API_KEY", ""))
+    creds = _revise_resolve_creds(client_slug, url) or {}
+    token = creds.get("token") or _get_client_key(client_slug)
     if not token:
         raise ValueError(
             f"No Webflow key found for **{_client_display_name(client_slug)}**, which is "
-            f"needed to read an unpublished draft. Add that client's `webflow_token` in "
-            f"Airtable (Clients info), or set `AIRTABLE_TOKEN` so keys load automatically.")
+            f"needed to read an unpublished draft. Check that client's `webflow_token` in "
+            f"Airtable (Clients info) and that `AIRTABLE_TOKEN` is set — if Airtable was "
+            f"just slow, click Generate again.")
 
     slug = _url_slug(url)
     wf, site_id, site_name, collection_id, item_id, was_published = do_webflow_connect(
@@ -5217,7 +5238,7 @@ with tab_revise:
             #   1) Airtable "Clients info" (token + collectionId) — zero manual entry
             #   2) local client_keys.json / WEBFLOW_API_KEY env — offline fallback
             #   3) manual paste (only when nothing above is available)
-            _rv_creds     = _revise_resolve_creds(_rv_up_slug)
+            _rv_creds     = _revise_resolve_creds(_rv_up_slug, rv_url)
             _rv_key       = ""
             _rv_coll      = ""
             _rv_typed_key = ""
@@ -5228,7 +5249,7 @@ with tab_revise:
                 st.success(f"🔑 Using **{_rv_creds['client_name']}**'s Webflow key from "
                            f"**Airtable** (Clients info) — no key needed.")
             else:
-                _rv_saved_key = _get_client_key(_rv_up_slug) if _rv_up_slug else os.getenv("WEBFLOW_API_KEY", "")
+                _rv_saved_key = _get_client_key(_rv_up_slug)
                 if _rv_saved_key:
                     _rv_key = _rv_saved_key
                     _who = f" for {_rv_client_disp}" if _rv_client_disp else ""
