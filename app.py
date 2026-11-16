@@ -3817,11 +3817,22 @@ def _airtable_mark_done(record_id: str):
     req = urllib.request.Request(url, data=body, method="PATCH",
                                  headers={"Authorization": f"Bearer {_airtable_token()}",
                                           "Content-Type": "application/json"})
-    try:
-        urllib.request.urlopen(req, timeout=30)
-        return True, ""
-    except Exception as e:
-        return False, str(e)
+    # Retry network hiccups (SSL handshake timeouts, DNS "getaddrinfo failed") — those
+    # left uploaded blogs stuck at "Review needed". A 4xx answer is final, no retry.
+    import urllib.error
+    last = ""
+    for attempt in range(3):
+        try:
+            urllib.request.urlopen(req, timeout=30)
+            return True, ""
+        except urllib.error.HTTPError as e:
+            if e.code < 500 and e.code != 429:
+                return False, str(e)
+            last = str(e)
+        except Exception as e:
+            last = str(e)
+        time.sleep(2 * (attempt + 1))
+    return False, last
 
 
 def _airtable_norm_url(u: str) -> str:
@@ -3921,6 +3932,17 @@ def _batch_clients_index(clients_rows) -> dict:
         if nm:
             idx[nm] = r
     return idx
+
+
+def _batch_template_slug(client_name: str, clients_idx: dict) -> str:
+    """Template slug for an Airtable client — by name, else by its Website url (ut.ca →
+    Unified Technicians, rstechnology.net → Rock Solid). '' = no template registered."""
+    m = _match_client(client_name)
+    if m:
+        return m
+    row = clients_idx.get(_batch_norm(client_name)) or {}
+    site = str(row.get("Website url") or "").strip()
+    return _revise_detect_client(site) if site else ""
 
 
 def _batch_resolve_creds(client_name: str, clients_idx: dict) -> dict:
@@ -5632,6 +5654,13 @@ with tab_batch:
 
         _clients_idx = _batch_clients_index(_clients_rows)
         _client_creds = {cn: _batch_resolve_creds(cn, _clients_idx) for cn in _groups}
+        # A client with a Webflow login but NO template can't get a Main/Thumbnail — it
+        # used to show "✅ ready", get ticked (e.g. via "Select all ready"), and then fail
+        # with "Webflow site '…' didn't match any template". Grey it out up front instead.
+        for _cn in _groups:
+            if _client_creds[_cn]["ok"] and not _batch_template_slug(_cn, _clients_idx):
+                _client_creds[_cn] = {**_client_creds[_cn], "ok": False,
+                                      "reason": "no template yet — make one in 🎨 Create Template"}
         _ready_clients = [cn for cn in _groups if _client_creds[cn]["ok"]]
 
         if not _review:
@@ -5647,7 +5676,7 @@ with tab_batch:
                 (len(_review), "Blogs · review needed", "cy"),
                 (len(_groups), "Clients", ""),
                 (len(_ready_clients), "✅ Ready", "green"),
-                (len(_groups) - len(_ready_clients), "⚠️ No creds", "amber"),
+                (len(_groups) - len(_ready_clients), "⚠️ Not ready", "amber"),
             ])
 
             # Quick actions
@@ -5721,11 +5750,22 @@ with tab_batch:
 
                 def _entry_done(_e):
                     # "done" only counts if the blog actually has a Main or Thumbnail image.
-                    # A pre-fix entry saved as done-with-no-images (e.g. a cover step that
-                    # produced nothing) self-heals into a retry instead of staying stuck.
-                    return (_e.get("status") == "done"
+                    _has = (_e.get("status") == "done"
                             and bool(_batch_disp_src(_e.get("main_bytes"), _e.get("main_path"))
                                      or _batch_disp_src(_e.get("thumb_bytes"), _e.get("thumb_path"))))
+                    # Stale 1/ CSV fallback: rows may be out of date, so never redo what we
+                    # already made (it would regenerate every old blog).
+                    if _src_from != "Airtable":
+                        return _has
+                    # AIRTABLE IS THE RULE: only rows that are "Review needed" right now reach
+                    # here, and Review needed = make it again until it's Done — an old upload
+                    # or an un-reviewed pending result never blocks it (the SEO team flips a
+                    # blog back to Review needed when they changed the page). The only skip:
+                    # a blog already made in THIS run, so an auto-resume after a mid-batch
+                    # rerun/reboot doesn't redo it in a loop.
+                    _run = st.session_state.get("abatch_run_id")
+                    return bool(st.session_state.get("abatch_run") and _run
+                                and _e.get("run_id") == _run and _has)
                 _pending = [(cn, r) for cn in _picked for r in _groups[cn]
                             if not _entry_done(_store.get(_rid(r), {}))]
                 _done_already = _total_blogs - len(_pending)
@@ -5783,7 +5823,18 @@ with tab_batch:
                             st.session_state.pop(_k, None)
                         _batch_state_clear()
                         st.rerun()
-                if _done_already:
+                _waiting = [r for cn in _picked for r in _groups[cn]
+                            if _store.get(_rid(r), {}).get("status") == "done"
+                            and not _store.get(_rid(r), {}).get("uploaded")]
+                if _pending and _waiting and not st.session_state.get("abatch_run"):
+                    st.caption(f"♻️ {len(_waiting)} of these already have generated images waiting "
+                               "in Review below. They're still *Review needed* in Airtable, so "
+                               "Generate makes NEW images and replaces them.")
+                if not _pending:
+                    st.info(f"ℹ️ Nothing left to generate — all {_total_blogs} picked blog(s) were "
+                            "already generated in this batch and are waiting below. Review / "
+                            "upload them, or **🗑️ Remove** one to make it again.")
+                elif _done_already:
                     st.caption(f"🔁 Resume-safe: {_done_already}/{_total_blogs} already done — will skip.")
 
                 # ── Robust run driver ──────────────────────────────────────────
@@ -5796,6 +5847,13 @@ with tab_batch:
                 # to the manual disk-resume re-click, which still works.)
                 if _go:
                     st.session_state["abatch_run"] = True
+                    st.session_state["abatch_run_id"] = f"run-{time.time():.0f}"
+                    # Drop the old results of every blog about to be remade (un-reviewed
+                    # pending ones included) so they don't pile up in Review.
+                    for _cn_old, _r_old in _pending:
+                        _store.pop(_rid(_r_old), None)
+                    st.session_state["abatch_results"] = _store
+                    _batch_state_save(_store)
                     st.session_state["abatch_resumes"] = 0
                     st.session_state.pop("abatch_dead", None)  # force a fresh pre-flight
                     # Latch the mode at launch so an auto-resume rerun uses the SAME mode
@@ -5954,6 +6012,7 @@ with tab_batch:
                         except Exception as _ge:
                             _store[_rec] = {"client": _cn, "url": _url, "slug": _slug,
                                             "status": "failed", "error": str(_ge)}
+                        _store[_rec]["run_id"] = st.session_state.get("abatch_run_id")
                         st.session_state["abatch_results"] = _store
                         # Mirror THIS blog to disk right away so a mid-batch reboot
                         # keeps every finished blog (resume, not restart)…
@@ -6022,6 +6081,15 @@ with tab_batch:
 
                 if _upc:
                     st.caption(f"✅ {_upc} already uploaded — done and hidden from the list below.")
+                # Legacy entries from before the rule below: uploaded, but the Airtable
+                # Done write failed. They are not finished — drop them so the blog is simply
+                # "for generation" again (it is still Review needed in Airtable).
+                _legacy_nd = [_k for _k, _vv in _store_disp.items()
+                              if _vv.get("uploaded") and _vv.get("airtable_done") is False]
+                if _legacy_nd:
+                    for _k in _legacy_nd:
+                        _store_disp.pop(_k, None)
+                    _batch_state_save(_store_disp)
                 if not _by_client:
                     st.success("🎉 All uploaded — nothing left to review. Use "
                                "**🗑️ Clear results** above to start a new batch.")
@@ -6030,7 +6098,16 @@ with tab_batch:
                     st.markdown(f"#### 🏢 {_cn2}")
                     for _rk, _v in _pairs:
                         if _v.get("status") != "done":
-                            st.markdown(f"- ❌ `{_v.get('slug') or _v.get('url','')}` — {_v.get('error','')}")
+                            _fc1, _fc2 = st.columns([4, 1])
+                            _fc1.markdown(f"- ❌ `{_v.get('slug') or _v.get('url','')}` — {_v.get('error','')}")
+                            # A failed entry used to be removable only via "Clear results",
+                            # which also wipes every uploaded blog's history.
+                            if _fc2.button("🗑️ Remove", key=f"rmfail_{_rk}", use_container_width=True,
+                                           help="Drop this failed blog from the list. Nothing is "
+                                                "uploaded and Airtable is not touched."):
+                                st.session_state["abatch_results"].pop(_rk, None)
+                                _batch_state_save(st.session_state["abatch_results"])
+                                st.rerun()
                             continue
                         _okimgs = [(_ii, r) for _ii, r in enumerate(_v.get("results", []))
                                    if r.get("status") == "ok"]
@@ -6134,6 +6211,18 @@ with tab_batch:
                 st.divider()
                 _ux_section("5", "Upload to Webflow",
                             "live client site · auto-marks Airtable 'Done'")
+                _notice = st.session_state.get("abatch_upload_notice")
+                if _notice:
+                    if _notice.get("ok"):
+                        st.success(f"✅ {_notice['ok']} blog(s) uploaded · marked Done in Airtable.")
+                    if _notice.get("back"):
+                        st.warning("⚠️ These did NOT finish, so they're back to **for generation** "
+                                   "(still *Review needed* in Airtable). Pick their client above and "
+                                   "Generate + Upload again — it overwrites what reached Webflow:\n\n"
+                                   + "\n".join(f"- `{_sl}` — {_why}" for _sl, _why in _notice["back"]))
+                    if st.button("OK, hide this", key="abatch_notice_ok"):
+                        st.session_state.pop("abatch_upload_notice", None)
+                        st.rerun()
                 if _excluded_n:
                     st.caption(f"🚫 {_excluded_n} cancelled — excluded from upload "
                                f"(files kept on disk; use Undo above to restore).")
@@ -6143,9 +6232,16 @@ with tab_batch:
                     if st.button(f"⬆️ Upload {len(_pending_up)} blogs to Webflow",
                                  type="primary", use_container_width=True):
                         _uprog = st.progress(0.0)
+                        _back_to_gen = []   # (slug, reason) — returned to "for generation"
                         for _ui, (_rk, _v) in enumerate(_pending_up):
                             _uprog.progress(_ui / max(len(_pending_up), 1),
                                             text=f"Uploading {_v.get('slug','')}…")
+                            # RULE: a blog is finished only when BOTH the Webflow upload and the
+                            # Airtable "Done" write succeed. If either fails (e.g. the internet
+                            # drops), drop it from the batch: it is still "Review needed" in
+                            # Airtable, so it comes back as "for generation" and the next
+                            # Generate + Upload overwrites whatever reached Webflow.
+                            _reason = ""
                             try:
                                 with st.status(f"⬆️ {_v.get('client','')} · {_v.get('slug','')}",
                                                expanded=False) as _us:
@@ -6156,27 +6252,27 @@ with tab_batch:
                                     _recid = (_v.get("record", {}) or {}).get("Record ID", "")
                                     _md_ok, _md_err = _airtable_mark_done(_recid)
                                     _v["airtable_done"] = _md_ok
-                                    _v["airtable_done_error"] = "" if _md_ok else _md_err
-                                    _done_lbl = f"Uploaded ✓ {_v.get('slug','')}"
-                                    _done_lbl += " · Airtable Done ✓" if _md_ok else " · Airtable Done ✗"
-                                    _us.update(label=_done_lbl, state="complete")
-                                _v["upload_error"] = ""
+                                    if _md_ok:
+                                        _us.update(label=f"Uploaded ✓ {_v.get('slug','')} · Airtable Done ✓",
+                                                   state="complete")
+                                    else:
+                                        _reason = f"uploaded, but couldn't mark Done in Airtable ({_md_err})"
+                                        _us.update(label=f"{_v.get('slug','')}: {_reason}", state="error")
                             except Exception as _ue:
-                                _v["upload_error"] = str(_ue)
-                                st.error(f"⛔ {_v.get('slug','')}: {_ue}")
+                                _reason = f"upload failed ({_ue})"
                             _drop_entry_bytes(_v)  # release before the next blog
-                            st.session_state["abatch_results"][_rk] = _v
+                            if _reason:
+                                st.session_state["abatch_results"].pop(_rk, None)
+                                _back_to_gen.append((_v.get("slug", "") or _v.get("url", ""), _reason))
+                            else:
+                                st.session_state["abatch_results"][_rk] = _v
                         # Persist upload state so a reboot won't re-upload these blogs.
                         _batch_state_save(st.session_state["abatch_results"])
                         _airtable_load.clear()  # refresh so the marked-Done rows drop out
                         _uprog.progress(1.0, text="Done!")
-                        _md_fail = [_v.get("slug", "") for _rk, _v in _pending_up
-                                    if _v.get("airtable_done") is False and not _v.get("upload_error")]
-                        if _md_fail:
-                            st.warning("✅ Uploaded, but couldn't mark Done in Airtable for: "
-                                       + ", ".join(_md_fail) + " — mark them manually.")
-                        else:
-                            st.success("✅ Upload done · marked Done in Airtable.")
+                        # Shown after the rerun below (a plain st.warning was wiped by it).
+                        st.session_state["abatch_upload_notice"] = {
+                            "ok": len(_pending_up) - len(_back_to_gen), "back": _back_to_gen}
                         st.rerun()
 
 

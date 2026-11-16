@@ -1410,5 +1410,45 @@
       255,
       255
     ]
+  },
+  "techconnect": {
+    "name": "Techconnect",
+    "file_key": "f7Y5Ni2gfmF5CXFCRnA9BS",
+    "main": "2144:12",
+    "thumb": "2144:13",
+    "main_w": 1200,
+    "main_h": 600,
+    "overlay_main": "2144:3",
+    "overlay_main_x": 0,
+    "overlay_main_y": 0,
+    "main_tx": 57,
+    "main_ty": 230,
+    "main_tw": 447,
+    "main_fsz": 38,
+    "main_lh": 50,
+    "main_font_family": "Satoshi",
+    "main_font_style": "Bold",
+    "main_font_color": [
+      20,
+      23,
+      92
+    ],
+    "thumb_w": 723,
+    "thumb_h": 389,
+    "overlay_thumb": "2144:2",
+    "overlay_thumb_x": 0,
+    "overlay_thumb_y": 0,
+    "thumb_tx": 32,
+    "thumb_ty": 150,
+    "thumb_tw": 269,
+    "thumb_fsz": 23,
+    "thumb_lh": 31,
+    "thumb_font_family": "Satoshi",
+    "thumb_font_style": "Bold",
+    "thumb_font_color": [
+      20,
+      23,
+      92
+    ]
   }
 }
