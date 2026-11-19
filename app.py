@@ -11,6 +11,10 @@ import hashlib
 import requests
 import urllib.parse
 from pathlib import Path
+import sys
+# Local modules (template_engine.py) live next to app.py.
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import streamlit as st
@@ -2275,6 +2279,9 @@ def make_tpls(client_name: str, main_logo: Path, thumb_logo: Path) -> tuple:
         "font_weight":    m_weight,
         "font_style_name": m_style,
         "font_color":     tuple(entry.get("main_font_color", [255, 255, 255])),
+        "max_lines":      entry.get("main_max_lines"),
+        "vcenter":        entry.get("main_vcenter"),
+        "win_bleed":      entry.get("window_bleed", 0),
     }
     t = {
         "w":              entry.get("thumb_w",  THUMB_TPL["w"]),
@@ -2291,6 +2298,9 @@ def make_tpls(client_name: str, main_logo: Path, thumb_logo: Path) -> tuple:
         "font_weight":    t_weight,
         "font_style_name": t_style,
         "font_color":     tuple(entry.get("thumb_font_color", [255, 255, 255])),
+        "max_lines":      entry.get("thumb_max_lines"),
+        "vcenter":        entry.get("thumb_vcenter"),
+        "win_bleed":      entry.get("window_bleed", 0),
     }
     return m, t
 
@@ -2352,6 +2362,13 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
                 window = logo_alpha.point(lambda v: 255 if v < 128 else 0).getbbox()
                 if window:
                     wl, wt, wr, wb = window
+                    # Bleed: grow the photo a few px past the window so the overlay's soft
+                    # (anti-aliased) edge blends with photo, not the dark fill. Only set by
+                    # Create Template "simple" templates; Figma templates keep 0.
+                    _bl = int(tpl.get("win_bleed") or 0)
+                    if _bl:
+                        wl, wt = max(0, wl - _bl), max(0, wt - _bl)
+                        wr, wb = min(lw, wr + _bl), min(lh, wb + _bl)
                     photo = _cover_crop(bg_img, wr - wl, wb - wt)
                     canvas = PILImage.new("RGB", (tpl["w"], tpl["h"]), (17, 17, 17))
                     canvas.paste(photo, (wl + ox, wt + oy))
@@ -2387,19 +2404,47 @@ def composite_template(bg_bytes: bytes, title: str, tpl: dict) -> bytes | None:
         clean_title = "".join(_CHAR_MAP.get(c, c) for c in title
                                if ord(c) < 256 or c in _CHAR_MAP)
         words = clean_title.split()
-        lines, cur = [], []
-        for word in words:
-            test = " ".join(cur + [word])
-            if draw.textbbox((0, 0), test, font=font)[2] <= tpl["tw"]:
-                cur.append(word)
-            else:
-                if cur: lines.append(" ".join(cur))
-                cur = [word]
-        if cur: lines.append(" ".join(cur))
+
+        def _wrap(_f):
+            _lines, _cur = [], []
+            for word in words:
+                test = " ".join(_cur + [word])
+                if draw.textbbox((0, 0), test, font=_f)[2] <= tpl["tw"]:
+                    _cur.append(word)
+                else:
+                    if _cur: _lines.append(" ".join(_cur))
+                    _cur = [word]
+            if _cur: _lines.append(" ".join(_cur))
+            return _lines
+
+        lines = _wrap(font)
         lh = tpl.get("lh") or (tpl["fsz"] + 6)
+        # Optional (Create Template "simple" templates): shrink the title until it fits in
+        # max_lines, and centre the block vertically on `vcenter`. Figma templates omit both.
+        _maxl = tpl.get("max_lines")
+        if _maxl and len(lines) > _maxl:
+            _sz, _ratio = tpl["fsz"], lh / max(1, tpl["fsz"])
+            while len(lines) > _maxl and _sz > 12:
+                _sz -= 1
+                try:
+                    font = ImageFont.truetype(str(font_path), _sz)
+                    try:
+                        font.set_variation_by_name(font_style_name)
+                    except (AttributeError, OSError, ValueError):
+                        try:
+                            font.set_variation_by_axes([font_weight])
+                        except (AttributeError, OSError):
+                            pass
+                except Exception:
+                    break
+                lines = _wrap(font)
+            lh = max(1, round(_sz * _ratio))
+        ty = tpl["ty"]
+        if tpl.get("vcenter") is not None:
+            ty = int(tpl["vcenter"] - len(lines) * lh / 2)
         fc = tpl.get("font_color", (255, 255, 255))
         for i, line in enumerate(lines):
-            draw.text((tpl["tx"], tpl["ty"] + i * lh), line, fill=fc, font=font)
+            draw.text((tpl["tx"], ty + i * lh), line, fill=fc, font=font)
         buf = io.BytesIO()
         canvas.save(buf, format="PNG")
         return buf.getvalue()
@@ -3215,6 +3260,104 @@ def _ct_save_template(slug, name, brand_hex, spec, main_wh, thumb_wh, logo_img, 
         "thumb_font_family": "Inter", "thumb_font_style": "Bold",
         "main_font_color": mc["color"], "thumb_font_color": tc["color"],
     })
+    cache[slug] = entry
+    _save_node_cache(cache)
+    return main_path, thumb_path
+
+
+# ── Create Template v2: SIMPLE brand templates (template_engine.py) ─────────────
+# website → logo → brand colours → 6 random designs (photo shape × background × detail).
+# Saved exactly like a Figma template (overlay PNGs + figma_node_cache.json entry), so
+# make_tpls()/composite_template() use it unchanged. No AI / Kie credits.
+_CT2_BLEED = 3
+
+
+def _ct2_text_logo(name, color, font_stem="Satoshi"):
+    """No logo found/uploaded → the client name as a text logo (transparent PNG)."""
+    fp = ASSETS_DIR / f"{font_stem}.ttf"
+    try:
+        f = ImageFont.truetype(str(fp if fp.exists() else INTER_FONT_PATH), 160)
+        try:
+            f.set_variation_by_name("Bold")
+        except Exception:
+            pass
+    except Exception:
+        f = ImageFont.load_default()
+    txt = (name or "Brand").strip()[:28]
+    d0 = ImageDraw.Draw(PILImage.new("RGBA", (10, 10)))
+    bb = d0.textbbox((0, 0), txt, font=f)
+    im = PILImage.new("RGBA", (bb[2] - bb[0] + 20, bb[3] - bb[1] + 20), (0, 0, 0, 0))
+    ImageDraw.Draw(im).text((10 - bb[0], 10 - bb[1]), txt, font=f, fill=tuple(color) + (255,))
+    return im
+
+
+def _ct2_font_path(font_stem):
+    fp = ASSETS_DIR / f"{font_stem}.ttf"
+    return fp if fp.exists() else INTER_FONT_PATH
+
+
+def _ct2_tpl(overlay_path, W, H, coords, font_stem):
+    return {"w": W, "h": H, "logo": overlay_path, "ox": 0, "oy": 0,
+            "tx": coords["tx"], "ty": coords["ty"], "tw": coords["tw"], "fsz": coords["fsz"],
+            "lh": coords["lh"], "font": _ct2_font_path(font_stem), "font_weight": 700,
+            "font_style_name": "Bold", "font_color": tuple(coords["color"]),
+            "max_lines": coords.get("max_lines"), "vcenter": coords.get("vcenter"),
+            "win_bleed": _CT2_BLEED}
+
+
+def _ct2_preview(spec, theme, W, H, photo_bytes, title, font_stem, tag):
+    """Render one design through composite_template (preview == saved output)."""
+    import template_engine as TE
+    ov, coords = TE.render_overlay(spec, theme, W, H)
+    tmp = ASSETS_DIR / f"_ct_preview_{tag}.png"
+    ov.save(tmp)
+    return composite_template(photo_bytes, title, _ct2_tpl(tmp, W, H, coords, font_stem))
+
+
+def _ct2_save_template(slug, name, spec, theme, font_stem, colours, main_wh, thumb_wh, website=""):
+    """Render + save main/thumb overlays and register the template in figma_node_cache.json."""
+    import template_engine as TE
+    main_path = ASSETS_DIR / f"logo_panel_main_{slug}.png"
+    thumb_path = ASSETS_DIR / f"logo_panel_thumb_{slug}.png"
+    mov, mc = TE.render_overlay(spec, theme, main_wh[0], main_wh[1])
+    tov, tc = TE.render_overlay(spec, theme, thumb_wh[0], thumb_wh[1])
+    mov.save(main_path)
+    tov.save(thumb_path)
+    cache = _load_node_cache()
+    entry = dict(cache.get(slug, {}))
+    for _k in ("main_max_lines", "thumb_max_lines", "main_vcenter", "thumb_vcenter"):
+        entry.pop(_k, None)
+    entry.update({
+        "name": name, "engine": "simple", "spec": spec, "preset": TE.spec_label(spec),
+        "brand_color": list(colours.get("vivid") or theme["accent"]),
+        "brand_colors": {k: (TE.hexc(v) if v else None) for k, v in colours.items()
+                         if k in ("deep", "vivid", "third")},
+        "main_w": main_wh[0], "main_h": main_wh[1],
+        "thumb_w": thumb_wh[0], "thumb_h": thumb_wh[1],
+        "overlay_main_x": 0, "overlay_main_y": 0,
+        "overlay_thumb_x": 0, "overlay_thumb_y": 0,
+        "window_bleed": _CT2_BLEED,
+        "main_tx": mc["tx"], "main_ty": mc["ty"], "main_tw": mc["tw"],
+        "main_fsz": mc["fsz"], "main_lh": mc["lh"],
+        "thumb_tx": tc["tx"], "thumb_ty": tc["ty"], "thumb_tw": tc["tw"],
+        "thumb_fsz": tc["fsz"], "thumb_lh": tc["lh"],
+        "main_max_lines": mc["max_lines"], "thumb_max_lines": tc["max_lines"],
+        "main_font_family": font_stem, "main_font_style": "Bold",
+        "thumb_font_family": font_stem, "thumb_font_style": "Bold",
+        "main_font_color": mc["color"], "thumb_font_color": tc["color"],
+    })
+    if mc.get("vcenter") is not None:
+        entry["main_vcenter"] = mc["vcenter"]
+    if tc.get("vcenter") is not None:
+        entry["thumb_vcenter"] = tc["vcenter"]
+    if website:
+        try:
+            _h = urllib.parse.urlparse(website if "//" in website else "https://" + website).netloc
+            _h = _h.lower().removeprefix("www.")
+            if _h:
+                entry["domains"] = sorted(set(entry.get("domains") or []) | {_h})
+        except Exception:
+            pass
     cache[slug] = entry
     _save_node_cache(cache)
     return main_path, thumb_path
@@ -6280,27 +6423,29 @@ with tab_batch:
 # TAB 4 — Create Template (code-drawn branded template generator, no Figma)
 # ════════════════════════════════════════════════════════════════════════════════
 with tab_template:
+    import template_engine as _TE
     st.markdown("#### 🎨 Create Template")
-    st.caption("Make a branded template for a client — pick the client, generate a few design "
-               "options, and save the one you like. It's ready to use everywhere in the app. "
-               "No design skills or Figma needed.")
+    st.caption("Make a simple branded template for a client — the app reads the logo and brand "
+               "colours from the client's website, then shows 6 random designs (photo shape, "
+               "background, accent). Pick one and save — it works everywhere in the app. "
+               "No Figma, no AI credits.")
 
-    # progress stepper: 1 client → 2 design → 3 save
     _ct_step = 0
-    if st.session_state.get("ct_specs"):
+    if st.session_state.get("ct2_specs"):
         _ct_step = 1
-    if st.session_state.get("ct_pick"):
+    if st.session_state.get("ct2_pick") is not None:
         _ct_step = 2
     _ux_stepper(["Client & brand", "Pick a design", "Save"], _ct_step)
 
-    # ── STEP 1: Client & Brand ──
+    # ── STEP 1: Client & brand ──
     _ux_section("1", "Who is this template for?", "client & brand")
     try:
         _ct_blog, _ct_clients = _airtable_load()
     except Exception:
         _ct_clients = None
-    _ct_names = sorted({(r.get("Client name") or "").strip()
-                        for r in (_ct_clients or []) if (r.get("Client name") or "").strip()})
+    _ct_rows = {(r.get("Client name") or "").strip(): r for r in (_ct_clients or [])
+                if (r.get("Client name") or "").strip()}
+    _ct_names = sorted(_ct_rows)
     if not _ct_names:
         _ct_names = [_client_display_name(s) for s in _load_node_cache_clients()]
 
@@ -6316,13 +6461,15 @@ with tab_template:
     if _ct_slug and _ct_slug in _load_node_cache():
         st.info(f"ℹ️ **{_ct_name}** already has a template — saving will replace it.")
 
-    _cc1, _cc2 = st.columns([1, 2])
-    _ct_brand = _cc1.color_picker("Brand color", "#0D2140", key="ct_brand")
-    _cc1.caption("The client's main color.")
-    _ct_logo_file = _cc2.file_uploader("Logo (SVG or transparent PNG)", type=["svg", "png"],
-                                       key="ct_logo")
-    _cc2.caption("SVG works best (always sharp), or a see-through PNG. No logo yet? You can still "
-                 "generate — the name is drawn as text for now.")
+    _ct_site_default = str((_ct_rows.get(_ct_name) or {}).get("Website url") or "").strip()
+    _cw1, _cw2 = st.columns([3, 2])
+    _ct_site = _cw1.text_input("Client website", value=_ct_site_default,
+                               key=f"ct_site_{_ct_slug or 'new'}",
+                               placeholder="https://www.client.com").strip()
+    _cw1.caption("The logo and brand colours are read from this site"
+                 + (" (from Airtable)." if _ct_site_default else "."))
+    _ct_logo_file = _cw2.file_uploader("Logo (optional)", type=["svg", "png"], key="ct_logo")
+    _cw2.caption("Only if the website logo is wrong or missing. SVG or see-through PNG.")
 
     _ct_size_mode = st.selectbox(
         "Template size",
@@ -6330,7 +6477,6 @@ with tab_template:
         key="ct_size_mode")
     if _ct_size_mode.startswith("Standard"):
         _ct_mw, _ct_mh, _ct_tw, _ct_th = 1200, 600, 546, 362
-        st.caption("✓ Most templates use Standard — you'll rarely need to change this.")
     else:
         _s1, _s2, _s3, _s4 = st.columns(4)
         _ct_mw = int(_s1.number_input("Main width", 200, 4000, 1200, key="ct_mw"))
@@ -6338,120 +6484,164 @@ with tab_template:
         _ct_tw = int(_s3.number_input("Thumbnail width", 200, 4000, 546, key="ct_tw"))
         _ct_th = int(_s4.number_input("Thumbnail height", 200, 4000, 362, key="ct_th"))
 
-    _ct_logo_img = None
+    # Brand kit = logo(s) + detected colours + heading font, keyed on what it was read from.
+    _ct_up_sig = ""
     if _ct_logo_file is not None:
-        try:
-            _ct_logo_img = _ct_read_logo(_ct_logo_file)
-        except Exception:
-            st.warning("⚠️ Couldn't read that logo file — using a text logo instead.")
+        _ct_up_sig = hashlib.md5(_ct_logo_file.getvalue()).hexdigest()[:10]
+    _ct_kit_key = f"{_ct_slug}|{_ct_site}|{_ct_up_sig}"
+    _ct_kit = st.session_state.get("ct2_kit")
+    if _ct_kit and _ct_kit.get("key") != _ct_kit_key:
+        _ct_kit = None
 
-    # ── STEP 2: Generate designs ──
-    # ALWAYS hybrid: every batch (including the first) generates 3 designs with AI abstract
-    # backgrounds under the REAL code-drawn logo + title (exact size, no fake logos). Each
-    # Redo = 3 brand-new designs, dedup'd on layout family vs the previous batch.
-    _ux_section("2", "Pick a design", "choose one of the options")
-    _ct_sample_title = "Business Email Compromise (BEC): Attack Risks & Email Security Tips"
-    st.caption("Click Generate — in about a minute you'll get 3 design options, each with your "
-               "logo and brand color. Don't like them? Get 3 brand-new ones.")
-
-    def _ct_fresh_batch():
-        _avoid = {s["style"] for s in (st.session_state.get("ct_specs") or [])}
-        for _ in range(80):
-            _b = _ct_distinct_specs(3)
-            if not _avoid or not ({s["style"] for s in _b} & _avoid):
-                return _b
-        return _ct_distinct_specs(3)
-
-    def _ct_generate_batch(engine):
-        """Build a 3-design batch. For 'hybrid', generate 3 distinct AI backgrounds (with a
-        progress bar); any that fail fall back to code-drawn for that slot. Stores the batch
-        + its AI backgrounds in session_state so preview == what gets saved."""
-        import random as _r
-        _specs = _ct_fresh_batch()
-        _bgs = [None, None, None]
-        if engine == "hybrid":
-            _motifs = _r.sample(_CT_AI_MOTIFS, 3)
-            _prog = st.progress(0.0, text="Generating 3 AI backgrounds… (~25s each)")
-            for _k in range(3):
-                _prog.progress(_k / 3.0, text=f"AI background {_k + 1}/3…")
-                _bgs[_k] = _ct_ai_bg(_ct_brand, _motifs[_k])
-            _prog.progress(1.0, text="AI backgrounds ready ✓")
-            if not any(b is not None for b in _bgs):
-                st.warning("⚠️ AI backgrounds failed (Kie credits or error) — showing "
-                           "code-drawn for this batch. Try Redo again.")
-        st.session_state["ct_specs"] = _specs
-        st.session_state["ct_photo"] = _ct_sample_photo_bytes()
-        st.session_state["ct_ai_bgs"] = _bgs
-        st.session_state["ct_engine"] = engine
-        st.session_state["ct_pick"] = None
-        st.session_state["ct_pick_bg"] = None
-
-    if st.button("✨ Generate 3 designs (~1 min)", type="primary", key="ct_gen",
-                 disabled=not _ct_slug, use_container_width=True):
-        _ct_generate_batch("hybrid")
-
-    if st.session_state.get("ct_specs"):
-        _brand = _ct_hex_to_rgb(_ct_brand)
-        _photo = st.session_state.get("ct_photo") or _ct_sample_photo_bytes()
-        _specs = st.session_state["ct_specs"]
-        _bgs = st.session_state.get("ct_ai_bgs") or [None] * len(_specs)
-        st.caption("Each option shows the **Main** banner and its **Thumbnail** — so you see "
-                   "both before choosing.")
-        _cols = st.columns(3)
-        for _i, _spec in enumerate(_specs):
-            with _cols[_i % 3]:
-                _bg = _bgs[_i] if _i < len(_bgs) else None
-                # Main preview (banner size)
+    if st.button("🔍 Read logo & colours", type="primary" if not _ct_kit else "secondary",
+                 key="ct2_read", disabled=not _ct_slug or not (_ct_site or _ct_logo_file),
+                 use_container_width=True):
+        _main = _rev = None
+        _page, _font, _notes = "", _TE.DEFAULT_FONT, []
+        if _ct_site:
+            _url = _ct_site if "//" in _ct_site else "https://" + _ct_site
+            with st.spinner("Reading the client's website…"):
                 try:
-                    _prev_img = _ct_preview(_spec, _ct_mw, _ct_mh, _brand,
-                                            _ct_logo_img, _photo, _ct_sample_title, _ct_name, _i,
-                                            ai_bg=_bg)
-                    if _prev_img:
-                        st.image(_prev_img, use_container_width=True,
-                                 caption=f"Main · {_ct_mw}×{_ct_mh}")
-                    else:
-                        st.warning("preview failed")
+                    _w = _TE.analyze_website(_url)
+                    _page, _font, _main, _rev = _w["page"], _w["font"], _w["main"], _w["rev"]
+                    if _main is None:
+                        _notes.append("No logo found on the website.")
                 except Exception as _e:
-                    st.warning(f"preview error: {_e}")
-                # Thumbnail preview (same design at the thumbnail size)
-                try:
-                    _thumb_img = _ct_preview(_spec, _ct_tw, _ct_th, _brand,
-                                             _ct_logo_img, _photo, _ct_sample_title, _ct_name, _i,
-                                             ai_bg=_bg)
-                    if _thumb_img:
-                        _tcol, _ = st.columns([2, 1])
-                        _tcol.image(_thumb_img, use_container_width=True,
-                                    caption=f"Thumbnail · {_ct_tw}×{_ct_th}")
-                except Exception:
-                    pass
-                st.caption(_ct_spec_label(_spec))
-                if st.button("✅ Use this one", key=f"ct_use_{_i}", use_container_width=True):
-                    st.session_state["ct_pick"] = _spec
-                    st.session_state["ct_pick_bg"] = _bg
-                    st.rerun()
+                    _notes.append(f"Couldn't open the website ({type(_e).__name__}).")
+        if _ct_logo_file is not None:
+            try:
+                _main, _rev = _TE.split_uploaded_logo(_ct_strip_bg(_ct_read_logo(_ct_logo_file)))
+                _notes.append("Using the uploaded logo.")
+            except Exception:
+                _notes.append("Couldn't read the uploaded logo file.")
+        _cols = _TE.detect_colours(_main, _page)
+        _text_logo = _main is None
+        if _text_logo:
+            _main = _ct2_text_logo(_ct_name, _cols["deep"] or (26, 26, 30), _font)
+            _notes.append("Upload the logo above — the client name is drawn as text for now.")
+        st.session_state["ct2_kit"] = {"key": _ct_kit_key, "main": _main, "rev": _rev,
+                                       "font": _font, "colours": _cols, "notes": _notes,
+                                       "text_logo": _text_logo, "id": random.randint(0, 10 ** 9)}
+        for _k in ("ct2_specs", "ct2_pick", "ct2_prev_cache", "ct2_theme_cache"):
+            st.session_state.pop(_k, None)
+        st.rerun()
 
-        if st.button("🔄 Show 3 new designs (~1 min)", key="ct_redo",
+    _ct_themes = None
+    _ct_colours = {}
+    _ct_theme_sig = ""
+    if _ct_kit:
+        for _n in _ct_kit["notes"]:
+            if _n.startswith("Using"):
+                st.caption("✓ " + _n)
+            else:
+                st.warning("⚠️ " + _n)
+        _cols = _ct_kit["colours"]
+        _kid = _ct_kit["id"]
+        _b1, _b2, _b3, _b4 = st.columns([2, 1, 1, 1])
+        with _b1:
+            _lg = _ct_kit["main"]
+            _lp = PILImage.new("RGBA", (_lg.width + 40, _lg.height + 40), (255, 255, 255, 255))
+            _lp.alpha_composite(_lg, (20, 20))
+            st.image(_lp, caption=f"Logo · title font: {_ct_kit['font']}", use_container_width=True)
+        _deep_def = _TE.hexc(_cols["deep"]) if _cols["deep"] else "#12141A"
+        _deep_hex = _b2.color_picker("Dark colour", _deep_def, key=f"ct2_deep_{_kid}")
+        _viv_hex = _b3.color_picker("Accent colour", _TE.hexc(_cols["vivid"]), key=f"ct2_viv_{_kid}")
+        _thr_hex = _b4.color_picker("3rd colour", _TE.hexc(_cols["third"]), key=f"ct2_thr_{_kid}")
+        st.caption(f"Colours detected from the {_cols['src']}. Change them only if they look off.")
+        # No dark brand colour in the logo + picker untouched → let the engine derive the dark bg.
+        _deep_rgb = None if (not _cols["deep"] and _deep_hex.upper() == "#12141A") else _TE.hex_to_rgb(_deep_hex)
+        _ct_colours = {"deep": _deep_rgb, "vivid": _TE.hex_to_rgb(_viv_hex),
+                       "third": _TE.hex_to_rgb(_thr_hex)}
+        _ct_theme_sig = f"{_kid}|{_deep_hex}|{_viv_hex}|{_thr_hex}"
+        _tc = st.session_state.get("ct2_theme_cache")
+        if not _tc or _tc[0] != _ct_theme_sig:
+            _ink = _deep_rgb if _deep_rgb else _cols.get("ink")
+            _tc = (_ct_theme_sig, _TE.make_themes(_ct_kit["main"], _ct_kit["rev"], _deep_rgb,
+                                                  _ct_colours["vivid"], _ink, _ct_colours["third"]))
+            st.session_state["ct2_theme_cache"] = _tc
+        _ct_themes = _tc[1]
+
+    # ── STEP 2: Pick a design ──
+    _ux_section("2", "Pick a design", "6 random designs per click")
+    _ct_sample_title = "Business Email Compromise (BEC): Attack Risks & Email Security Tips"
+
+    def _ct2_new_batch():
+        st.session_state["ct2_specs"] = _TE.make_batch(list(_ct_themes),
+                                                       prev=st.session_state.get("ct2_specs"))
+        st.session_state["ct2_photo"] = _ct_sample_photo_bytes()
+        st.session_state["ct2_pick"] = None
+        st.session_state["ct2_batch_id"] = random.randint(0, 10 ** 9)
+
+    if not _ct_themes:
+        st.caption("Read the client's logo & colours first (step 1).")
+    elif not st.session_state.get("ct2_specs"):
+        if st.button("✨ Generate 6 designs", type="primary", key="ct2_gen",
                      use_container_width=True):
-            _ct_generate_batch("hybrid")
+            _ct2_new_batch()
+            st.rerun()
+    else:
+        _specs = st.session_state["ct2_specs"]
+        _photo = st.session_state.get("ct2_photo") or _ct_sample_photo_bytes()
+        _pc = st.session_state.setdefault("ct2_prev_cache", {})
+        _sig = (f"{st.session_state.get('ct2_batch_id')}|{_ct_theme_sig}|"
+                f"{_ct_mw}x{_ct_mh}|{_ct_tw}x{_ct_th}")
+        if _pc.get("sig") != _sig:
+            _pc.clear()
+            _pc["sig"] = _sig
+        st.caption("Each option shows the **Main** banner and its **Thumbnail**. "
+                   "Don't like any? Click “Show 6 new designs”.")
+        for _r0 in range(0, len(_specs), 3):
+            _cols3 = st.columns(3)
+            for _i in range(_r0, min(_r0 + 3, len(_specs))):
+                _spec = _specs[_i]
+                with _cols3[_i - _r0]:
+                    _th = _ct_themes.get(_spec["bg"]) or next(iter(_ct_themes.values()))
+                    if _i not in _pc:
+                        try:
+                            _pc[_i] = (
+                                _ct2_preview(_spec, _th, _ct_mw, _ct_mh, _photo, _ct_sample_title,
+                                             _ct_kit["font"], f"m{_i}"),
+                                _ct2_preview(_spec, _th, _ct_tw, _ct_th, _photo, _ct_sample_title,
+                                             _ct_kit["font"], f"t{_i}"))
+                        except Exception as _e:
+                            _pc[_i] = (None, None)
+                            st.warning(f"preview error: {_e}")
+                    _mimg, _timg = _pc[_i]
+                    _picked = st.session_state.get("ct2_pick") == _i
+                    if _mimg:
+                        st.image(_mimg, use_container_width=True,
+                                 caption=("✅ " if _picked else "") + f"Main · {_ct_mw}×{_ct_mh}")
+                    if _timg:
+                        _tcol, _ = st.columns([2, 1])
+                        _tcol.image(_timg, use_container_width=True,
+                                    caption=f"Thumbnail · {_ct_tw}×{_ct_th}")
+                    st.caption(_TE.spec_label(_spec))
+                    if st.button("✅ Selected" if _picked else "Use this one", key=f"ct2_use_{_i}",
+                                 type="primary" if _picked else "secondary",
+                                 use_container_width=True):
+                        st.session_state["ct2_pick"] = _i
+                        st.rerun()
+        if st.button("🔄 Show 6 new designs", key="ct2_redo", use_container_width=True):
+            _ct2_new_batch()
             st.rerun()
 
     # ── STEP 3: Save ──
-    if st.session_state.get("ct_pick"):
+    _ct_pick = st.session_state.get("ct2_pick")
+    if _ct_themes and st.session_state.get("ct2_specs") and _ct_pick is not None:
         _ux_section("3", "Save it", "ready to use")
-        st.markdown(f"You picked the **{_ct_spec_label(st.session_state['ct_pick'])}** design "
-                    f"for **{_ct_name}**.")
-        if st.button("💾 Save template", type="primary", key="ct_save",
+        _pspec = st.session_state["ct2_specs"][_ct_pick]
+        st.markdown(f"You picked **{_TE.spec_label(_pspec)}** for **{_ct_name}**.")
+        if st.button("💾 Save template", type="primary", key="ct2_save",
                      disabled=not _ct_slug, use_container_width=True):
             try:
-                _mp, _tp = _ct_save_template(_ct_slug, _ct_name, _ct_brand,
-                                             st.session_state["ct_pick"],
-                                             (_ct_mw, _ct_mh), (_ct_tw, _ct_th), _ct_logo_img,
-                                             ai_bg=st.session_state.get("ct_pick_bg"))
-                st.success(f"✅ Saved! This template for **{_ct_name}** is ready — it works "
+                _th = _ct_themes.get(_pspec["bg"]) or next(iter(_ct_themes.values()))
+                _ct2_save_template(_ct_slug, _ct_name, _pspec, _th, _ct_kit["font"], _ct_colours,
+                                   (_ct_mw, _ct_mh), (_ct_tw, _ct_th), website=_ct_site)
+                st.success(f"✅ Saved! The template for **{_ct_name}** is ready — it works "
                            "automatically in Batch Generate and Generate from Link.")
-                if not _ct_logo_img:
-                    st.warning("⚠️ No logo uploaded — the name was drawn as text. Upload a "
-                               "transparent PNG for the real logo.")
+                if _ct_kit.get("text_logo"):
+                    st.warning("⚠️ No logo was found — the name was drawn as text. Upload the "
+                               "logo in step 1 and save again for the real logo.")
                 st.caption("🔧 Admin: to keep this template on the live site permanently, the new "
                            "files must be published — just say the word to push.")
             except Exception as _e:
